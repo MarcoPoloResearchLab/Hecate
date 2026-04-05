@@ -122,6 +122,20 @@ test.describe("Config — default behavior", () => {
       "http://localhost:8111/configs/frontend-config.yml",
     ]);
   });
+
+  test("committed runtime config keeps split-origin service defaults", async ({ page }) => {
+    await page.goto("/blank.html");
+    await page.setContent("<!doctype html><html><body></body></html>");
+    await page.addScriptTag({ url: "/js/runtime-auth-config.js" });
+    await page.addScriptTag({ url: "/js/service-config.js" });
+
+    expect(await page.evaluate(() => window.LLMCrosswordServices.getConfig())).toEqual({
+      apiBaseUrl: "https://llm-crossword-api.mprlab.com",
+      authBaseUrl: "https://tauth-api.mprlab.com",
+      configUrl: "/configs/frontend-config.yml",
+      tauthScriptUrl: "https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js",
+    });
+  });
 });
 
 test.describe("Config — fetch failure", () => {

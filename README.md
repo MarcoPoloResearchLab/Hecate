@@ -25,7 +25,7 @@ For split-origin deployments, the browser runtime config also supports explicit 
 - `LLM_CROSSWORD_CONFIG_URL` — frontend YAML config URL used by the browser
 - `LLM_CROSSWORD_TAUTH_SCRIPT_URL` — explicit CDN or alternate `tauth.js` URL override
 
-If these are unset, local startup keeps the existing same-origin behaviour by defaulting service URLs to `SITE_ORIGIN`. When `LLM_CROSSWORD_CONFIG_URL` is not set, the frontend defaults to `<site-origin>/configs/frontend-config.yml`. When `LLM_CROSSWORD_TAUTH_SCRIPT_URL` is unset, the frontend defaults `tauth.js` to the pinned CDN helper.
+If these are unset, local startup keeps the existing same-origin behaviour by defaulting service URLs to `SITE_ORIGIN` when rendering `js/runtime-auth-config.override.js`. The committed `js/runtime-auth-config.js` instead falls back to the hosted split-origin defaults for the current production topology. When `LLM_CROSSWORD_CONFIG_URL` is not set, the frontend defaults to `<site-origin>/configs/frontend-config.yml`. When `LLM_CROSSWORD_TAUTH_SCRIPT_URL` is unset, the frontend defaults `tauth.js` to the pinned CDN helper.
 
 ## GitHub Pages
 

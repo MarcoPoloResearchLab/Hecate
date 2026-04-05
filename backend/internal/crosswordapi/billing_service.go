@@ -389,7 +389,13 @@ func (service *billingService) processProviderEvent(ctx context.Context, provide
 		}
 		if duplicateCreditedTransaction {
 			skipEventRecord = true
-		} else if err := service.applyGrantEvent(ctx, grantEvent); err != nil && !errors.Is(err, sharedbilling.ErrGrantRecipientUnresolved) {
+		} else if err := service.applyGrantEvent(ctx, grantEvent); err != nil {
+			if errors.Is(err, sharedbilling.ErrGrantRecipientUnresolved) {
+				// Only persist a credited transaction after the grant can actually
+				// be applied. Otherwise later retries of the same transaction would
+				// be blocked by the duplicate credited-transaction guard.
+				return nil
+			}
 			return err
 		}
 	}

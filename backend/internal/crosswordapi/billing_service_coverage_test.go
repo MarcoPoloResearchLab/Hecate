@@ -848,6 +848,99 @@ func TestBillingServiceProcessProviderEventSkipsCreditedDuplicates(t *testing.T)
 	}
 }
 
+func TestBillingServiceProcessProviderEventRetriesAfterUnresolvedRecipient(t *testing.T) {
+	resolvedRecipient := false
+	grantCalls := 0
+	createdRecords := 0
+	creditedTransactions := map[string]bool{}
+
+	service := &billingService{
+		cfg: validBillingConfig(),
+		ledgerClient: &mockLedgerClient{
+			grantFunc: func(ctx context.Context, in *creditv1.GrantRequest, opts ...grpc.CallOption) (*creditv1.Empty, error) {
+				grantCalls += 1
+				if in.GetUserId() != "resolved-user" {
+					t.Fatalf("unexpected grant request %#v", in)
+				}
+				return &creditv1.Empty{}, nil
+			},
+		},
+		logger:   zap.NewNop(),
+		provider: &mockBillingProvider{code: billingProviderPaddle},
+		store: &mockStore{
+			getUserProfileByEmailFunc: func(email string) (*UserProfile, error) {
+				if email != "user@example.com" {
+					t.Fatalf("unexpected recipient lookup %q", email)
+				}
+				if !resolvedRecipient {
+					return nil, gorm.ErrRecordNotFound
+				}
+				return &UserProfile{UserID: "resolved-user"}, nil
+			},
+			hasBillingCreditedTransactionFunc: func(provider string, transactionID string) (bool, error) {
+				return provider == billingProviderPaddle && creditedTransactions[transactionID], nil
+			},
+			createBillingEventRecordFunc: func(record *BillingEventRecord) error {
+				createdRecords += 1
+				creditedTransactions[record.TransactionID] = record.CreditsDelta > 0
+				if record.UserID != "resolved-user" {
+					t.Fatalf("expected resolved user id in created record, got %#v", record)
+				}
+				return nil
+			},
+		},
+	}
+
+	providerEvent := billingProviderEvent{
+		EventRecord: BillingEventRecord{
+			EventID:       "evt_retryable_credit",
+			EventType:     paddleEventTypeTransactionCompleted,
+			Provider:      billingProviderPaddle,
+			TransactionID: "txn_retryable_credit",
+			CreditsDelta:  20,
+			OccurredAt:    time.Date(2026, time.March, 31, 12, 10, 0, 0, time.UTC),
+		},
+		GrantEvent: &BillingGrantEvent{
+			Credits:   20,
+			Provider:  billingProviderPaddle,
+			EventID:   "evt_retryable_credit",
+			Reference: "billing_top_up_pack:txn_retryable_credit:starter",
+			Metadata:  map[string]string{"user_email": "user@example.com"},
+		},
+	}
+
+	if err := service.processProviderEvent(context.Background(), providerEvent); err != nil {
+		t.Fatalf("processProviderEvent(unresolved recipient) error = %v", err)
+	}
+	if grantCalls != 0 {
+		t.Fatalf("expected no grant attempt while recipient is unresolved, got %d", grantCalls)
+	}
+	if createdRecords != 0 {
+		t.Fatalf("expected no credited record while recipient is unresolved, got %d", createdRecords)
+	}
+
+	resolvedRecipient = true
+	if err := service.processProviderEvent(context.Background(), providerEvent); err != nil {
+		t.Fatalf("processProviderEvent(resolved recipient retry) error = %v", err)
+	}
+	if grantCalls != 1 {
+		t.Fatalf("expected one grant after recipient resolution, got %d", grantCalls)
+	}
+	if createdRecords != 1 {
+		t.Fatalf("expected one credited record after recipient resolution, got %d", createdRecords)
+	}
+
+	if err := service.processProviderEvent(context.Background(), providerEvent); err != nil {
+		t.Fatalf("processProviderEvent(duplicate retry after credit) error = %v", err)
+	}
+	if grantCalls != 1 {
+		t.Fatalf("expected duplicate credited retry to skip grant, got %d calls", grantCalls)
+	}
+	if createdRecords != 1 {
+		t.Fatalf("expected duplicate credited retry to skip record creation, got %d records", createdRecords)
+	}
+}
+
 func TestBillingServiceApplyGrantEventResolveErrorCoverage(t *testing.T) {
 	grantCalled := false
 	service := &billingService{
