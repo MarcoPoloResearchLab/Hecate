@@ -4,8 +4,10 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 readonly runtime_config_path="${RUNTIME_AUTH_CONFIG_PATH:-js/runtime-auth-config.js}"
-readonly crosswordapi_env_file="${CROSSWORDAPI_ENV_FILE:-.env.crosswordapi.local}"
+readonly crosswordapi_env_file="${CROSSWORDAPI_ENV_FILE:-configs/.env.crosswordapi.local}"
 readonly default_tauth_script_url="https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js"
+readonly default_production_api_base_url="https://llm-crossword-api.mprlab.com"
+readonly default_production_auth_base_url="https://tauth-api.mprlab.com"
 
 read_env_file_value() {
   local env_file_path="$1"
@@ -44,6 +46,22 @@ resolve_runtime_value() {
   printf '%s' "$fallback_value"
 }
 
+uses_committed_runtime_defaults() {
+  case "$runtime_config_path" in
+    js/runtime-auth-config.js|./js/runtime-auth-config.js|*/js/runtime-auth-config.js)
+      return 0
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
+fail() {
+  printf '%s\n' "$1" >&2
+  exit 1
+}
+
 render_runtime_auth_config() {
   local billing_provider="$1"
   local paddle_environment="$2"
@@ -52,11 +70,6 @@ render_runtime_auth_config() {
   local auth_base_url="$5"
   local config_url="$6"
   local tauth_script_url="$7"
-  local billing_enabled="false"
-
-  if [ "$billing_provider" = "paddle" ] && [ -n "$paddle_environment" ] && [ -n "$paddle_client_token" ]; then
-    billing_enabled="true"
-  fi
 
   mkdir -p "$(dirname "$runtime_config_path")"
 
@@ -69,7 +82,6 @@ render_runtime_auth_config() {
   globalScope.LLMCrosswordRuntimeConfig = Object.freeze({
     billing: Object.freeze({
       clientToken: "${paddle_client_token}",
-      enabled: ${billing_enabled},
       environment: "${paddle_environment}",
       providerCode: "${billing_provider}",
     }),
@@ -89,6 +101,8 @@ main() {
   local paddle_environment
   local paddle_client_token
   local site_origin
+  local default_api_base_url
+  local default_auth_base_url
   local api_base_url
   local auth_base_url
   local config_url
@@ -98,9 +112,15 @@ main() {
   paddle_environment="$(resolve_crosswordapi_value "CROSSWORDAPI_PADDLE_ENVIRONMENT")"
   paddle_client_token="$(resolve_crosswordapi_value "CROSSWORDAPI_PADDLE_CLIENT_TOKEN")"
   site_origin="$(resolve_runtime_value "SITE_ORIGIN" "")"
-  api_base_url="$(resolve_runtime_value "LLM_CROSSWORD_API_BASE_URL" "$site_origin")"
-  auth_base_url="$(resolve_runtime_value "LLM_CROSSWORD_AUTH_BASE_URL" "$site_origin")"
-  config_url="$(resolve_runtime_value "LLM_CROSSWORD_CONFIG_URL" "${api_base_url%/}/config.yml")"
+  default_api_base_url="$site_origin"
+  default_auth_base_url="$site_origin"
+  if uses_committed_runtime_defaults; then
+    default_api_base_url="$default_production_api_base_url"
+    default_auth_base_url="$default_production_auth_base_url"
+  fi
+  api_base_url="$(resolve_runtime_value "LLM_CROSSWORD_API_BASE_URL" "$default_api_base_url")"
+  auth_base_url="$(resolve_runtime_value "LLM_CROSSWORD_AUTH_BASE_URL" "$default_auth_base_url")"
+  config_url="$(resolve_runtime_value "LLM_CROSSWORD_CONFIG_URL" "${site_origin%/}/configs/frontend-config.yml")"
   tauth_script_url="$(resolve_runtime_value "LLM_CROSSWORD_TAUTH_SCRIPT_URL" "$default_tauth_script_url")"
   render_runtime_auth_config \
     "$billing_provider" \

@@ -31,6 +31,6 @@ tools/
 .claude/
 backend/coverage.html
 .playwright-cli/
-client_secret_*.json
+client_secret*.json
 .runtime/
 js/runtime-auth-config.override.js
