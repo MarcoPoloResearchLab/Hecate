@@ -4,6 +4,35 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.1.5] - 2026-04-05
+
+### Features ✨
+- Simplify billing sync handler branch mapping for clearer processing.
+- Make crossword credit economy configurable for flexible gameplay.
+
+### Improvements ⚙️
+- Normalize billing sync response handling to improve consistency.
+- Harden Paddle billing reconciliation to enhance reliability.
+- Move local profile templates under configs for better organization.
+- Load frontend auth config from a dedicated YAML file.
+- Remove backend public config route to tighten security.
+- Set Paddle sandbox billing defaults for testing environments.
+- Migrate workflow guidance documentation from `.mprl` to `.mprlab`.
+- Document the frontend and backend config split to clarify deployment.
+
+### Bug Fixes 🐛
+- Retry processProviderEvent after unresolved grant recipient to prevent data loss.
+- Fix billing handler handling of race conditions and error states.
+
+### Testing 🧪
+- Expand crossword test coverage for rewards and edge scenarios.
+- Add extensive coverage tests for billing service, API, and server behavior.
+- Enhance targeted verification tests in backend and frontend Playwright suites to maintain 100% coverage.
+
+### Docs 📚
+- Updated workflow guidance and integration docs under `.mprlab/`.
+- Revise README and related config documentation to reflect updated config topology and deployment defaults.
+
 ## [v0.1.4] - 2026-03-31
 
 ### Features ✨
