@@ -21,7 +21,7 @@ environments:
     origins:
       - "https://llm-crossword.mprlab.com"
     auth:
-      tauthUrl: "https://tauth.mprlab.com"
+      tauthUrl: "https://tauth-api.mprlab.com"
       googleClientId: "7962005714-9g4tnvhr0ciml0dt2i5e9pagpcdatpde.apps.googleusercontent.com"
       tenantId: "crossword"
       loginPath: "/auth/google"

@@ -1,9 +1,11 @@
 // @ts-check
 
 const { test, expect } = require("./coverage-fixture");
+const { setupLoggedOutRoutes } = require("./route-helpers");
 
 test.describe("Login flow — unauthenticated state", () => {
   test.beforeEach(async ({ page }) => {
+    await setupLoggedOutRoutes(page);
     await page.goto("/");
   });
 
@@ -35,6 +37,7 @@ test.describe("Login flow — unauthenticated state", () => {
 
 test.describe("Login flow — puzzle view", () => {
   test.beforeEach(async ({ page }) => {
+    await setupLoggedOutRoutes(page);
     await page.goto("/");
     await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
   });
@@ -58,6 +61,7 @@ test.describe("Login flow — puzzle view", () => {
 
 test.describe("Login flow — pre-built puzzles", () => {
   test("pre-built puzzle loads and shows crossword grid", async ({ page }) => {
+    await setupLoggedOutRoutes(page);
     await page.goto("/");
     await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
     // Wait for crossword to load.
@@ -66,6 +70,7 @@ test.describe("Login flow — pre-built puzzles", () => {
   });
 
   test("pre-built puzzle shows Check and Reveal buttons in the puzzle toolbar", async ({ page }) => {
+    await setupLoggedOutRoutes(page);
     await page.goto("/");
     await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
     await expect(page.getByRole("button", { name: "Check" })).toBeVisible({ timeout: 10000 });
@@ -74,6 +79,7 @@ test.describe("Login flow — pre-built puzzles", () => {
   });
 
   test("puzzle sidebar has cards populated", async ({ page }) => {
+    await setupLoggedOutRoutes(page);
     await page.goto("/");
     await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
     // Wait for puzzles to load.

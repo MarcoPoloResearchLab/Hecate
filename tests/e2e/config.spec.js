@@ -1,126 +1,67 @@
 // @ts-check
 
 const { test, expect } = require("./coverage-fixture");
-const { createFrontendConfigYaml, setupLoggedOutRoutes } = require("./route-helpers");
+const { setupLoggedOutRoutes } = require("./route-helpers");
 
 test.describe("Config — default behavior", () => {
-  test("header has base-url set to origin", async ({ page }) => {
+  test("header has base-url set", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    // The inline script in index.html sets base-url on the header to current origin.
-    // mpr-header may be hidden when the mpr-ui component JS hides it for
-    // unauthenticated users, so check the attribute rather than visibility.
+
     var baseUrl = await page.locator("mpr-header").getAttribute("base-url");
     expect(baseUrl).toBeTruthy();
   });
 
-  test("config.js falls back to /configs/frontend-config.yml when data-config-url is missing", async ({ page }) => {
-    var configYaml = createFrontendConfigYaml({
-      auth: {
-        tauthUrl: "https://tauth.example.test",
-        googleClientId: "test-google-client-id",
-        tenantId: "crossword",
-        loginPath: "/auth/google",
-        logoutPath: "/auth/logout",
-        noncePath: "/auth/nonce",
+  test("mpr-ui bootstrap applies auth attributes from the frontend config", async ({ page }) => {
+    await setupLoggedOutRoutes(page, {
+      frontendConfig: {
+        auth: {
+          tauthUrl: "https://tauth.example.test",
+          googleClientId: "test-google-client-id",
+          tenantId: "crossword",
+          loginPath: "/auth/google",
+          logoutPath: "/auth/logout",
+          noncePath: "/auth/nonce",
+        },
       },
     });
+    await page.goto("/");
 
-    await page.goto("/blank.html");
-    await page.setContent("<!doctype html><html><body><mpr-header id=\"app-header\"></mpr-header></body></html>");
-    await page.evaluate((yamlText) => {
-      window.__configFetches = [];
-      window.fetch = function (url) {
-        window.__configFetches.push(String(url));
-        return Promise.resolve({
-          text: function () {
-            return Promise.resolve(yamlText);
-          },
-        });
-      };
-    }, configYaml);
-    await page.addScriptTag({ url: "/js/config.js" });
-
-    var absoluteConfigUrl = await page.evaluate(() => {
-      return window.location.origin + "/configs/frontend-config.yml";
-    });
-    var fetchedUrls = await page.evaluate(() => window.__configFetches.slice());
-    var tauthUrl = await page.locator("#app-header").getAttribute("tauth-url");
-
-    expect(fetchedUrls).toContain(absoluteConfigUrl);
-    expect(tauthUrl).toBe("https://tauth.example.test");
+    await expect(page.locator("#app-header")).toHaveAttribute("tauth-url", "https://tauth.example.test");
+    await expect(page.locator("#app-header")).toHaveAttribute("google-site-id", "test-google-client-id");
+    await expect(page.locator("#app-header")).toHaveAttribute("tauth-tenant-id", "crossword");
   });
 
-  test("config.js uses runtime service config for the frontend config URL", async ({ page }) => {
-    var configYaml = createFrontendConfigYaml({
-      auth: {
-        tauthUrl: "https://selected.example.test",
-        googleClientId: "test-google-client-id",
-        tenantId: "crossword",
-        loginPath: "/auth/google",
-        logoutPath: "/auth/logout",
-        noncePath: "/auth/nonce",
-      },
+  test("mpr-ui bootstrap loads the parser, config loader, and bundle once", async ({ page }) => {
+    await setupLoggedOutRoutes(page);
+    await page.goto("/");
+
+    await expect.poll(async () => page.evaluate(() => ({
+      jsYamlLoads: window.__jsYamlLoads || 0,
+      mprUiBundleLoads: window.__mprUiBundleLoads || 0,
+      mprUiConfigLoads: window.__mprUiConfigLoads || 0,
+    }))).toEqual({
+      jsYamlLoads: 1,
+      mprUiBundleLoads: 1,
+      mprUiConfigLoads: 1,
     });
-
-    await page.goto("/blank.html");
-    await page.setContent("<!doctype html><html><body><mpr-header id=\"app-header\"></mpr-header></body></html>");
-    await page.evaluate((yamlText) => {
-      window.LLMCrosswordRuntimeConfig = {
-        services: {
-          authBaseUrl: "https://tauth.example.test",
-          configUrl: "https://config.example.test/runtime-config",
-        },
-      };
-      window.__configFetches = [];
-      window.fetch = function (url) {
-        window.__configFetches.push(String(url));
-        return Promise.resolve({
-          text: function () {
-            return Promise.resolve(yamlText);
-          },
-        });
-      };
-    }, configYaml);
-    await page.addScriptTag({ url: "/js/service-config.js" });
-    await page.addScriptTag({ url: "/js/config.js" });
-
-    var fetchedUrls = await page.evaluate(() => window.__configFetches.slice());
-    var tauthUrl = await page.locator("#app-header").getAttribute("tauth-url");
-
-    expect(fetchedUrls).toEqual([
-      "https://config.example.test/runtime-config",
-    ]);
-    expect(tauthUrl).toBe("https://selected.example.test");
   });
 
   test("service-config keeps frontend config on the site origin when apiBaseUrl is set", async ({ page }) => {
-    var configYaml = createFrontendConfigYaml();
-
     await page.goto("/blank.html");
     await page.setContent("<!doctype html><html><body><mpr-header id=\"app-header\"></mpr-header></body></html>");
-    await page.evaluate((yamlText) => {
+    await page.evaluate(() => {
       window.LLMCrosswordRuntimeConfig = {
         services: {
           apiBaseUrl: "https://llm-crossword-api.mprlab.com",
         },
       };
-      window.__configFetches = [];
-      window.fetch = function (url) {
-        window.__configFetches.push(String(url));
-        return Promise.resolve({
-          text: function () {
-            return Promise.resolve(yamlText);
-          },
-        });
-      };
-    }, configYaml);
+    });
     await page.addScriptTag({ url: "/js/service-config.js" });
-    await page.addScriptTag({ url: "/js/config.js" });
 
-    expect(await page.evaluate(() => window.__configFetches.slice())).toEqual([
-      "http://localhost:8111/configs/frontend-config.yml",
-    ]);
+    expect(await page.evaluate(() => window.LLMCrosswordServices.getConfigUrl())).toBe(
+      "http://localhost:8111/configs/frontend-config.yml"
+    );
   });
 
   test("committed runtime config keeps split-origin service defaults", async ({ page }) => {
@@ -136,22 +77,29 @@ test.describe("Config — default behavior", () => {
       tauthScriptUrl: "https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js",
     });
   });
+
+  test("committed frontend config keeps the production auth host aligned with runtime config", async ({ page }) => {
+    await page.goto("/blank.html");
+
+    var configText = await page.evaluate(() =>
+      window.fetch("/configs/frontend-config.yml", { cache: "no-store" }).then((response) => response.text())
+    );
+
+    expect(configText).toContain('tauthUrl: "https://tauth-api.mprlab.com"');
+    expect(configText).not.toContain('tauthUrl: "https://tauth.mprlab.com"');
+  });
 });
 
 test.describe("Config — fetch failure", () => {
-  test("page still works when config fetch fails (fallback)", async ({ page }) => {
+  test("page still works when frontend config fetch fails", async ({ page }) => {
     await setupLoggedOutRoutes(page, {
       extra: {
         "**/configs/frontend-config.yml*": (route) => route.abort("failed"),
       },
     });
     await page.goto("/");
-    // Page should still load and function despite frontend config fetch failure.
+
     await expect(page.getByText("Create crossword puzzles with AI")).toBeVisible();
-    // tauth-url should still be set (fallback to same origin)
-    var tauthUrl = await page.locator("mpr-header").getAttribute("tauth-url");
-    expect(tauthUrl).toBeTruthy();
-    // Puzzles should still work
     await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
   });

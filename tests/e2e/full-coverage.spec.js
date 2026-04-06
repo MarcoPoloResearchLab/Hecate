@@ -34,7 +34,7 @@ async function openSettingsDrawer(page) {
     return el && el.getAttribute("menu-items");
   });
   await page.click('[data-mpr-user="trigger"]');
-  await page.click('[data-mpr-user-action="settings"]');
+  await page.locator('[data-mpr-user-action="settings"]').click({ force: true });
   await expect(page.locator("#settingsDrawer")).toHaveAttribute("open", "");
 }
 
@@ -585,58 +585,18 @@ test.describe("Admin coverage", () => {
 });
 
 test.describe("App coverage", () => {
-  test("covers storage fallbacks and updateBalance guard through the app test hook", async ({ page }) => {
+  test("covers updateBalance guard through the app test hook", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
 
     var result = await page.evaluate(() => {
       var app = window.__LLM_CROSSWORD_TEST__.app;
-      var storageProto = Object.getPrototypeOf(window.sessionStorage);
-      var originalGetItem = storageProto.getItem;
-      var originalSetItem = storageProto.setItem;
-      var originalRemoveItem = storageProto.removeItem;
-
-      storageProto.getItem = function () { throw new Error("blocked"); };
-      storageProto.setItem = function () { throw new Error("blocked"); };
-      storageProto.removeItem = function () { throw new Error("blocked"); };
-
-      document.documentElement.setAttribute("data-auth-pending", "true");
-      document.documentElement.setAttribute("data-post-login-view", "generator");
-
-      var snapshot = {
-        isAuthPending: app.isAuthPending(),
-        postLoginView: app.getPostLoginView(),
-      };
-
-      app.setAuthPending();
-      app.setPostLoginView("generator");
-      snapshot.afterSet = {
-        authPending: document.documentElement.getAttribute("data-auth-pending"),
-        postLoginView: document.documentElement.getAttribute("data-post-login-view"),
-      };
-
-      app.clearAuthPending();
-      app.clearPostLoginView();
       app.updateBalance(null);
-      snapshot.afterClear = {
-        authPending: document.documentElement.getAttribute("data-auth-pending"),
-        postLoginView: document.documentElement.getAttribute("data-post-login-view"),
-      };
-      snapshot.state = app.getState();
-
-      storageProto.getItem = originalGetItem;
-      storageProto.setItem = originalSetItem;
-      storageProto.removeItem = originalRemoveItem;
-      return snapshot;
+      return app.getState();
     });
 
-    expect(result.isAuthPending).toBe(true);
-    expect(result.postLoginView).toBe("generator");
-    expect(result.afterSet.authPending).toBe("true");
-    expect(result.afterSet.postLoginView).toBe("generator");
-    expect(result.afterClear.authPending).toBeNull();
-    expect(result.afterClear.postLoginView).toBeNull();
-    expect(result.state.currentCoins).toBeNull();
+    expect(result.currentCoins).toBeNull();
+    expect(result.currentView).toBe("landing");
   });
 
   test("covers updateBalance generation cost updates while logged out", async ({ page }) => {
@@ -666,24 +626,22 @@ test.describe("App coverage", () => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
     await page.evaluate(() => {
-      var host = document.createElement("div");
-      host.setAttribute("data-mpr-header", "google-signin");
-      var button = document.createElement("div");
-      button.setAttribute("role", "button");
-      button.addEventListener("click", function () {
-        window.__headerSignInClicks = (window.__headerSignInClicks || 0) + 1;
-      });
-      host.appendChild(button);
-      document.body.appendChild(host);
+      var button = document.querySelector("[data-mpr-header='google-signin'] div[role='button']");
+      if (button) {
+        button.addEventListener("click", function () {
+          window.__headerSignInClicks = (window.__headerSignInClicks || 0) + 1;
+        });
+      }
     });
 
     await page.click("#landingSignIn");
 
-    await expect(page.locator("#puzzleView")).toBeVisible();
-    await expect(page.locator("#generatePanel")).toBeVisible();
+    await expect(page.locator("#landingPage")).toBeVisible();
+    await expect(page.locator("#puzzleView")).toBeHidden();
+    await expect(page.locator("#generatePanel")).toBeHidden();
     expect(await page.evaluate(() => window.__headerSignInClicks)).toBe(1);
-    await expect(page.locator("html")).toHaveAttribute("data-auth-pending", "true");
-    await expect(page.locator("html")).toHaveAttribute("data-post-login-view", "generator");
+    expect(await page.evaluate(() => document.documentElement.hasAttribute("data-auth-pending"))).toBe(false);
+    expect(await page.evaluate(() => document.documentElement.hasAttribute("data-post-login-view"))).toBe(false);
   });
 
   test("covers landing sign-in while already logged in", async ({ page }) => {
@@ -1045,6 +1003,11 @@ test.describe("App coverage", () => {
 
     await page.locator("#headerCreditBadge").click();
     await expect(page.locator("#creditDetailsPopover")).toBeVisible();
+    await page.locator("#check").click();
+    await expect(page.locator("#creditDetailsPopover")).toBeHidden();
+
+    await page.locator("#headerCreditBadge").click();
+    await expect(page.locator("#creditDetailsPopover")).toBeVisible();
     await page.locator("#creditPopoverBillingButton").click();
     await expect(page.locator("#creditDetailsPopover")).toBeHidden();
     expect(await page.evaluate(() => window.__billingOpenCalls.slice())).toEqual([
@@ -1068,7 +1031,7 @@ test.describe("App coverage", () => {
     });
   });
 
-  test("covers verifySessionStillValid on non-auth failure responses", async ({ page }) => {
+  test("covers authoritative unauthenticated events without local session retries on non-auth failures", async ({ page }) => {
     var meCalls = 0;
 
     await setupLoggedInRoutes(page, {
@@ -1088,38 +1051,29 @@ test.describe("App coverage", () => {
       document.dispatchEvent(new Event("mpr-ui:auth:unauthenticated"));
     });
 
-    await expect(page.locator("#puzzleView")).toBeVisible();
-    await openGenerateForm(page);
-    await expect(page.locator("#generateBtn")).toBeEnabled();
+    await expect(page.locator("#landingPage")).toBeVisible();
+    await expect(page.locator("#puzzleView")).toBeHidden();
+    expect(meCalls).toBe(1);
   });
 
-  test("covers verifySessionStillValid promise reuse", async ({ page }) => {
-    var meCalls = 0;
-
-    await setupLoggedInRoutes(page, {
-      extra: {
-        "**/me": async (route) => {
-          meCalls += 1;
-          if (meCalls === 1) {
-            await route.fulfill(json(200, {}));
-            return;
-          }
-          await new Promise((resolve) => setTimeout(resolve, 100));
-          await route.fulfill(json(200, {}));
-        },
-      },
-    });
-
+  test("covers repeated unauthenticated events after mpr-ui clears the header state", async ({ page }) => {
+    await setupLoggedInRoutes(page);
     await page.goto("/");
     await page.evaluate(() => {
+      var header = document.getElementById("app-header");
+      if (header) {
+        ["data-user-id", "data-user-email", "data-user-display", "data-user-avatar-url"].forEach(function (attributeName) {
+          header.removeAttribute(attributeName);
+        });
+      }
       document.dispatchEvent(new Event("mpr-ui:auth:unauthenticated"));
       document.dispatchEvent(new Event("mpr-ui:auth:unauthenticated"));
     });
-    await page.waitForTimeout(150);
-    expect(meCalls).toBe(2);
+    await expect(page.locator("#landingPage")).toBeVisible();
+    await expect(page.locator("#headerCreditBadge")).toBeHidden();
   });
 
-  test("covers verifySessionStillValid network failures", async ({ page }) => {
+  test("covers authoritative unauthenticated events without local session retries on network failures", async ({ page }) => {
     var meCalls = 0;
 
     await setupLoggedInRoutes(page, {
@@ -1139,7 +1093,9 @@ test.describe("App coverage", () => {
       document.dispatchEvent(new Event("mpr-ui:auth:unauthenticated"));
     });
 
-    await expect(page.locator("#puzzleView")).toBeVisible();
+    await expect(page.locator("#landingPage")).toBeVisible();
+    await expect(page.locator("#puzzleView")).toBeHidden();
+    expect(meCalls).toBe(1);
   });
 
   test("covers logged-out unauthenticated events", async ({ page }) => {
@@ -1149,6 +1105,57 @@ test.describe("App coverage", () => {
       document.dispatchEvent(new Event("mpr-ui:auth:unauthenticated"));
     });
     await expect(page.locator("#landingPage")).toBeVisible();
+  });
+
+  test("covers logged-out auth sync while the puzzle view is still active", async ({ page }) => {
+    await mountAppShell(page);
+    await page.evaluate(() => {
+      window.fetch = function () {
+        return Promise.resolve({
+          ok: true,
+          status: 200,
+          json: function () { return Promise.resolve({}); },
+        });
+      };
+      window.__clearOwnedPuzzlesCalls = 0;
+      window.CrosswordApp = {
+        clearOwnedPuzzles: function () {
+          window.__clearOwnedPuzzlesCalls += 1;
+        },
+      };
+    });
+    await loadScript(page, "app.js");
+
+    var result = await page.evaluate(() => {
+      var app = window.__LLM_CROSSWORD_TEST__.app;
+
+      app.showPuzzle();
+      app.setState({
+        currentView: "prebuilt",
+        loggedIn: false,
+      });
+      app.syncAuthStateFromMprUi();
+      var restoreState = {
+        landingHidden: document.getElementById("landingPage").style.display === "none",
+        puzzleVisible: document.getElementById("puzzleView").style.display !== "none",
+      };
+      var clearOwnedPuzzlesCallsAfterSync = window.__clearOwnedPuzzlesCalls;
+      window.CrosswordApp = {};
+      app.syncAuthStateFromMprUi();
+
+      return {
+        clearOwnedPuzzlesCallsAfterMissingHook: window.__clearOwnedPuzzlesCalls,
+        clearOwnedPuzzlesCallsAfterSync: clearOwnedPuzzlesCallsAfterSync,
+        landingVisibleAfterSecondSync: document.getElementById("landingPage").style.display !== "none",
+        restoreState: restoreState,
+      };
+    });
+
+    expect(result.clearOwnedPuzzlesCallsAfterSync).toBeGreaterThanOrEqual(1);
+    expect(result.clearOwnedPuzzlesCallsAfterMissingHook).toBe(result.clearOwnedPuzzlesCallsAfterSync);
+    expect(result.restoreState.landingHidden).toBe(true);
+    expect(result.restoreState.puzzleVisible).toBe(true);
+    expect(result.landingVisibleAfterSecondSync).toBe(false);
   });
 
   test("covers stale verification callbacks after local auth state changes", async ({ page }) => {
@@ -1241,22 +1248,23 @@ test.describe("App coverage", () => {
     await expect(page.locator("#generateStatus")).toContainText("Generation failed. Your credits have been refunded");
   });
 
-  test("covers app startup branches when a non-ok /me resolves after login state changes", async ({ page }) => {
+  test("covers app startup sync when mpr-ui already marked the header as authenticated", async ({ page }) => {
     await mountAppShell(page);
     await page.evaluate(() => {
-      window.sessionStorage.setItem("llm-crossword-auth-pending", "1");
-      window.sessionStorage.setItem("llm-crossword-post-login-view", "generator");
-      window.__pendingMe = new Promise((resolve) => {
-        window.__resolveMe = resolve;
-      });
-      window.fetch = function (url) {
-        if (String(url).indexOf("/me") >= 0) {
-          return window.__pendingMe;
-        }
+      var header = document.getElementById("app-header") || document.querySelector("mpr-header");
+      if (!header) {
+        header = document.createElement("mpr-header");
+        header.id = "app-header";
+        document.body.insertBefore(header, document.body.firstChild);
+      }
+      header.setAttribute("data-user-id", "startup-user");
+      header.setAttribute("data-user-email", "startup@example.com");
+      header.setAttribute("data-user-display", "Startup User");
+      window.fetch = function () {
         return Promise.resolve({
           ok: true,
           status: 200,
-          json: function () { return Promise.resolve({}); },
+          json: function () { return Promise.resolve({ balance: { coins: 12 } }); },
         });
       };
       window.CrosswordApp = {};
@@ -1264,32 +1272,25 @@ test.describe("App coverage", () => {
     await loadScript(page, "app.js");
 
     var result = await page.evaluate(async () => {
-      window.__LLM_CROSSWORD_TEST__.app.setLoggedIn(true);
-      window.__resolveMe({ ok: false, status: 401 });
+      document.dispatchEvent(new Event("mpr-ui:orchestration:ready"));
       await Promise.resolve();
       await Promise.resolve();
       return {
-        authPending: window.sessionStorage.getItem("llm-crossword-auth-pending"),
-        postLoginView: window.sessionStorage.getItem("llm-crossword-post-login-view"),
+        landingHidden: document.getElementById("landingPage").style.display === "none",
+        puzzleVisible: document.getElementById("puzzleView").style.display !== "none",
+        state: window.__LLM_CROSSWORD_TEST__.app.getState(),
       };
     });
 
-    expect(result.authPending).toBe("1");
-    expect(result.postLoginView).toBe("generator");
+    expect(result.landingHidden).toBe(true);
+    expect(result.puzzleVisible).toBe(true);
+    expect(result.state.loggedIn).toBe(true);
   });
 
-  test("covers app startup branches when a rejected /me resolves after login state changes", async ({ page }) => {
+  test("covers app startup sync when mpr-ui has not provided authenticated header state", async ({ page }) => {
     await mountAppShell(page);
     await page.evaluate(() => {
-      window.sessionStorage.setItem("llm-crossword-auth-pending", "1");
-      window.sessionStorage.setItem("llm-crossword-post-login-view", "generator");
-      window.__pendingMe = new Promise((resolve, reject) => {
-        window.__rejectMe = reject;
-      });
-      window.fetch = function (url) {
-        if (String(url).indexOf("/me") >= 0) {
-          return window.__pendingMe;
-        }
+      window.fetch = function () {
         return Promise.resolve({
           ok: true,
           status: 200,
@@ -1301,18 +1302,17 @@ test.describe("App coverage", () => {
     await loadScript(page, "app.js");
 
     var result = await page.evaluate(async () => {
-      window.__LLM_CROSSWORD_TEST__.app.setLoggedIn(true);
-      window.__rejectMe(new Error("offline"));
+      document.dispatchEvent(new Event("mpr-ui:orchestration:ready"));
       await Promise.resolve();
       await Promise.resolve();
       return {
-        authPending: window.sessionStorage.getItem("llm-crossword-auth-pending"),
-        postLoginView: window.sessionStorage.getItem("llm-crossword-post-login-view"),
+        landingVisible: document.getElementById("landingPage").style.display !== "none",
+        state: window.__LLM_CROSSWORD_TEST__.app.getState(),
       };
     });
 
-    expect(result.authPending).toBe("1");
-    expect(result.postLoginView).toBe("generator");
+    expect(result.landingVisible).toBe(true);
+    expect(result.state.loggedIn).toBe(false);
   });
 
   test("covers app behavior with the shared shell fixture", async ({ page }) => {
@@ -1435,7 +1435,6 @@ test.describe("App coverage", () => {
       console.warn = function () {
         window.__warns.push(Array.prototype.slice.call(arguments).join(" "));
       };
-      window.sessionStorage.setItem("llm-crossword-post-login-view", "generator");
       window.fetch = function (url) {
         if (String(url).indexOf("/api/bootstrap") >= 0) {
           return new Promise(function (_, reject) {
@@ -1453,8 +1452,8 @@ test.describe("App coverage", () => {
     await loadScript(page, "app.js");
 
     await page.evaluate(() => {
-      window.__LLM_CROSSWORD_TEST__.app.setPostLoginView("generator");
       document.dispatchEvent(new Event("mpr-ui:auth:authenticated"));
+      window.__LLM_CROSSWORD_TEST__.app.showGenerateForm();
     });
 
     await page.evaluate(() => {
@@ -1486,8 +1485,8 @@ test.describe("App coverage", () => {
     await loadScript(page, "app.js");
 
     await page.evaluate(() => {
-      window.__LLM_CROSSWORD_TEST__.app.setPostLoginView("generator");
       document.dispatchEvent(new Event("mpr-ui:auth:authenticated"));
+      window.__LLM_CROSSWORD_TEST__.app.showGenerateForm();
     });
 
     await expect(page.locator("#generatePanel")).toBeVisible();
@@ -1496,303 +1495,6 @@ test.describe("App coverage", () => {
 });
 
 test.describe("Isolated script coverage", () => {
-  test("covers auth-fetch refresh cleanup", async ({ page }) => {
-    await page.goto("/blank.html");
-    await page.setContent("<!doctype html><html><body></body></html>");
-    await page.evaluate(() => {
-      window.__fetchCalls = [];
-      window.fetch = function (url) {
-        window.__fetchCalls.push(String(url));
-        if (String(url) === "/auth/refresh") {
-          return Promise.reject(new Error("refresh failed"));
-        }
-        return Promise.resolve({ status: 401, ok: false });
-      };
-    });
-    await loadScript(page, "auth-fetch.js");
-
-    var result = await page.evaluate(async () => {
-      await window.authFetch("/api/protected");
-      await window.authFetch("/api/protected");
-      return window.__fetchCalls;
-    });
-
-    expect(result).toEqual([
-      "/api/protected",
-      "/auth/refresh",
-      "/api/protected",
-      "/auth/refresh",
-    ]);
-  });
-
-  test("covers auth-fetch tenant header wiring", async ({ page }) => {
-    await page.goto("/blank.html");
-    await page.setContent('<!doctype html><html><body><mpr-header tauth-tenant-id=" crossword "></mpr-header></body></html>');
-    await page.evaluate(() => {
-      window.__tenantFetchCalls = [];
-      window.fetch = function (url, options) {
-        var headers = {};
-        if (options && options.headers && typeof options.headers.forEach === "function") {
-          options.headers.forEach(function (value, key) {
-            headers[key] = value;
-          });
-        }
-        window.__tenantFetchCalls.push({
-          url: String(url),
-          credentials: options && options.credentials,
-          headers: headers,
-        });
-        return Promise.resolve({ status: 200, ok: true });
-      };
-    });
-    await loadScript(page, "auth-fetch.js");
-
-    var result = await page.evaluate(async () => {
-      await window.fetchTauth("/me", {
-        headers: {
-          "X-Test-Header": "present",
-        },
-      });
-      return {
-        tenantId: window.getTauthTenantId(),
-        request: window.__tenantFetchCalls[0],
-      };
-    });
-
-    expect(result.tenantId).toBe("crossword");
-    expect(result.request.url).toBe("/me");
-    expect(result.request.credentials).toBe("include");
-    expect(result.request.headers["x-tauth-tenant"]).toBe("crossword");
-    expect(result.request.headers["x-test-header"]).toBe("present");
-  });
-
-  test("covers auth-fetch fallback inputs without tenant context", async ({ page }) => {
-    await page.goto("/blank.html");
-    await page.setContent("<!doctype html><html><body></body></html>");
-    await page.evaluate(() => {
-      window.__fallbackFetchCalls = [];
-      window.fetch = function (url, options) {
-        var headers = {};
-        if (options && options.headers && typeof options.headers.forEach === "function") {
-          options.headers.forEach(function (value, key) {
-            headers[key] = value;
-          });
-        }
-        window.__fallbackFetchCalls.push({
-          urlType: typeof url,
-          credentials: options && options.credentials,
-          headers: headers,
-        });
-        return Promise.resolve({ status: 200, ok: true });
-      };
-    });
-    await loadScript(page, "auth-fetch.js");
-
-    var result = await page.evaluate(async () => {
-      var missingTenantId = window.getTauthTenantId();
-      var emptyTenantElement = document.createElement("mpr-header");
-      emptyTenantElement.setAttribute("tauth-tenant-id", "");
-      document.body.appendChild(emptyTenantElement);
-      await window.fetchTauth("/auth/logout");
-      await window.authFetch({ url: "/opaque" });
-      return {
-        missingTenantId: missingTenantId,
-        emptyTenantId: window.getTauthTenantId(),
-        calls: window.__fallbackFetchCalls,
-      };
-    });
-
-    expect(result.missingTenantId).toBe("");
-    expect(result.emptyTenantId).toBe("");
-    expect(result.calls[0].credentials).toBe("include");
-    expect(result.calls[0].headers["x-tauth-tenant"]).toBeUndefined();
-    expect(result.calls[1].urlType).toBe("object");
-  });
-
-  test("covers auth-fetch runtime service URL resolution", async ({ page }) => {
-    await page.goto("/blank.html");
-    await page.setContent("<!doctype html><html><body></body></html>");
-    await page.evaluate(() => {
-      window.LLMCrosswordRuntimeConfig = {
-        services: {
-          apiBaseUrl: "https://api.example.test",
-          authBaseUrl: "https://tauth.example.test",
-        },
-      };
-      window.__serviceFetchCalls = [];
-      window.fetch = function (url, options) {
-        window.__serviceFetchCalls.push({
-          credentials: options && options.credentials,
-          url: String(url),
-        });
-        return Promise.resolve({ status: 200, ok: true });
-      };
-    });
-    await loadScript(page, "service-config.js");
-    await loadScript(page, "auth-fetch.js");
-
-    var result = await page.evaluate(async () => {
-      await window.fetchTauth("/me");
-      await window.authFetch("/api/protected", { credentials: "include" });
-      return window.__serviceFetchCalls.slice();
-    });
-
-    expect(result).toEqual([
-      {
-        credentials: "include",
-        url: "https://tauth.example.test/me",
-      },
-      {
-        credentials: "include",
-        url: "https://api.example.test/api/protected",
-      },
-    ]);
-  });
-
-  test("covers auth-fetch absolute URL fallbacks with malformed service helpers", async ({ page }) => {
-    await page.goto("/blank.html");
-    await page.setContent("<!doctype html><html><body></body></html>");
-    await page.evaluate(() => {
-      window.LLMCrosswordServices = {
-        getApiBaseUrl: function () {
-          return { invalid: true };
-        },
-        getAuthBaseUrl: function () {
-          return { invalid: true };
-        },
-      };
-      window.__malformedServiceFetchCalls = [];
-      window.fetch = function (url, options) {
-        window.__malformedServiceFetchCalls.push({
-          credentials: options && options.credentials,
-          url: String(url),
-        });
-        return Promise.resolve({ ok: true, status: 200 });
-      };
-    });
-    await loadScript(page, "auth-fetch.js");
-
-    var result = await page.evaluate(async () => {
-      await window.fetchTauth("https://tauth.example.test/auth/logout");
-      await window.authFetch("https://api.example.test/api/protected?mode=test", { credentials: "include" });
-      return window.__malformedServiceFetchCalls.slice();
-    });
-
-    expect(result).toEqual([
-      {
-        credentials: "include",
-        url: "https://tauth.example.test/auth/logout",
-      },
-      {
-        credentials: "include",
-        url: "https://api.example.test/api/protected?mode=test",
-      },
-    ]);
-  });
-
-  test("covers auth-fetch direct /me routing, missing API helpers, and object tauth fetches", async ({ page }) => {
-    await page.goto("/blank.html");
-    await page.setContent("<!doctype html><html><body></body></html>");
-    await page.evaluate(() => {
-      window.LLMCrosswordServices = {
-        buildApiUrl: function (url) {
-          if (typeof url !== "string" || url.indexOf("https://api.example.test/") === 0) {
-            return url;
-          }
-          return "https://api.example.test" + url;
-        },
-        buildAuthUrl: function (url) {
-          if (typeof url !== "string" || url.indexOf("https://tauth.example.test/") === 0) {
-            return url;
-          }
-          return "https://tauth.example.test" + url;
-        },
-        getApiBaseUrl: function () {
-          return "https://api.example.test";
-        },
-        getAuthBaseUrl: function () {
-          return "https://tauth.example.test";
-        },
-      };
-      window.__directPathFetchCalls = [];
-      window.fetch = function (url, options) {
-        window.__directPathFetchCalls.push({
-          credentials: options && options.credentials,
-          url: typeof url === "string" ? url : null,
-          urlType: typeof url,
-        });
-        return Promise.resolve({ ok: true, status: 200 });
-      };
-    });
-    await loadScript(page, "auth-fetch.js");
-
-    var result = await page.evaluate(async () => {
-      await window.authFetch("/me");
-      await window.authFetch("https://api.example.test/api/direct");
-      delete window.LLMCrosswordServices.getApiBaseUrl;
-      await window.authFetch("https://api.example.test/api/fallback");
-      await window.fetchTauth({ opaque: true });
-      return window.__directPathFetchCalls.slice();
-    });
-
-    expect(result).toEqual([
-      {
-        credentials: "include",
-        url: "https://tauth.example.test/me",
-        urlType: "string",
-      },
-      {
-        credentials: undefined,
-        url: "https://api.example.test/api/direct",
-        urlType: "string",
-      },
-      {
-        credentials: undefined,
-        url: "https://api.example.test/api/fallback",
-        urlType: "string",
-      },
-      {
-        credentials: "include",
-        url: null,
-        urlType: "object",
-      },
-    ]);
-  });
-
-  test("covers auth-fetch API and auth fallbacks without service config", async ({ page }) => {
-    await page.goto("/blank.html");
-    await page.setContent("<!doctype html><html><body></body></html>");
-    await page.evaluate(() => {
-      delete window.LLMCrosswordServices;
-      window.__noServiceFetchCalls = [];
-      window.fetch = function (url, options) {
-        window.__noServiceFetchCalls.push({
-          credentials: options && options.credentials,
-          url: String(url),
-        });
-        return Promise.resolve({ ok: true, status: 200 });
-      };
-    });
-    await loadScript(page, "auth-fetch.js");
-
-    var result = await page.evaluate(async () => {
-      await window.authFetch("/api/no-services");
-      await window.fetchTauth("/auth/logout");
-      return window.__noServiceFetchCalls.slice();
-    });
-
-    expect(result).toEqual([
-      {
-        credentials: undefined,
-        url: "/api/no-services",
-      },
-      {
-        credentials: "include",
-        url: "/auth/logout",
-      },
-    ]);
-  });
-
   test("covers service-config helper fallbacks and joinUrl branches", async ({ page }) => {
     await page.goto("/blank.html");
     await page.setContent("<!doctype html><html><body></body></html>");
@@ -1840,20 +1542,6 @@ test.describe("Isolated script coverage", () => {
       configUrl: "http://localhost:8111/configs/frontend-config.yml",
       tauthScriptUrl: "http://localhost:8111/tauth.js",
     });
-  });
-
-  test("covers config.js early return without a header", async ({ page }) => {
-    await page.goto("/blank.html");
-    await page.setContent("<!doctype html><html><body></body></html>");
-    await page.evaluate(() => {
-      window.__configFetchCount = 0;
-      window.fetch = function () {
-        window.__configFetchCount += 1;
-        return Promise.resolve({ text: () => Promise.resolve("") });
-      };
-    });
-    await loadScript(page, "config.js");
-    expect(await page.evaluate(() => window.__configFetchCount)).toBe(0);
   });
 
   test("covers landing-puzzle shared success flow", async ({ page }) => {

@@ -600,104 +600,26 @@ test.describe("App 100 coverage", () => {
           },
         });
       };
-      window.clearTimeout = function (timerId) {
-        window.__clearedTimeouts.push(timerId);
-      };
       window.CrosswordApp = {};
     });
     await loadScript(page, "app.js");
 
     var cleanupResult = await page.evaluate(() => {
       var app = window.__LLM_CROSSWORD_TEST__.app;
-      app.setPendingAuthRestoreTimer(42);
-      app.clearPendingAuthRestoreTimer();
+      app.syncAuthStateFromMprUi();
       return {
         cleared: window.__clearedTimeouts.slice(),
         state: app.getState(),
       };
     });
 
-    expect(cleanupResult.cleared).toEqual([42]);
+    expect(cleanupResult.cleared).toEqual([]);
     expect(cleanupResult.state.loggedIn).toBe(false);
-  });
-
-  test("covers auth-pending retry restores that keep the generator visible", async ({ page }) => {
-    await mountAppShell(page);
-    await page.evaluate(() => {
-      var originalSetTimeout = window.setTimeout;
-      var meCalls = 0;
-
-      window.sessionStorage.setItem("llm-crossword-auth-pending", "1");
-      window.sessionStorage.setItem("llm-crossword-post-login-view", "generator");
-      window.setTimeout = function (callback) {
-        return originalSetTimeout(callback, 0);
-      };
-      window.fetch = function (url) {
-        if (String(url).indexOf("/me") >= 0) {
-          meCalls += 1;
-          if (meCalls === 1) {
-            return Promise.resolve({ ok: false, status: 401 });
-          }
-          return Promise.resolve({ ok: false, status: 500 });
-        }
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: function () {
-            return Promise.resolve({});
-          },
-        });
-      };
-      window.CrosswordApp = {};
-    });
-
-    await loadScript(page, "app.js");
-    await page.waitForTimeout(50);
-
-    await expect(page.locator("#puzzleView")).toBeVisible();
-    await expect(page.locator("#generatePanel")).toBeVisible();
-  });
-
-  test("covers auth-pending startup rejection fallback", async ({ page }) => {
-    await mountAppShell(page);
-    await page.evaluate(() => {
-      var originalSetTimeout = window.setTimeout;
-
-      window.sessionStorage.setItem("llm-crossword-auth-pending", "1");
-      window.sessionStorage.setItem("llm-crossword-post-login-view", "generator");
-      window.setTimeout = function (callback) {
-        return originalSetTimeout(callback, 0);
-      };
-      window.fetch = function () {
-        return Promise.reject(new Error("offline"));
-      };
-      window.CrosswordApp = {};
-    });
-
-    await loadScript(page, "app.js");
-    await page.waitForTimeout(50);
-
-    await expect(page.locator("#landingPage")).toBeVisible();
   });
 
   test("covers logged-out puzzle-view restore and generate submit guard", async ({ page }) => {
     await mountAppShell(page);
     await page.evaluate(() => {
-      window.__pendingMe = new Promise((resolve) => {
-        window.__resolveMe = resolve;
-      });
-      window.fetch = function (url) {
-        if (String(url).indexOf("/me") >= 0) {
-          return window.__pendingMe;
-        }
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: function () {
-            return Promise.resolve({});
-          },
-        });
-      };
       window.CrosswordApp = {};
     });
 
@@ -706,9 +628,6 @@ test.describe("App 100 coverage", () => {
     var state = await page.evaluate(async () => {
       var app = window.__LLM_CROSSWORD_TEST__.app;
       app.showPuzzle();
-      window.__resolveMe({ ok: false, status: 401 });
-      await Promise.resolve();
-      await Promise.resolve();
       app.showGenerateForm();
       document.getElementById("generateBtn").disabled = false;
       document.getElementById("topicInput").value = "guard topic";
@@ -729,26 +648,6 @@ test.describe("App 100 coverage", () => {
     await page.goto("/blank.html");
     await page.setContent(appShellHtml.replace(/<div id="descriptionPanel"[\s\S]*?<\/div>\s+<\/div>/, "</div>"));
     await page.evaluate(() => {
-      window.__pendingRetryCallback = null;
-      window.setTimeout = function (callback) {
-        window.__pendingRetryCallback = callback;
-        return 123;
-      };
-      window.fetch = function (url) {
-        if (String(url).indexOf("/me") >= 0) {
-          return Promise.resolve({ ok: false, status: 401 });
-        }
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: function () {
-            return Promise.resolve({});
-          },
-        });
-      };
-      window.fetchTauth = function () {
-        return Promise.resolve({ ok: true, status: 200 });
-      };
       window.CrosswordApp = {};
     });
 
@@ -756,8 +655,6 @@ test.describe("App 100 coverage", () => {
 
     var result = await page.evaluate(async () => {
       var app = window.__LLM_CROSSWORD_TEST__.app;
-      var storageProto = Object.getPrototypeOf(window.sessionStorage);
-      var originalGetItem = storageProto.getItem;
       var missingElementMessage = "";
       var missingChildMessage = "";
 
@@ -772,75 +669,22 @@ test.describe("App 100 coverage", () => {
         missingChildMessage = error.message;
       }
 
-      storageProto.getItem = function () {
-        throw new Error("blocked");
-      };
-      document.documentElement.setAttribute("data-auth-pending", "false");
-      var falseAttributePending = app.isAuthPending();
-      storageProto.getItem = originalGetItem;
-
       app.showGenerateForm();
       app.setLoggedIn(true);
-      app.finalizePendingAuthRestoreFailure();
-      app.setPendingAuthRestoreTimer(77);
-      app.schedulePendingAuthRestoreRetry();
-      app.clearPendingAuthRestoreTimer();
-      app.setAuthPending();
-      app.setLoggedIn(false);
-      app.schedulePendingAuthRestoreRetry();
-      app.setLoggedIn(true);
-      await window.__pendingRetryCallback();
+      app.syncAuthStateFromMprUi();
 
       return {
-        falseAttributePending: falseAttributePending,
-        isAuthPending: app.isAuthPending(),
+        hasPendingAttribute: document.documentElement.hasAttribute("data-auth-pending"),
         missingChildMessage: missingChildMessage,
         missingElementMessage: missingElementMessage,
         state: app.getState(),
       };
     });
 
-    expect(result.falseAttributePending).toBe(false);
-    expect(result.isAuthPending).toBe(true);
+    expect(result.hasPendingAttribute).toBe(false);
     expect(result.missingElementMessage).toBe("Missing required app element #missingElement");
     expect(result.missingChildMessage).toBe("Missing required app element body .missing");
-    expect(result.state.loggedIn).toBe(true);
-  });
-
-  test("covers startup /me success after login state changes", async ({ page }) => {
-    await mountAppShell(page);
-    await page.evaluate(() => {
-      window.__pendingMe = new Promise((resolve) => {
-        window.__resolveMe = resolve;
-      });
-      window.fetch = function (url) {
-        if (String(url).indexOf("/me") >= 0) {
-          return window.__pendingMe;
-        }
-        return Promise.resolve({
-          ok: true,
-          status: 200,
-          json: function () {
-            return Promise.resolve({});
-          },
-        });
-      };
-      window.CrosswordApp = {};
-    });
-
-    await loadScript(page, "app.js");
-
-    var result = await page.evaluate(async () => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
-      app.setLoggedIn(true);
-      window.__resolveMe({ ok: true, status: 200 });
-      await Promise.resolve();
-      await Promise.resolve();
-      return app.getState();
-    });
-
-    expect(result.loggedIn).toBe(true);
-    expect(result.currentView).toBe("landing");
+    expect(result.state.loggedIn).toBe(false);
   });
 
   test("covers stale verification callbacks after auth version changes", async ({ page }) => {
@@ -1485,7 +1329,8 @@ test.describe("App completion coverage", () => {
       }
 
       app.setLoggedIn(true);
-      app.setPostLoginView("generator");
+      app.showPuzzle();
+      app.showGenerateForm();
 
       dispatchCompletionEvent();
       await waitForSettledCompletion();
@@ -1523,16 +1368,12 @@ test.describe("App completion coverage", () => {
         closedAfterBackdrop: closedAfterBackdrop,
         closedAfterClose: closedAfterClose,
         closedAfterSecondary: closedAfterSecondary,
-        postLoginView: window.sessionStorage.getItem("llm-crossword-post-login-view"),
         primaryState: afterPrimary,
         rewardUpdate: window.__lastRewardUpdate,
-        setItemCalls: window.__setItemCalls.slice(),
         warnMessages: window.__warns.slice(),
       };
     });
 
-    expect(result.postLoginView).toBe("generator");
-    expect(result.setItemCalls).toContainEqual(["llm-crossword-post-login-view", "generator"]);
     expect(result.badgeText).toBe("21 credits");
     expect(result.closedAfterClose).toBe(false);
     expect(result.closedAfterSecondary).toBe(false);
@@ -1798,22 +1639,7 @@ test.describe("App completion coverage", () => {
     await page.evaluate(() => {
       window.__completionResponses = [];
       window.__completionCalls = [];
-      window.__meMode = "ok";
       window.fetch = function (url, options) {
-        if (String(url).indexOf("/me") >= 0) {
-          if (window.__meMode === "pending") {
-            return new Promise(function (resolve) {
-              window.__resolveMe = resolve;
-            });
-          }
-          return Promise.resolve({
-            ok: window.__meMode !== "unauthorized",
-            status: window.__meMode === "unauthorized" ? 401 : 200,
-            json: function () {
-              return Promise.resolve({});
-            },
-          });
-        }
         if (String(url).indexOf("/complete") >= 0) {
           var nextResponse = window.__completionResponses.shift();
           window.__completionCalls.push({ url: String(url), body: options && options.body ? String(options.body) : "" });
@@ -1890,18 +1716,12 @@ test.describe("App completion coverage", () => {
         authStateVersion: 7,
         loggedIn: true,
       });
-      window.__meMode = "pending";
-      document.dispatchEvent(new Event("mpr-ui:auth:unauthenticated"));
-      app.setState({
-        loggedIn: false,
-      });
-      window.__resolveMe({
-        ok: false,
-        status: 401,
-        json: function () {
-          return Promise.resolve({});
-        },
-      });
+      var authHeader = document.getElementById("app-header") || document.querySelector("mpr-header");
+      if (authHeader) {
+        authHeader.removeAttribute("data-user-id");
+        authHeader.removeAttribute("data-user-email");
+      }
+      app.syncAuthStateFromMprUi();
       await waitForAsyncWork();
       await waitForAsyncWork();
 

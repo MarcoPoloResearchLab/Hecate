@@ -126,24 +126,6 @@ body {
     min-height: var(--viewport-height);
 }
 
-html[data-auth-pending="true"] #landingPage {
-    display: none !important;
-}
-
-html[data-auth-pending="true"] #puzzleView {
-    display: grid !important;
-}
-
-html[data-auth-pending="true"][data-post-login-view="generator"] #generatePanel {
-    display: block !important;
-}
-
-html[data-auth-pending="true"][data-post-login-view="generator"] #puzzleView .pane,
-html[data-auth-pending="true"][data-post-login-view="generator"] #puzzleView .controls {
-    display: none !important;
-}
-
-
 /* ========== Two-panel puzzle layout ========== */
 .puzzle-layout {
     --sidebar-width: var(--sidebar-expanded-width);

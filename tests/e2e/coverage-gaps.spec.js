@@ -31,11 +31,9 @@ async function loadScript(page, fileName) {
 
 test.describe("Config — frontend config matching", () => {
   test("matches tauth-url from the frontend config YAML when origin matches", async ({ page }) => {
+    await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.waitForTimeout(2000);
-    var tauthUrl = await page.locator("#app-header").getAttribute("tauth-url");
-    // Should be set to the local dev tauthUrl from the frontend config YAML.
-    expect(tauthUrl).toContain("localhost");
+    await expect(page.locator("#app-header")).toHaveAttribute("tauth-url", /localhost/);
   });
 
   test("uses same-origin when the frontend config YAML request returns not found", async ({ page }) => {
@@ -46,9 +44,7 @@ test.describe("Config — frontend config matching", () => {
       },
     });
     await page.goto("/");
-    await page.waitForTimeout(500);
-    var tauthUrl = await page.locator("#app-header").getAttribute("tauth-url");
-    expect(tauthUrl).toContain("localhost");
+    await expect(page.locator("#app-header")).toHaveAttribute("tauth-url", /localhost/);
   });
 
   test("handles explicit frontend config metadata without errors", async ({ page }) => {
@@ -73,9 +69,7 @@ test.describe("Config — frontend config matching", () => {
       }),
     });
     await page.goto("/");
-    await page.waitForTimeout(500);
-    var tauthUrl = await page.locator("#app-header").getAttribute("tauth-url");
-    expect(tauthUrl).toContain("localhost");
+    await expect(page.locator("#app-header")).toHaveAttribute("tauth-url", /localhost/);
   });
 });
 
@@ -127,7 +121,7 @@ test.describe("Admin — billing helper fallbacks", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("App — landingSignIn fallback (lines 71-72)", () => {
-  test("landing sign-in falls back to puzzle view when no header button", async ({ page }) => {
+  test("landing sign-in does nothing when no header button is available", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
     await expect(page.locator("#landingPage")).toBeVisible();
@@ -136,11 +130,11 @@ test.describe("App — landingSignIn fallback (lines 71-72)", () => {
       var btn = document.querySelector("[data-mpr-header='google-signin'] div[role='button']");
       if (btn) btn.remove();
     });
-    // Click the landing Sign in button — since we removed the header button,
-    // it should fall back to showPuzzle("prebuilt").
+    // Click the landing Sign in button — without an mpr-ui sign-in button,
+    // the app should not invent its own auth fallback.
     await page.locator("#landingSignIn").click();
-    // Fallback path: showPuzzle("prebuilt")
-    await expect(page.locator("#puzzleView")).toBeVisible();
+    await expect(page.locator("#landingPage")).toBeVisible();
+    await expect(page.locator("#puzzleView")).toBeHidden();
   });
 });
 
@@ -171,12 +165,14 @@ test.describe("App — generate while not logged in (lines 149-150)", () => {
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
     await page.locator("#newCrosswordCard").click();
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
-    // Make the follow-up /me verification confirm that the session is gone.
-    await page.route("**/me", (route) =>
-      route.fulfill(json(401, { error: "unauthorized" }))
-    );
     // Now log out via event
     await page.evaluate(() => {
+      var header = document.getElementById("app-header");
+      if (header) {
+        ["data-user-id", "data-user-email", "data-user-display", "data-user-avatar-url"].forEach(function (attributeName) {
+          header.removeAttribute(attributeName);
+        });
+      }
       document.dispatchEvent(new Event("mpr-ui:auth:unauthenticated"));
     });
     await expect(page.locator("#landingPage")).toBeVisible({ timeout: 5000 });

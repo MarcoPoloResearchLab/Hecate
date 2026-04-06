@@ -3,42 +3,17 @@
   "use strict";
 
   var authCheckPendingAttribute = "data-auth-check";
-  var authPendingRetryDelayMs = 1000;
   var balanceStatusError = "error";
   var balanceStatusIdle = "idle";
   var balanceStatusReady = "ready";
   var balanceStatusLoading = "loading";
   var creditPopoverHideDelayMs = 140;
-  var authStateFetch = window.authFetch || null;
   var services = window.LLMCrosswordServices || null;
   var nativeFetch = window.fetch.bind(window);
-  var _fetch = window.authFetch || nativeFetch;
-  var fetchTauth = window.fetchTauth || nativeFetch;
+  var _fetch = nativeFetch;
   var rootElement = document.documentElement;
   var shareButtonDefaultIcon = '<i class="bi bi-share"></i>';
   var shareButtonCopiedIcon = "\u2713";
-  var persistedValues = Object.freeze({
-    authPending: Object.freeze({
-      storageKey: "llm-crossword-auth-pending",
-      attribute: "data-auth-pending",
-      fromAttributeValue: function (value) {
-        return value === "true" ? "1" : null;
-      },
-      toAttributeValue: function () {
-        return "true";
-      },
-    }),
-    postLoginView: Object.freeze({
-      storageKey: "llm-crossword-post-login-view",
-      attribute: "data-post-login-view",
-      fromAttributeValue: function (value) {
-        return value;
-      },
-      toAttributeValue: function (value) {
-        return value;
-      },
-    }),
-  });
   var defaultCoinValueCents = 100;
   var defaultGenerationCostCredits = 4;
   var generationBalanceLoadingMessage = "Loading your credit balance...";
@@ -51,19 +26,37 @@
     return path;
   }
 
-  function buildAuthUrl(path) {
-    if (services && typeof services.buildAuthUrl === "function") {
-      return services.buildAuthUrl(path);
-    }
-    return path;
-  }
-
   function requireElement(id) {
     var element = document.getElementById(id);
     if (!element) {
       throw new Error("Missing required app element #" + id);
     }
     return element;
+  }
+
+  function readAuthHeader() {
+    return document.getElementById("app-header");
+  }
+
+  function hasManagedAuthHeader() {
+    var header = readAuthHeader();
+
+    return !!(header && typeof header.hasAttribute === "function" && header.hasAttribute("data-config-url"));
+  }
+
+  function readHeaderAuthValue(attributeName) {
+    var header = readAuthHeader();
+
+    if (!header || typeof header.getAttribute !== "function") {
+      return "";
+    }
+
+    return (header.getAttribute(attributeName) || "").trim();
+  }
+
+  function hasAuthenticatedHeaderState() {
+    return readHeaderAuthValue("data-user-id") !== ""
+      || readHeaderAuthValue("data-user-email") !== "";
   }
 
   function requireChild(parent, selector, label) {
@@ -135,78 +128,20 @@
   elements.puzzlePane = requireChild(elements.puzzleView, ".pane", "#puzzleView .pane");
   elements.puzzleControls = requireChild(elements.puzzleView, ".controls", "#puzzleView .controls");
 
-  function readPersistedValue(config) {
-    var attributeValue;
-
-    try {
-      attributeValue = window.sessionStorage.getItem(config.storageKey);
-      if (attributeValue !== null) return attributeValue;
-    } catch {}
-
-    attributeValue = rootElement.getAttribute(config.attribute);
-    if (attributeValue === null) return null;
-    return config.fromAttributeValue(attributeValue);
-  }
-
-  function writePersistedValue(config, value) {
-    var attributeValue;
-
-    try {
-      if (value === null) {
-        window.sessionStorage.removeItem(config.storageKey);
-      } else {
-        window.sessionStorage.setItem(config.storageKey, value);
-      }
-    } catch {}
-
-    attributeValue = value === null ? null : config.toAttributeValue(value);
-    if (attributeValue === null) {
-      rootElement.removeAttribute(config.attribute);
-      return;
-    }
-    rootElement.setAttribute(config.attribute, attributeValue);
-  }
-
-  function isAuthPending() {
-    return readPersistedValue(persistedValues.authPending) === "1";
-  }
-
-  function setAuthPending() {
-    writePersistedValue(persistedValues.authPending, "1");
-  }
-
-  function clearAuthPending() {
-    writePersistedValue(persistedValues.authPending, null);
-  }
-
-  function getPostLoginView() {
-    return readPersistedValue(persistedValues.postLoginView);
-  }
-
-  function setPostLoginView(viewName) {
-    writePersistedValue(persistedValues.postLoginView, viewName);
-  }
-
-  function clearPostLoginView() {
-    writePersistedValue(persistedValues.postLoginView, null);
-  }
-
   var state = {
     activeGenerateRequestFingerprint: null,
     activeGenerateRequestId: null,
-    authCheckPending: !isAuthPending(),
+    authCheckPending: hasManagedAuthHeader(),
     authStateVersion: 0,
     balanceStatus: balanceStatusIdle,
     currentCoins: null,
     currentShareToken: null,
-    currentView: isAuthPending() ? "puzzle" : "landing",
+    currentView: "landing",
     creditPopoverHideTimer: null,
     creditPopoverPinned: false,
     generationCostCredits: defaultGenerationCostCredits,
     loggedIn: false,
     pendingCompletionKey: null,
-    pendingAuthRestoreTimer: null,
-    pendingSessionVerification: null,
   };
 
   function getGenerationCostCredits() {
@@ -270,12 +205,6 @@
   function setAuthCheckPending(isPending) {
     state.authCheckPending = isPending;
     applyAuthCheckState();
-  }
-
-  function clearPendingAuthRestoreTimer() {
-    if (!state.pendingAuthRestoreTimer) return;
-    window.clearTimeout(state.pendingAuthRestoreTimer);
-    state.pendingAuthRestoreTimer = null;
   }
 
   function applyView() {
@@ -384,15 +313,6 @@
       message: message || "",
       source: source || "app",
     });
-  }
-
-  function restorePendingAuthView() {
-    showPuzzle();
-    if (getPostLoginView() === "generator") {
-      showGenerateForm();
-      return;
-    }
-    hideGenerateForm();
   }
 
   function updateShareButton() {
@@ -856,49 +776,18 @@
       });
   }
 
-  function verifySessionStillValid() {
-    if (state.pendingSessionVerification) return state.pendingSessionVerification;
-
-    state.pendingSessionVerification = _fetch(buildAuthUrl("/me"), {
-      cache: "no-store",
-      credentials: "include",
-    })
-      .then(function (resp) {
-        if (resp.ok) return true;
-        if (resp.status === 401 || resp.status === 403) return false;
-        return true;
-      })
-      .catch(function () {
-        return true;
-      })
-      .finally(function () {
-        state.pendingSessionVerification = null;
-      });
-
-    return state.pendingSessionVerification;
-  }
-
   function onLogin() {
-    var postLoginView = getPostLoginView();
-
-    clearPendingAuthRestoreTimer();
     clearGenerateRequestState();
     state.balanceStatus = balanceStatusLoading;
     state.currentCoins = null;
     state.loggedIn = true;
     state.authStateVersion += 1;
-    clearAuthPending();
-    clearPostLoginView();
     setAuthCheckPending(false);
     updateAuthUI();
     setViewerSessionState();
     showPuzzle();
     if (window.CrosswordBilling && typeof window.CrosswordBilling.setLoggedIn === "function") {
       window.CrosswordBilling.setLoggedIn(true).catch(function () {});
-    }
-
-    if (postLoginView === "generator") {
-      showGenerateForm();
     }
 
     _fetch(buildApiUrl("/api/bootstrap"), { method: "POST", credentials: "include" })
@@ -940,14 +829,11 @@
   }
 
   function onLogout() {
-    clearPendingAuthRestoreTimer();
     clearGenerateRequestState();
     state.balanceStatus = balanceStatusIdle;
     state.currentCoins = null;
     state.loggedIn = false;
     state.authStateVersion += 1;
-    clearAuthPending();
-    clearPostLoginView();
     setAuthCheckPending(false);
     updateAuthUI();
     setViewerSessionState();
@@ -964,14 +850,9 @@
   function handleLoggedOutRestore() {
     var shouldRestoreLanding = state.currentView === "landing";
 
-    if (state.loggedIn) return;
-
-    clearPendingAuthRestoreTimer();
     clearGenerateRequestState();
     state.balanceStatus = balanceStatusIdle;
     state.currentCoins = null;
-    clearAuthPending();
-    clearPostLoginView();
     setAuthCheckPending(false);
     updateAuthUI();
     setViewerSessionState();
@@ -985,51 +866,6 @@
     }
 
     applyView();
-  }
-
-  function finalizePendingAuthRestoreFailure() {
-    if (state.loggedIn) return;
-
-    clearPendingAuthRestoreTimer();
-    clearGenerateRequestState();
-    state.balanceStatus = balanceStatusIdle;
-    state.currentCoins = null;
-    clearAuthPending();
-    clearPostLoginView();
-    setAuthCheckPending(false);
-    updateAuthUI();
-    setViewerSessionState();
-    if (window.CrosswordApp && window.CrosswordApp.clearOwnedPuzzles) {
-      window.CrosswordApp.clearOwnedPuzzles();
-    }
-    showLanding();
-  }
-
-  function schedulePendingAuthRestoreRetry() {
-    if (state.pendingAuthRestoreTimer || state.loggedIn || !isAuthPending()) return;
-
-    restorePendingAuthView();
-    state.pendingAuthRestoreTimer = window.setTimeout(function () {
-      state.pendingAuthRestoreTimer = null;
-
-      (authStateFetch || fetchTauth)(buildAuthUrl("/me"), { cache: "no-store", credentials: "include" })
-        .then(function (resp) {
-          if (resp.ok) {
-            if (!state.loggedIn) onLogin();
-            return;
-          }
-
-          if (resp.status === 401 || resp.status === 403) {
-            finalizePendingAuthRestoreFailure();
-            return;
-          }
-
-          restorePendingAuthView();
-        })
-        .catch(function () {
-          finalizePendingAuthRestoreFailure();
-        });
-    }, authPendingRetryDelayMs);
   }
 
   elements.newCrosswordCard.addEventListener("click", function () {
@@ -1074,68 +910,47 @@
     }
 
     headerSignIn = document.querySelector("[data-mpr-header='google-signin'] div[role='button']");
-    if (!headerSignIn) {
-      showPuzzle();
+    if (!headerSignIn || typeof headerSignIn.click !== "function") {
       return;
     }
 
-    setPostLoginView("generator");
-    setAuthPending();
-    setAuthCheckPending(false);
-    showPuzzle();
-    showGenerateForm();
     headerSignIn.click();
   });
+
+  function syncAuthStateFromMprUi() {
+    if (hasAuthenticatedHeaderState()) {
+      if (!state.loggedIn) onLogin();
+      return;
+    }
+
+    if (state.loggedIn) {
+      onLogout();
+      return;
+    }
+
+    handleLoggedOutRestore();
+  }
 
   document.addEventListener("mpr-ui:auth:authenticated", function () {
     if (!state.loggedIn) onLogin();
   });
 
   document.addEventListener("mpr-ui:auth:unauthenticated", function () {
-    var eventAuthStateVersion;
+    if (state.loggedIn) {
+      onLogout();
+      return;
+    }
+    handleLoggedOutRestore();
+  });
 
-    if (!state.loggedIn) return;
-
-    eventAuthStateVersion = state.authStateVersion;
-    verifySessionStillValid().then(function (sessionStillValid) {
-      if (!state.loggedIn || state.authStateVersion !== eventAuthStateVersion) return;
-      if (!sessionStillValid) onLogout();
-    });
+  document.addEventListener("mpr-ui:orchestration:ready", function () {
+    syncAuthStateFromMprUi();
   });
 
   applyAuthCheckState();
-
-  (authStateFetch || fetchTauth)(buildAuthUrl("/me"), { cache: "no-store", credentials: "include" })
-    .then(function (resp) {
-      if (resp.ok) {
-        if (!state.loggedIn) onLogin();
-        return;
-      }
-
-      if (resp.status === 401 || resp.status === 403) {
-        if (isAuthPending() && !state.loggedIn) {
-          schedulePendingAuthRestoreRetry();
-          return;
-        }
-        handleLoggedOutRestore();
-        return;
-      }
-
-      setAuthCheckPending(false);
-      if (!state.loggedIn && !isAuthPending()) {
-        showLanding();
-      }
-    })
-    .catch(function () {
-      if (isAuthPending() && !state.loggedIn) {
-        schedulePendingAuthRestoreRetry();
-        return;
-      }
-      setAuthCheckPending(false);
-      if (!state.loggedIn) {
-        showLanding();
-      }
-    });
+  if (!hasManagedAuthHeader()) {
+    handleLoggedOutRestore();
+  }
 
   elements.generateBtn.addEventListener("click", function () {
     var topic = elements.topicInput.value.trim();
@@ -1445,13 +1260,8 @@
   applyView();
 
   (window.__LLM_CROSSWORD_TEST__ || (window.__LLM_CROSSWORD_TEST__ = {})).app = {
-    clearPendingAuthRestoreTimer: clearPendingAuthRestoreTimer,
-    clearAuthPending: clearAuthPending,
-    clearPostLoginView: clearPostLoginView,
     describeCompletionReason: describeCompletionReason,
-    finalizePendingAuthRestoreFailure: finalizePendingAuthRestoreFailure,
     getCompletionEndpoint: getCompletionEndpoint,
-    getPostLoginView: getPostLoginView,
     getState: function () {
       return {
         authCheckPending: state.authCheckPending,
@@ -1466,12 +1276,9 @@
         activeGenerateRequestId: state.activeGenerateRequestId,
       };
     },
-    isAuthPending: isAuthPending,
     openBillingDrawer: openBillingDrawer,
     requireChild: requireChild,
     requireElement: requireElement,
-    schedulePendingAuthRestoreRetry: schedulePendingAuthRestoreRetry,
-    setAuthPending: setAuthPending,
     setState: function (nextState) {
       Object.assign(state, nextState || {});
     },
@@ -1479,10 +1286,6 @@
       state.loggedIn = !!value;
       updateAuthUI();
     },
-    setPendingAuthRestoreTimer: function (timerId) {
-      state.pendingAuthRestoreTimer = timerId;
-    },
-    setPostLoginView: setPostLoginView,
     setShareToken: setShareToken,
     showCompletionModal: showCompletionModal,
     showSharedCompletionModal: showSharedCompletionModal,
@@ -1490,6 +1293,7 @@
     showGenerateForm: showGenerateForm,
     showPuzzle: showPuzzle,
     submitPuzzleCompletion: submitPuzzleCompletion,
+    syncAuthStateFromMprUi: syncAuthStateFromMprUi,
     updateBalance: updateBalance,
   };
 })();

@@ -200,9 +200,15 @@ function createFrontendConfigYaml(overrides = {}) {
  * localhost which fail with net errors, affecting component rendering.
  */
 async function setupBaseRoutes(page) {
+  await page.route("**/js-yaml*.js", (route) =>
+    route.fulfill(text(200, "window.__jsYamlLoads = (window.__jsYamlLoads || 0) + 1;"))
+  );
   // /tauth.js is loaded via <script src="/tauth.js"> — stub it empty.
   await page.route("**/tauth.js", (route) =>
     route.fulfill(text(200, "/* tauth stub */"))
+  );
+  await page.route("**/auth/refresh", (route) =>
+    route.fulfill(json(401, { error: "unauthorized" }))
   );
   // /api/session may be called by admin.js — return 401 by default.
   await page.route("**/api/session", (route) =>
@@ -210,7 +216,10 @@ async function setupBaseRoutes(page) {
   );
   // Stub mpr-ui-config.js so it doesn't fetch the CDN bundle.
   await page.route("**/mpr-ui-config.js", (route) =>
-    route.fulfill(text(200, mprUiConfigStub))
+    route.fulfill(text(200, "window.__mprUiConfigLoads = (window.__mprUiConfigLoads || 0) + 1;\n" + mprUiConfigStub))
+  );
+  await page.route("**/mpr-ui.js", (route) =>
+    route.fulfill(text(200, "window.__mprUiBundleLoads = (window.__mprUiBundleLoads || 0) + 1;"))
   );
   await page.route("**/api/billing/summary", (route) =>
     route.fulfill(json(200, createBillingSummary()))
@@ -257,6 +266,10 @@ async function setupLoggedInRoutes(page, opts = {}) {
   var frontendConfigYaml = createFrontendConfigYaml(opts.frontendConfig);
 
   await setupBaseRoutes(page);
+  await page.unroute("**/auth/refresh");
+  await page.route("**/auth/refresh", (route) =>
+    route.fulfill(json(200, { ok: true }))
+  );
   // Override the default 401 /api/session with the provided session data.
   await page.unroute("**/api/session");
   await page.route("**/api/session", (route) =>

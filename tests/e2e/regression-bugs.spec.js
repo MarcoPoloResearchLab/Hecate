@@ -91,21 +91,20 @@ test.describe("Session persistence on refresh", () => {
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
   });
 
-  test("landing page stays hidden after session-confirmed login", async ({ page }) => {
+  test("mpr-ui unauthenticated events return the user to the landing page after login", async ({ page }) => {
     await setupLoggedInRoutes(page, { puzzles: puzzlePayload });
     await page.goto("/");
 
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
     await expect(page.locator("#landingPage")).toBeHidden({ timeout: 5000 });
 
-    // The header can emit a stale unauthenticated event after /me has already
-    // confirmed the session. The landing page must not come back.
+    // mpr-ui owns the auth state, so the app must follow the emitted event.
     await page.evaluate(() => {
       document.dispatchEvent(new Event("mpr-ui:auth:unauthenticated"));
     });
 
-    await expect(page.locator("#landingPage")).toBeHidden({ timeout: 2000 });
-    await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 2000 });
+    await expect(page.locator("#landingPage")).toBeVisible({ timeout: 2000 });
+    await expect(page.locator("#puzzleView")).toBeHidden({ timeout: 2000 });
   });
 
   test("shared puzzle URL opens the shared crossword for logged-in users", async ({ page }) => {

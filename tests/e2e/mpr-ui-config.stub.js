@@ -62,11 +62,11 @@
 
         signInArea.setAttribute("data-mpr-header", "google-signin");
         signInArea.setAttribute("aria-label", "Google sign in");
-        signInArea.textContent = "Google sign in";
         applyStyles(
           signInArea,
           "display:flex;align-items:center;justify-content:center;min-width:120px;min-height:40px;padding:0 12px;border-radius:999px;background:rgb(255,255,255);color:rgb(15,23,42);font-size:0.875rem;font-weight:600;"
         );
+        signInArea.innerHTML = '<div role="button" tabindex="0" aria-label="Google sign in">Google sign in</div>';
 
         actions.appendChild(signInArea);
         preservedChildren.forEach(function appendPreservedChild(child) {
@@ -173,9 +173,11 @@
           items = JSON.parse(this.getAttribute("menu-items") || "[]");
         } catch (error) {}
 
-        this.innerHTML = '<div class="mpr-user__layout">' +
+        applyStyles(this, "display:block;position:relative;z-index:2000;");
+
+        this.innerHTML = '<div class="mpr-user__layout" style="position:relative;display:flex;align-items:center">' +
           '<button type="button" class="mpr-user__trigger" data-mpr-user="trigger" aria-haspopup="true" aria-expanded="false">U</button>' +
-          '<div class="mpr-user__menu" data-mpr-user="menu" role="menu" style="display:none;position:absolute;right:0;top:100%;min-width:160px;padding:8px;background:#1e293b;border:1px solid rgba(148,163,184,0.25);border-radius:12px;z-index:999">' +
+          '<div class="mpr-user__menu" data-mpr-user="menu" role="menu" style="display:none;position:absolute;right:0;top:calc(100% + 8px);min-width:160px;padding:8px;background:#1e293b;border:1px solid rgba(148,163,184,0.25);border-radius:12px;box-shadow:0 20px 40px rgba(15,23,42,0.35);z-index:2001">' +
           items.map(function renderItem(item, index) {
             return '<button type="button" class="mpr-user__menu-item" role="menuitem" data-mpr-user="menu-item" data-mpr-user-action="' + (item.action || "") + '" data-mpr-user-index="' + index + '">' + (item.label || "") + "</button>";
           }).join("") +
@@ -292,5 +294,349 @@
         );
       }
     });
+  }
+})();
+
+(function () {
+  "use strict";
+
+  var EVENT_AUTHENTICATED = "mpr-ui:auth:authenticated";
+  var EVENT_ORCHESTRATION_READY = "mpr-ui:orchestration:ready";
+  var EVENT_UNAUTHENTICATED = "mpr-ui:auth:unauthenticated";
+  var autoOrchestrationPromise = null;
+  var authConfigPromise = null;
+  var resolvedAuthConfig = null;
+  var resolvedConfigUrl = "/configs/frontend-config.yml";
+
+  function ensureNamespace(target) {
+    if (!target.MPRUI) {
+      target.MPRUI = {};
+    }
+    return target.MPRUI;
+  }
+
+  function dispatchDocumentEvent(eventName, detail) {
+    if (typeof document === "undefined" || typeof document.dispatchEvent !== "function") {
+      return;
+    }
+    document.dispatchEvent(new CustomEvent(eventName, { detail: detail }));
+  }
+
+  function trimValue(value) {
+    return typeof value === "string" ? value.trim() : "";
+  }
+
+  function parseFrontendAuthConfig(yamlText, origin) {
+    var current = null;
+    var environments = [];
+    var lines = String(yamlText || "").split("\n");
+
+    lines.forEach(function parseLine(line) {
+      var originMatch;
+      var valueMatch;
+
+      if (/^\s+-\s+description:/.test(line)) {
+        if (current) {
+          environments.push(current);
+        }
+        current = {
+          auth: {
+            googleClientId: "",
+            loginPath: "",
+            logoutPath: "",
+            noncePath: "",
+            tauthUrl: "",
+            tenantId: "",
+          },
+          origins: [],
+        };
+        return;
+      }
+
+      if (!current) {
+        return;
+      }
+
+      originMatch = line.match(/^\s+-\s+"([^"]+)"/);
+      if (originMatch && line.indexOf("description") < 0) {
+        current.origins.push(originMatch[1]);
+        return;
+      }
+
+      valueMatch = line.match(/^\s+tauthUrl:\s+"([^"]*)"/);
+      if (valueMatch) {
+        current.auth.tauthUrl = valueMatch[1];
+        return;
+      }
+
+      valueMatch = line.match(/^\s+googleClientId:\s+"([^"]+)"/);
+      if (valueMatch) {
+        current.auth.googleClientId = valueMatch[1];
+        return;
+      }
+
+      valueMatch = line.match(/^\s+tenantId:\s+"([^"]+)"/);
+      if (valueMatch) {
+        current.auth.tenantId = valueMatch[1];
+        return;
+      }
+
+      valueMatch = line.match(/^\s+loginPath:\s+"([^"]+)"/);
+      if (valueMatch) {
+        current.auth.loginPath = valueMatch[1];
+        return;
+      }
+
+      valueMatch = line.match(/^\s+logoutPath:\s+"([^"]+)"/);
+      if (valueMatch) {
+        current.auth.logoutPath = valueMatch[1];
+        return;
+      }
+
+      valueMatch = line.match(/^\s+noncePath:\s+"([^"]+)"/);
+      if (valueMatch) {
+        current.auth.noncePath = valueMatch[1];
+      }
+    });
+
+    if (current) {
+      environments.push(current);
+    }
+
+    current = environments.find(function findMatch(environment) {
+      return environment.origins.indexOf(origin) >= 0;
+    }) || null;
+
+    return current ? current.auth : null;
+  }
+
+  function getDefaultAuthConfig() {
+    return {
+      googleClientId: "",
+      loginPath: "/auth/google",
+      logoutPath: "/auth/logout",
+      noncePath: "/auth/nonce",
+      tauthUrl: window.location.origin,
+      tenantId: "",
+    };
+  }
+
+  function setAttributeValue(target, attributeName, attributeValue) {
+    if (!target || typeof target.setAttribute !== "function") {
+      return;
+    }
+    target.setAttribute(attributeName, String(attributeValue));
+  }
+
+  function removeAttributeValue(target, attributeName) {
+    if (!target || typeof target.removeAttribute !== "function") {
+      return;
+    }
+    target.removeAttribute(attributeName);
+  }
+
+  function applyAuthConfig(authConfig) {
+    Array.from(document.querySelectorAll("mpr-header")).forEach(function updateHeader(header) {
+      setAttributeValue(header, "google-site-id", authConfig.googleClientId);
+      setAttributeValue(header, "tauth-tenant-id", authConfig.tenantId);
+      setAttributeValue(header, "tauth-login-path", authConfig.loginPath);
+      setAttributeValue(header, "tauth-logout-path", authConfig.logoutPath);
+      setAttributeValue(header, "tauth-nonce-path", authConfig.noncePath);
+      if (trimValue(authConfig.tauthUrl)) {
+        setAttributeValue(header, "tauth-url", authConfig.tauthUrl);
+      } else {
+        removeAttributeValue(header, "tauth-url");
+      }
+    });
+
+    Array.from(document.querySelectorAll("mpr-user, mpr-login-button")).forEach(function updateAuthElement(element) {
+      setAttributeValue(element, "tauth-tenant-id", authConfig.tenantId);
+    });
+  }
+
+  function readSessionProfile(response) {
+    if (!response || typeof response.json !== "function") {
+      return Promise.resolve({});
+    }
+    return response.json().catch(function () {
+      return {};
+    });
+  }
+
+  function setAuthenticatedState(profile) {
+    var normalizedProfile = profile && typeof profile === "object" ? profile : {};
+
+    Array.from(document.querySelectorAll("mpr-header")).forEach(function updateHeader(header) {
+      setAttributeValue(header, "data-user-id", trimValue(normalizedProfile.user_id) || "stub-user");
+      setAttributeValue(header, "data-user-email", trimValue(normalizedProfile.user_email || normalizedProfile.email) || "stub@example.com");
+      setAttributeValue(header, "data-user-display", trimValue(normalizedProfile.display) || "Stub User");
+      setAttributeValue(header, "data-user-avatar-url", trimValue(normalizedProfile.avatar_url));
+    });
+  }
+
+  function clearAuthenticatedState() {
+    Array.from(document.querySelectorAll("mpr-header")).forEach(function clearHeader(header) {
+      removeAttributeValue(header, "data-user-id");
+      removeAttributeValue(header, "data-user-email");
+      removeAttributeValue(header, "data-user-display");
+      removeAttributeValue(header, "data-user-avatar-url");
+    });
+  }
+
+  function isUnauthorizedResponse(response) {
+    return !!response && (response.status === 401 || response.status === 403);
+  }
+
+  function fetchSession() {
+    return window.fetch("/me", {
+      cache: "no-store",
+      credentials: "include",
+    });
+  }
+
+  function refreshSession() {
+    return window.fetch("/auth/refresh", {
+      method: "POST",
+      credentials: "include",
+    })
+      .then(function (response) {
+        return !!response && response.ok;
+      })
+      .catch(function () {
+        return false;
+      });
+  }
+
+  function dispatchAuthenticated(response) {
+    return readSessionProfile(response).then(function (profile) {
+      setAuthenticatedState(profile);
+      dispatchDocumentEvent(EVENT_AUTHENTICATED, { profile: profile });
+    });
+  }
+
+  function dispatchUnauthenticated() {
+    clearAuthenticatedState();
+    dispatchDocumentEvent(EVENT_UNAUTHENTICATED, {});
+  }
+
+  function resolveConfigUrl(options) {
+    var explicitConfigUrl = trimValue(options && options.configUrl);
+    var header = document.querySelector("mpr-header[data-config-url]");
+
+    if (explicitConfigUrl) {
+      return explicitConfigUrl;
+    }
+
+    if (header) {
+      return trimValue(header.getAttribute("data-config-url")) || resolvedConfigUrl;
+    }
+
+    return resolvedConfigUrl;
+  }
+
+  function loadAuthConfig(configUrl) {
+    resolvedConfigUrl = configUrl || resolvedConfigUrl;
+    if (authConfigPromise) {
+      return authConfigPromise;
+    }
+
+    authConfigPromise = window.fetch(resolvedConfigUrl, { cache: "no-store" })
+      .then(function (response) {
+        if (!response || !response.ok) {
+          return "";
+        }
+        return response.text();
+      })
+      .catch(function () {
+        return "";
+      })
+      .then(function (configText) {
+        var authConfig = parseFrontendAuthConfig(configText, window.location.origin);
+        var defaultAuthConfig = getDefaultAuthConfig();
+
+        if (!authConfig) {
+          authConfig = defaultAuthConfig;
+        } else {
+          authConfig = Object.assign({}, defaultAuthConfig, authConfig);
+          if (!trimValue(authConfig.tauthUrl)) {
+            authConfig.tauthUrl = window.location.origin;
+          }
+        }
+        resolvedAuthConfig = authConfig;
+        applyAuthConfig(authConfig);
+        return authConfig;
+      });
+
+    return authConfigPromise;
+  }
+
+  function bootstrapAuth() {
+    return fetchSession()
+      .then(function handleSessionResponse(response) {
+        if (response && response.ok) {
+          return dispatchAuthenticated(response);
+        }
+
+        if (isUnauthorizedResponse(response)) {
+          return refreshSession().then(function handleRefreshResult(refreshed) {
+            if (!refreshed) {
+              dispatchUnauthenticated();
+              return;
+            }
+            return fetchSession().then(function handleRefreshedSession(retryResponse) {
+              if (retryResponse && retryResponse.ok) {
+                return dispatchAuthenticated(retryResponse);
+              }
+              dispatchUnauthenticated();
+            }, function () {
+              dispatchUnauthenticated();
+            });
+          });
+        }
+
+        dispatchUnauthenticated();
+      })
+      .catch(function () {
+        dispatchUnauthenticated();
+      });
+  }
+
+  function orchestrate(options) {
+    if (autoOrchestrationPromise) {
+      return autoOrchestrationPromise;
+    }
+
+    autoOrchestrationPromise = loadAuthConfig(resolveConfigUrl(options))
+      .then(function () {
+        if (resolvedAuthConfig) {
+          applyAuthConfig(resolvedAuthConfig);
+        }
+        return bootstrapAuth();
+      })
+      .then(function () {
+        dispatchDocumentEvent(EVENT_ORCHESTRATION_READY, { configUrl: resolvedConfigUrl });
+      });
+
+    return autoOrchestrationPromise;
+  }
+
+  function startAutoOrchestration() {
+    return orchestrate();
+  }
+
+  ensureNamespace(window).applyYamlConfig = function applyYamlConfig(options) {
+    return loadAuthConfig(resolveConfigUrl(options));
+  };
+  ensureNamespace(window).applyConfig = function applyConfig(options) {
+    return ensureNamespace(window).applyYamlConfig(options);
+  };
+  ensureNamespace(window).whenAutoOrchestrationReady = function whenAutoOrchestrationReady() {
+    return autoOrchestrationPromise || Promise.resolve();
+  };
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", startAutoOrchestration, { once: true });
+  } else {
+    startAutoOrchestration();
   }
 })();

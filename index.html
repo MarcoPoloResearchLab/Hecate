@@ -21,23 +21,7 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
   <script>
-    try {
-      var rootElement = document.documentElement;
-      var authPendingStorageKey = "llm-crossword-auth-pending";
-      var postLoginViewStorageKey = "llm-crossword-post-login-view";
-      var pendingAuth = window.sessionStorage.getItem(authPendingStorageKey) === "1";
-      var postLoginView = window.sessionStorage.getItem(postLoginViewStorageKey);
-
-      if (pendingAuth) {
-        rootElement.setAttribute("data-auth-pending", "true");
-      } else {
-        rootElement.setAttribute("data-auth-check", "pending");
-      }
-
-      if (postLoginView) {
-        rootElement.setAttribute("data-post-login-view", postLoginView);
-      }
-    } catch {}
+    document.documentElement.setAttribute("data-auth-check", "pending");
   </script>
   <style>
     html[data-auth-check="pending"] #landingPage,
@@ -50,29 +34,62 @@
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.css"/>
   <link rel="stylesheet" href="css/crossword.css">
 
-  <!-- TAuth + Google Identity Services -->
+  <!-- App runtime config for API and billing -->
   <script src="./js/runtime-auth-config.js"></script>
   <script src="./js/runtime-auth-config.override.js"></script>
   <script src="./js/service-config.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/js-yaml@4.1.0/dist/js-yaml.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui-config.js"></script>
   <script>
-    (function loadTauthScript() {
-      var services = window.LLMCrosswordServices;
-      var scriptElement = document.createElement("script");
+    (function () {
+      var configUrl = "/configs/frontend-config.yml";
+      var mprUiBundleUrl = "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js";
 
-      scriptElement.defer = true;
-      scriptElement.src = services && typeof services.getTauthScriptUrl === "function"
-        ? services.getTauthScriptUrl()
-        : "/tauth.js";
-      document.head.appendChild(scriptElement);
+      function loadMprUiBundle() {
+        return new Promise(function (resolve, reject) {
+          var existingScript = document.getElementById("mpr-ui-script");
+          var script;
+
+          if (existingScript) {
+            resolve(existingScript);
+            return;
+          }
+
+          script = document.createElement("script");
+          script.id = "mpr-ui-script";
+          script.src = mprUiBundleUrl;
+          script.onload = function () {
+            resolve(script);
+          };
+          script.onerror = reject;
+          document.head.appendChild(script);
+        });
+      }
+
+      function applyMprUiConfig() {
+        if (window.MPRUI && typeof window.MPRUI.applyYamlConfig === "function") {
+          return window.MPRUI.applyYamlConfig({ configUrl: configUrl });
+        }
+        if (window.MPRUI && typeof window.MPRUI.applyConfig === "function") {
+          return window.MPRUI.applyConfig({ configUrl: configUrl });
+        }
+        return Promise.reject(new Error("mpr-ui config loader is unavailable"));
+      }
+
+      applyMprUiConfig()
+        .then(loadMprUiBundle)
+        .catch(function (error) {
+          console.error("mpr-ui initialization failed:", error);
+        });
     })();
   </script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
-  <script src="./mpr-ui-config.js" defer></script>
-  <script id="mpr-ui-bundle" type="application/json" data-mpr-ui-bundle-src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js"></script>
 </head>
 <body>
 <mpr-header
   id="app-header"
+  base-url="/"
   brand-label="LLM Crossword"
   brand-href="/"
   data-config-url="/configs/frontend-config.yml"
@@ -89,21 +106,6 @@
     logout-label="Log out"
   ></mpr-user>
 </mpr-header>
-<script>
-  (function configureHeaderRuntimeUrls() {
-    var header = document.getElementById("app-header");
-    var services = window.LLMCrosswordServices;
-
-    if (!header) {
-      return;
-    }
-
-    header.setAttribute("base-url", window.location.origin);
-    if (services && typeof services.getConfigUrl === "function") {
-      header.setAttribute("data-config-url", services.getConfigUrl());
-    }
-  })();
-</script>
 <div id="creditDetailsPopover" class="credit-popover" hidden>
   <div class="credit-popover__surface" role="dialog" aria-label="Credit details">
     <div class="credit-popover__eyebrow">Credits</div>
@@ -457,8 +459,6 @@
   theme-switcher="toggle"
 ></mpr-footer>
 
-<script src="js/auth-fetch.js"></script>
-<script src="js/config.js"></script>
 <script src="js/generator.js"></script>
 <script src="js/crossword-widget.js"></script>
 <script src="js/landing-puzzle.js"></script>
