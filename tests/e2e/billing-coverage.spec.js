@@ -112,15 +112,98 @@ test.describe("Billing coverage", () => {
       };
       outcomes.unauthorizedSummary = await billing.loadSummary();
 
-      billing.setState({
-        loggedIn: false,
-        summary: knownSummary,
-      });
-      outcomes.loggedOutSummary = await billing.loadSummary();
+	      billing.setState({
+	        loggedIn: false,
+	        summary: knownSummary,
+	      });
+	      outcomes.loggedOutSummary = await billing.loadSummary();
+	      delete window.authFetch;
+	      outcomes.syncWhileLoggedOut = await billing.requestBillingSync();
 
-      billing.setState({ summary: knownSummary });
-      window.fetch = function () {
-        return Promise.reject(new Error("offline"));
+	      billing.setState({ loggedIn: true });
+	      window.fetch = function () {
+	        return Promise.resolve({
+	          json: function () {
+	            return Promise.resolve({ synced: true });
+	          },
+	          ok: true,
+	          status: 200,
+	        });
+	      };
+	      outcomes.syncOk = await billing.requestBillingSync();
+	      window.fetch = function () {
+	        return Promise.resolve({
+	          json: function () {
+	            return Promise.resolve(null);
+	          },
+	          ok: true,
+	          status: 200,
+	        });
+	      };
+	      outcomes.syncOkEmpty = await billing.requestBillingSync();
+	      window.fetch = function () {
+	        return Promise.resolve({
+	          json: function () {
+	            return Promise.resolve({ message: "  Refresh denied  " });
+	          },
+	          ok: false,
+	          status: 500,
+	        });
+	      };
+	      try {
+	        await billing.requestBillingSync();
+	      } catch (error) {
+	        outcomes.syncError = error.message;
+	      }
+	      outcomes.syncAcceptedStatuses = [];
+	      for (const status of [401, 403, 404, 503]) {
+	        window.fetch = function () {
+	          return Promise.resolve({
+	            json: function () {
+	              return Promise.resolve({ accepted_status: status });
+	            },
+	            ok: false,
+	            status: status,
+	          });
+	        };
+	        outcomes.syncAcceptedStatuses.push(await billing.requestBillingSync());
+	      }
+	      window.fetch = function () {
+	        return Promise.resolve({
+	          json: function () {
+	            return Promise.resolve(null);
+	          },
+	          ok: false,
+	          status: 401,
+	        });
+	      };
+	      outcomes.syncAcceptedEmpty = await billing.requestBillingSync();
+
+	      billing.setState({ loggedIn: false });
+	      outcomes.reconcileWhileLoggedOut = await billing.requestCheckoutReconcile("txn_logged_out");
+	      outcomes.reconcileNonString = await billing.requestCheckoutReconcile(42);
+	      outcomes.reconcileNormalized = billing.normalizeCheckoutReconcileResult({
+	        provider_code: "paddle",
+	        status: " Completed ",
+	        transaction_id: " txn_explicit ",
+	      }, "txn_fallback");
+	      outcomes.reconcileInvalidRaw = billing.normalizeCheckoutReconcileResult("bad-result", "txn_invalid");
+
+	      billing.setState({ loggedIn: true });
+	      window.fetch = function () {
+	        return Promise.resolve({
+	          json: function () {
+	            return Promise.resolve({ status: "completed" });
+	          },
+	          ok: false,
+	          status: 500,
+	        });
+	      };
+	      outcomes.reconcileFallback = await billing.requestCheckoutReconcile("txn_failed");
+
+	      billing.setState({ summary: knownSummary });
+	      window.fetch = function () {
+	        return Promise.reject(new Error("offline"));
       };
       delete window.authFetch;
       outcomes.setLoggedInSummary = await window.CrosswordBilling.setLoggedIn(true);
@@ -249,17 +332,53 @@ test.describe("Billing coverage", () => {
       portal_available: false,
       provider_code: "",
     });
-    expect(result.loggedOutSummary).toEqual({
-      activity: [],
-      balance: null,
-      enabled: false,
+	    expect(result.loggedOutSummary).toEqual({
+	      activity: [],
+	      balance: null,
+	      enabled: false,
       packs: [],
-      portal_available: false,
-      provider_code: "",
-    });
-    expect(result.setLoggedInSummary).toEqual({
-      activity: [],
-      balance: null,
+	      portal_available: false,
+	      provider_code: "",
+	    });
+	    expect(result.syncWhileLoggedOut).toEqual({ ok: true });
+	    expect(result.syncOk).toEqual({ synced: true });
+	    expect(result.syncOkEmpty).toEqual({});
+	    expect(result.syncError).toBe("Refresh denied");
+	    expect(result.syncAcceptedStatuses).toEqual([
+	      { accepted_status: 401 },
+	      { accepted_status: 403 },
+	      { accepted_status: 404 },
+	      { accepted_status: 503 },
+	    ]);
+	    expect(result.syncAcceptedEmpty).toEqual({});
+	    expect(result.reconcileWhileLoggedOut).toEqual({
+	      provider_code: "",
+	      status: "unknown",
+	      transaction_id: "txn_logged_out",
+	    });
+	    expect(result.reconcileNonString).toEqual({
+	      provider_code: "",
+	      status: "unknown",
+	      transaction_id: "",
+	    });
+	    expect(result.reconcileNormalized).toEqual({
+	      provider_code: "paddle",
+	      status: "completed",
+	      transaction_id: "txn_explicit",
+	    });
+	    expect(result.reconcileInvalidRaw).toEqual({
+	      provider_code: "",
+	      status: "unknown",
+	      transaction_id: "txn_invalid",
+	    });
+	    expect(result.reconcileFallback).toEqual({
+	      provider_code: "",
+	      status: "unknown",
+	      transaction_id: "txn_failed",
+	    });
+	    expect(result.setLoggedInSummary).toEqual({
+	      activity: [],
+	      balance: null,
       enabled: true,
       packs: [{ code: "starter" }],
       portal_available: false,
