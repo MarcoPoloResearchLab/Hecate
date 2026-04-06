@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.1.6] - 2026-04-06
+
+### Features ✨
+- Remove legacy auth-pending logic and integrate authentication state management with mpr-ui config handling.
+- Migrate app configuration to use mpr-ui's dynamic YAML config loader and runtime bundle.
+
+### Improvements ⚙️
+- Simplify auth state management by syncing with the new managed header attributes and mpr-ui auth events.
+- Update frontend-config.yml to point to new tauth API URL.
+- Revamp application initialization scripts to load and apply mpr-ui configs with proper error handling.
+- Modernize UI header scripts to utilize mpr-ui's built-in authentication lifecycle events.
+- Clean up obsolete session verification and retry logic for authentication state restoration.
+
+### Bug Fixes 🐛
+- Fix auth state inconsistencies by removing duplicated persisted storage and manual session validation.
+- Resolve race conditions in authentication flow by deferring auth state sync to mpr-ui orchestration events.
+
+### Testing 🧪
+- _No changes._
+
+### Docs 📚
+- _No changes._
+
 ## [v0.1.5] - 2026-04-05
 
 ### Features ✨
