@@ -2077,6 +2077,15 @@ test.describe("Crossword reward coverage", () => {
       creator_credits_earned: 6,
       creator_puzzle_cap_remaining: 4,
       creator_daily_cap_remaining: 14,
+      reward_policy: {
+        owner_solve_coins: 3,
+        owner_no_hint_bonus_coins: 1,
+        owner_daily_solve_bonus_coins: 1,
+        owner_daily_solve_bonus_limit: 3,
+        creator_shared_solve_coins: 1,
+        creator_shared_per_puzzle_cap: 10,
+        creator_shared_daily_cap: 20,
+      },
     });
     expect(result.loggedOutOwnedLength).toBe(0);
     expect(result.loadFailureMessage).toBe("Failed to load your puzzles");
@@ -2309,6 +2318,15 @@ test.describe("Crossword reward coverage", () => {
       creator_credits_earned: 0,
       creator_puzzle_cap_remaining: 0,
       creator_daily_cap_remaining: 0,
+      reward_policy: {
+        owner_solve_coins: 3,
+        owner_no_hint_bonus_coins: 1,
+        owner_daily_solve_bonus_coins: 1,
+        owner_daily_solve_bonus_limit: 3,
+        creator_shared_solve_coins: 1,
+        creator_shared_per_puzzle_cap: 10,
+        creator_shared_daily_cap: 20,
+      },
     });
     expect(result.activePuzzleAfterNullKey).toBeNull();
     expect(result.claimedZeroMeta).toBe("This puzzle has already recorded its solve outcome.");

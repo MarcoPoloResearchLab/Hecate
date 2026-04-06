@@ -161,7 +161,10 @@
         });
       })
       .then(function (result) {
-        if (result.ok || result.status === 401 || result.status === 403 || result.status === 404 || result.status === 503) {
+        if (result.ok) {
+          return result.data || {};
+        }
+        if (result.status === 401 || result.status === 403 || result.status === 404 || result.status === 503) {
           return result.data || {};
         }
         throw new Error(describeBillingError(result, "We couldn't refresh billing right now."));
