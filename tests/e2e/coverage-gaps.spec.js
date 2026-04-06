@@ -3,7 +3,7 @@
 // generator.js, and config.js.
 
 const { test, expect } = require("./coverage-fixture");
-const { createFrontendConfig, setupLoggedInRoutes, setupLoggedOutRoutes, json, text, defaultPuzzles } = require("./route-helpers");
+const { createFrontendConfig, setupLoggedInRoutes, setupLoggedOutRoutes, json, text, defaultPuzzles, mountAppShell } = require("./route-helpers");
 
 // ---------------------------------------------------------------------------
 // Shared puzzle data & helpers
@@ -19,6 +19,10 @@ async function goToPuzzle(page) {
 async function goToPuzzleWithGrid(page) {
   await goToPuzzle(page);
   await expect(page.locator("#puzzleView #grid input").first()).toBeVisible({ timeout: 10000 });
+}
+
+async function loadScript(page, fileName) {
+  await page.addScriptTag({ url: `/js/${fileName}` });
 }
 
 // ---------------------------------------------------------------------------
@@ -72,6 +76,49 @@ test.describe("Config — frontend config matching", () => {
     await page.waitForTimeout(500);
     var tauthUrl = await page.locator("#app-header").getAttribute("tauth-url");
     expect(tauthUrl).toContain("localhost");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// admin.js — uncovered lines
+// ---------------------------------------------------------------------------
+
+test.describe("Admin — billing helper fallbacks", () => {
+  test("covers coin value and generation cost helper defaults", async ({ page }) => {
+    await mountAppShell(page);
+    await page.evaluate(() => {
+      window.fetch = function () {
+        return Promise.resolve({
+          ok: true,
+          json: function () {
+            return Promise.resolve({
+              user_id: "admin-user",
+              email: "admin@example.com",
+              display: "Admin User",
+              roles: ["admin"],
+              is_admin: true,
+            });
+          },
+        });
+      };
+    });
+    await loadScript(page, "admin.js");
+    await page.waitForFunction(() => window.__LLM_CROSSWORD_TEST__ && window.__LLM_CROSSWORD_TEST__.admin);
+
+    const result = await page.evaluate(() => {
+      var admin = window.__LLM_CROSSWORD_TEST__.admin;
+      return {
+        defaultCoinValue: admin.getCoinValueCents(null),
+        flooredCoinValue: admin.getCoinValueCents({ coin_value_cents: 40.9 }),
+        missingGenerationCost: admin.getGenerationCostCredits(null),
+        flooredGenerationCost: admin.getGenerationCostCredits({ generation_cost_coins: 4.9 }),
+      };
+    });
+
+    expect(result.defaultCoinValue).toBe(100);
+    expect(result.flooredCoinValue).toBe(40);
+    expect(result.missingGenerationCost).toBeNull();
+    expect(result.flooredGenerationCost).toBe(4);
   });
 });
 
@@ -220,6 +267,22 @@ test.describe("App — updateBalance with available_cents", () => {
     await expect(page.locator("#generateBtn")).toContainText("(4 credits)", { timeout: 5000 });
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
   });
+
+  test("updateBalance floors positive coin_value_cents before deriving credits", async ({ page }) => {
+    await setupLoggedInRoutes(page, { coins: 1 });
+    await page.goto("/");
+
+    const result = await page.evaluate(() => {
+      var app = window.__LLM_CROSSWORD_TEST__.app;
+      app.updateBalance({
+        available_cents: 1000,
+        coin_value_cents: 40.9,
+      });
+      return app.getState();
+    });
+
+    expect(result.currentCoins).toBe(25);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -316,6 +379,32 @@ test.describe("Crossword — keyboard navigation", () => {
     // If there's a next cell, focus should have moved
     // (might be same cell if at end of word)
     expect(labelAfter).toBeTruthy();
+  });
+});
+
+test.describe("Crossword — reward label pluralization", () => {
+  test("shared reward copy uses plural credits when the policy awards more than one", async ({ page }) => {
+    await setupLoggedOutRoutes(page);
+    await page.goto("/");
+    await goToPuzzleWithGrid(page);
+
+    const rewardMeta = await page.evaluate((puzzle) => {
+      var crossword = window.__LLM_CROSSWORD_TEST__.crossword;
+      var sharedPuzzle = crossword.buildStoredPuzzleFromResponse(Object.assign({}, puzzle, {
+        reward_summary: {
+          reward_policy: {
+            creator_shared_solve_coins: 2,
+          },
+        },
+        source: "shared",
+      }), "shared", 0);
+
+      window.CrosswordApp.setViewerSession({ loggedIn: true });
+      window.CrosswordApp.render(sharedPuzzle);
+      return document.getElementById("rewardStripMeta").textContent;
+    }, defaultPuzzles[0]);
+
+    expect(rewardMeta).toContain("2 credits");
   });
 });
 
