@@ -375,9 +375,6 @@ func (handler *httpHandler) handleBillingSync(ctx *gin.Context) {
 			ctx.JSON(http.StatusServiceUnavailable, errorResponse("billing_unavailable", "billing is not enabled"))
 		case errors.Is(err, sharedbilling.ErrBillingUserEmailInvalid):
 			ctx.JSON(http.StatusBadRequest, errorResponse("billing_sync_invalid", "billing sync requires an account email"))
-		case errors.Is(err, sharedbilling.ErrBillingUserSyncFailed):
-			handler.logger.Error("billing sync failed", zap.Error(err), zap.String("user_id", claims.GetUserID()))
-			ctx.JSON(http.StatusBadGateway, errorResponse("billing_sync_failed", "unable to refresh billing activity"))
 		default:
 			handler.logger.Error("billing sync failed", zap.Error(err), zap.String("user_id", claims.GetUserID()))
 			ctx.JSON(http.StatusBadGateway, errorResponse("billing_sync_failed", "unable to refresh billing activity"))
