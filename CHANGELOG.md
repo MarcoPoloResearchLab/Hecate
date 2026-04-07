@@ -4,6 +4,32 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.2.0] - 2026-04-07
+
+### Features ✨
+- Enforce that every deployment accepts live payments for configured credit packs before startup.
+- Added reusable test helpers for config and environment setup to improve testing consistency.
+
+### Improvements ⚙️
+- Refactored many tests to use common environment and config setup helpers, reducing duplication.
+- Updated README to clarify local stack build details and introduce core documentation links.
+- Enhanced environment variable coverage in tests for better configuration validation.
+- Improved billing service initialization to error on missing or unsupported billing providers.
+
+### Bug Fixes 🐛
+- Fixed potential nil-pointer panic by adding checks in billing service methods.
+- Addressed billing service availability errors and added appropriate error handling semantics.
+
+### Testing 🧪
+- Extensive test refactors in backend, including coverage tests, integration tests, and command tests.
+- Added new test to verify loading of empty app config returns empty but valid results.
+- Tests now consistently set required billing-related environment variables.
+
+### Docs 📚
+- Expanded architecture and runbook documentation.
+- Updated README with detailed notes on billing requirements and deployment constraints.
+- Added links to major docs including PRD, architecture, and Paddle Credit-Pack runbook.
+
 ## [v0.1.6] - 2026-04-06
 
 ### Features ✨
