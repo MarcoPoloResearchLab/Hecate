@@ -682,6 +682,29 @@ func TestBillingServiceSyncUserBillingEventsCoverage(t *testing.T) {
 	if grantKey != "billing:paddle:billing_top_up_pack:txn_sync:starter" {
 		t.Fatalf("unexpected sync grant idempotency key %q", grantKey)
 	}
+
+	service.provider = &mockBillingProvider{
+		code:     billingProviderPaddle,
+		parseErr: ErrBillingEventIgnored,
+		syncEvents: []sharedbilling.WebhookEvent{
+			{
+				ProviderCode: billingProviderPaddle,
+				EventID:      "sync:transaction:txn_foreign",
+				EventType:    paddleEventTypeTransactionCompleted,
+				OccurredAt:   time.Date(2026, time.March, 31, 12, 5, 0, 0, time.UTC),
+				Payload:      []byte(`{"data":{}}`),
+			},
+		},
+	}
+	service.store = &mockStore{
+		createBillingEventRecordFunc: func(record *BillingEventRecord) error {
+			t.Fatalf("unexpected billing record for ignored sync event %#v", record)
+			return nil
+		},
+	}
+	if err := service.SyncUserBillingEvents(context.Background(), "user-1", "user@example.com"); err != nil {
+		t.Fatalf("SyncUserBillingEvents(ignored foreign event) error = %v", err)
+	}
 }
 
 func TestBillingServiceReconcileCheckoutCoverage(t *testing.T) {
@@ -735,6 +758,23 @@ func TestBillingServiceReconcileCheckoutCoverage(t *testing.T) {
 	}
 	if _, err := service.ReconcileCheckout(context.Background(), "user-1", "user@example.com", "txn_mismatch"); !errors.Is(err, sharedbilling.ErrBillingCheckoutOwnershipMismatch) {
 		t.Fatalf("expected ownership mismatch, got %v", err)
+	}
+
+	service.provider = &mockBillingProvider{
+		code: billingProviderPaddle,
+		reconcileEvent: sharedbilling.WebhookEvent{
+			ProviderCode: billingProviderPaddle,
+			EventID:      "reconcile:txn_foreign",
+			EventType:    paddleEventTypeTransactionCompleted,
+			OccurredAt:   time.Date(2026, time.March, 31, 12, 3, 30, 0, time.UTC),
+			Payload:      []byte(`{"data":{}}`),
+		},
+		reconcileEmail: "user@example.com",
+		resolveStatus:  sharedbilling.CheckoutEventStatusSucceeded,
+		parseErr:       ErrBillingEventIgnored,
+	}
+	if _, err := service.ReconcileCheckout(context.Background(), "user-1", "user@example.com", "txn_foreign"); !errors.Is(err, ErrBillingCheckoutNotApplicable) {
+		t.Fatalf("expected foreign reconcile to be rejected, got %v", err)
 	}
 
 	var grantKey string
@@ -1042,6 +1082,28 @@ func TestBillingServiceHandleWebhookGrantResolutionCoverage(t *testing.T) {
 		}
 		if createdRecord == nil || createdRecord.UserID != "resolved-user" {
 			t.Fatalf("expected resolved user id in billing event record, got %#v", createdRecord)
+		}
+	})
+
+	t.Run("ignores foreign webhook event", func(t *testing.T) {
+		service := &billingService{
+			cfg:          validBillingConfig(),
+			ledgerClient: &mockLedgerClient{},
+			logger:       zap.NewNop(),
+			provider: &mockBillingProvider{
+				code:     billingProviderPaddle,
+				parseErr: ErrBillingEventIgnored,
+			},
+			store: &mockStore{
+				createBillingEventRecordFunc: func(record *BillingEventRecord) error {
+					t.Fatalf("unexpected billing event record %#v", record)
+					return nil
+				},
+			},
+		}
+
+		if err := service.HandleWebhook(context.Background(), "sig", []byte(`{}`)); !errors.Is(err, ErrBillingEventIgnored) {
+			t.Fatalf("expected ignored webhook event, got %v", err)
 		}
 	})
 

@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -359,7 +360,11 @@ func TestPaddleParseWebhookEventCoverage(t *testing.T) {
 	    "custom_data": {
 	      "pack_code": "starter"
 	    },
-	    "items": []
+	    "items": [
+	      {
+	        "price_id": "pri_test_starter"
+	      }
+	    ]
 	  }
 	}`)
 	providerEvent, err = provider.ParseWebhookEvent(updatedPayload)
@@ -404,7 +409,12 @@ func TestPaddleParseWebhookEventLegacyCoverage(t *testing.T) {
 	      "crossword_user_id": "legacy-user",
 	      "pack_code": "starter",
 	      "credits": "20"
-	    }
+	    },
+	    "items": [
+	      {
+	        "price_id": "pri_test_starter"
+	      }
+	    ]
 	  }
 	}`)
 
@@ -436,7 +446,12 @@ func TestPaddleParseWebhookEventLegacyCoverage(t *testing.T) {
 	    "custom_data": {
 	      "pack_code": "starter",
 	      "credits": "20"
-	    }
+	    },
+	    "items": [
+	      {
+	        "price_id": "pri_test_starter"
+	      }
+	    ]
 	  }
 	}`)
 
@@ -469,7 +484,12 @@ func TestPaddleParseWebhookEventLegacyCoverage(t *testing.T) {
 	    "status": "open",
 	    "customer": {
 	      "email_address": "legacy-fallback@example.com"
-	    }
+	    },
+	    "items": [
+	      {
+	        "price_id": "pri_test_starter"
+	      }
+	    ]
 	  }
 	}`)
 
@@ -537,7 +557,11 @@ func TestPaddleParseSharedWebhookEventAdditionalCoverage(t *testing.T) {
 	      "email_address": "shared@example.com"
 	    },
 	    "custom_data": {},
-	    "items": []
+	    "items": [
+	      {
+	        "price_id": "pri_test_starter"
+	      }
+	    ]
 	  }
 	}`)
 
@@ -546,6 +570,51 @@ func TestPaddleParseSharedWebhookEventAdditionalCoverage(t *testing.T) {
 	}
 	if _, err := provider.ParseWebhookEvent(payload); err == nil || !strings.Contains(err.Error(), "resolve failed") {
 		t.Fatalf("expected shared resolver error, got %v", err)
+	}
+
+	foreignPayload := []byte(`{
+	  "event_id": "evt_shared_foreign",
+	  "event_type": "transaction.completed",
+	  "occurred_at": "2026-03-28T18:41:00Z",
+	  "data": {
+	    "id": "txn_shared_foreign",
+	    "status": "completed",
+	    "customer_id": "ctm_shared_foreign",
+	    "customer": {
+	      "email_address": "shared@example.com"
+	    },
+	    "custom_data": {
+	      "pack_code": "starter"
+	    },
+	    "items": [
+	      {
+	        "price_id": "pri_foreign"
+	      }
+	    ]
+	  }
+	}`)
+	provider.sharedGrantResolver = stubSharedGrantResolver{
+		err: sharedbilling.ErrWebhookGrantPackUnknown,
+	}
+	if _, err := provider.ParseWebhookEvent(foreignPayload); !errors.Is(err, ErrBillingEventIgnored) {
+		t.Fatalf("expected ignored foreign shared resolver error, got %v", err)
+	}
+
+	provider.sharedGrantResolver = stubSharedGrantResolver{
+		grant: sharedbilling.WebhookGrant{
+			SubjectID: "shared-user",
+			Credits:   25,
+			Reference: "shared-ref-foreign",
+			Reason:    "billing_credit_pack",
+			Metadata: map[string]string{
+				"billing_pack_code": "starter",
+				"billing_price_id":  "pri_foreign",
+			},
+		},
+		shouldGrant: true,
+	}
+	if _, err := provider.ParseWebhookEvent(foreignPayload); !errors.Is(err, ErrBillingEventIgnored) {
+		t.Fatalf("expected ignored foreign shared event, got %v", err)
 	}
 
 	provider.sharedGrantResolver = stubSharedGrantResolver{
@@ -568,11 +637,90 @@ func TestPaddleParseSharedWebhookEventAdditionalCoverage(t *testing.T) {
 	if providerEvent.EventRecord.UserEmail != "shared@example.com" {
 		t.Fatalf("expected shared email_address fallback, got %#v", providerEvent.EventRecord)
 	}
-	if providerEvent.EventRecord.PackCode != "starter" || providerEvent.EventRecord.CreditsDelta != 25 {
+	if providerEvent.EventRecord.PackCode != "starter" || providerEvent.EventRecord.CreditsDelta != 20 {
 		t.Fatalf("expected shared metadata fallback values, got %#v", providerEvent.EventRecord)
 	}
 	if providerEvent.GrantEvent == nil || providerEvent.GrantEvent.Metadata["user_email"] != "shared@example.com" {
 		t.Fatalf("expected grant metadata to include fallback email, got %#v", providerEvent.GrantEvent)
+	}
+	if providerEvent.GrantEvent.Credits != 20 {
+		t.Fatalf("expected shared grant to use configured credits, got %#v", providerEvent.GrantEvent)
+	}
+}
+
+func TestPaddleResolveConfiguredPackPriceIDCoverage(t *testing.T) {
+	provider := &paddleBillingProvider{
+		cfg: validBillingConfig(),
+		packPrices: map[string]string{
+			"starter": "pri_test_starter",
+			"ghost":   "pri_missing_pack",
+		},
+	}
+
+	pack, priceID, ok := provider.resolveConfiguredPackPriceID("pri_test_starter", "")
+	if !ok || pack.Code != "starter" || priceID != "pri_test_starter" {
+		t.Fatalf("expected transaction price id match, got pack=%#v priceID=%q ok=%v", pack, priceID, ok)
+	}
+
+	pack, priceID, ok = provider.resolveConfiguredPackPriceID("", "pri_test_starter")
+	if !ok || pack.Code != "starter" || priceID != "pri_test_starter" {
+		t.Fatalf("expected metadata price id fallback, got pack=%#v priceID=%q ok=%v", pack, priceID, ok)
+	}
+
+	if _, _, ok := provider.resolveConfiguredPackPriceID("pri_unknown", ""); ok {
+		t.Fatal("expected unknown price id to be rejected")
+	}
+
+	if _, _, ok := provider.resolveConfiguredPackPriceID("pri_missing_pack", ""); ok {
+		t.Fatal("expected configured price without pack definition to be rejected")
+	}
+}
+
+func TestIsIgnorableSharedGrantResolveErrorCoverage(t *testing.T) {
+	if !isIgnorableSharedGrantResolveError(sharedbilling.ErrWebhookGrantMetadataInvalid) {
+		t.Fatal("expected metadata invalid error to be ignorable")
+	}
+	if !isIgnorableSharedGrantResolveError(fmt.Errorf("wrapped: %w", sharedbilling.ErrWebhookGrantPackUnknown)) {
+		t.Fatal("expected wrapped pack unknown error to be ignorable")
+	}
+	if !isIgnorableSharedGrantResolveError(sharedbilling.ErrWebhookGrantPlanUnknown) {
+		t.Fatal("expected plan unknown error to be ignorable")
+	}
+	if isIgnorableSharedGrantResolveError(errors.New("boom")) {
+		t.Fatal("expected arbitrary errors to remain non-ignorable")
+	}
+}
+
+func TestPaddleParseWebhookEventIgnoresForeignPackCoverage(t *testing.T) {
+	provider := newTestPaddleProvider(newTestPaddleAPIClient(func(request *http.Request) (*http.Response, error) {
+		t.Fatalf("unexpected HTTP request %s %s", request.Method, request.URL.String())
+		return nil, nil
+	}))
+
+	payload := []byte(`{
+	  "event_id": "evt_foreign",
+	  "event_type": "transaction.completed",
+	  "occurred_at": "2026-03-28T18:42:00Z",
+	  "data": {
+	    "id": "txn_foreign",
+	    "status": "completed",
+	    "customer_id": "ctm_foreign",
+	    "customer": {
+	      "email": "foreign@example.com"
+	    },
+	    "custom_data": {
+	      "pack_code": "starter"
+	    },
+	    "items": [
+	      {
+	        "price_id": "pri_foreign"
+	      }
+	    ]
+	  }
+	}`)
+
+	if _, err := provider.ParseWebhookEvent(payload); !errors.Is(err, ErrBillingEventIgnored) {
+		t.Fatalf("expected foreign legacy event to be ignored, got %v", err)
 	}
 }
 

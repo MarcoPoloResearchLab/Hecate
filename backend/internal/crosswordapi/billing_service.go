@@ -18,10 +18,12 @@ import (
 )
 
 var (
-	ErrBillingPackUnknown       = errors.New("billing.pack.unknown")
-	ErrBillingPortalUnavailable = errors.New("billing.portal.unavailable")
-	ErrBillingUnauthorized      = errors.New("billing.webhook.unauthorized")
-	ErrBillingWebhookInvalid    = errors.New("billing.webhook.invalid")
+	ErrBillingPackUnknown           = errors.New("billing.pack.unknown")
+	ErrBillingCheckoutNotApplicable = errors.New("billing.checkout.not_applicable")
+	ErrBillingEventIgnored          = errors.New("billing.event.ignored")
+	ErrBillingPortalUnavailable     = errors.New("billing.portal.unavailable")
+	ErrBillingUnauthorized          = errors.New("billing.webhook.unauthorized")
+	ErrBillingWebhookInvalid        = errors.New("billing.webhook.invalid")
 
 	errBillingServiceUnavailable = errors.New("billing.service.unavailable")
 )
@@ -187,6 +189,9 @@ func (service *billingService) SyncUserBillingEvents(ctx context.Context, userID
 			continue
 		}
 		if err := service.processSharedProviderEvent(ctx, syncEvent, normalizedUserID); err != nil {
+			if errors.Is(err, ErrBillingEventIgnored) {
+				continue
+			}
 			return fmt.Errorf("%w: %w", sharedbilling.ErrBillingUserSyncFailed, err)
 		}
 	}
@@ -240,6 +245,9 @@ func (service *billingService) ReconcileCheckout(
 	}
 
 	if err := service.processSharedProviderEvent(ctx, webhookEvent, strings.TrimSpace(userID)); err != nil {
+		if errors.Is(err, ErrBillingEventIgnored) {
+			return result, ErrBillingCheckoutNotApplicable
+		}
 		return result, err
 	}
 
@@ -280,6 +288,9 @@ func (service *billingService) HandleWebhook(ctx context.Context, signatureHeade
 
 	providerEvent, err := service.provider.ParseWebhookEvent(payload)
 	if err != nil {
+		if errors.Is(err, ErrBillingEventIgnored) {
+			return ErrBillingEventIgnored
+		}
 		return fmt.Errorf("%w: %v", ErrBillingWebhookInvalid, err)
 	}
 	return service.processProviderEvent(ctx, providerEvent)
@@ -331,6 +342,9 @@ func (service *billingService) processSharedProviderEvent(
 	}
 	providerEvent, err := service.provider.ParseWebhookEvent(payload)
 	if err != nil {
+		if errors.Is(err, ErrBillingEventIgnored) {
+			return ErrBillingEventIgnored
+		}
 		return err
 	}
 

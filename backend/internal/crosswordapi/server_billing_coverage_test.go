@@ -296,6 +296,26 @@ func TestHandleBillingWebhookCoverage(t *testing.T) {
 		ledgerClient: &mockLedgerClient{},
 		logger:       zap.NewNop(),
 		provider: &mockBillingProvider{
+			code:     billingProviderPaddle,
+			parseErr: ErrBillingEventIgnored,
+		},
+		store: &mockStore{},
+	}
+	router = testRouterWithClaims(handler, testClaims())
+	request = httptest.NewRequest(http.MethodPost, "/api/billing/paddle/webhook", strings.NewReader(`{}`))
+	request.Header.Set(paddleSignatureHeaderName, "sig")
+	request.Header.Set("Content-Type", "application/json")
+	recorder = httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 for ignored webhook payload, got %d", recorder.Code)
+	}
+
+	handler.billingService = &billingService{
+		cfg:          validBillingConfig(),
+		ledgerClient: &mockLedgerClient{},
+		logger:       zap.NewNop(),
+		provider: &mockBillingProvider{
 			code: billingProviderPaddle,
 			eventRecord: BillingEventRecord{
 				EventID:       "evt_1",
@@ -466,5 +486,23 @@ func TestHandleBillingCheckoutReconcileCoverage(t *testing.T) {
 	response = doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{"transaction_id":"txn_pending"}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200 for pending reconcile, got %d", response.Code)
+	}
+
+	handler.billingService.provider = &mockBillingProvider{
+		code: billingProviderPaddle,
+		reconcileEvent: sharedbilling.WebhookEvent{
+			ProviderCode: billingProviderPaddle,
+			EventID:      "reconcile:txn_foreign",
+			EventType:    paddleEventTypeTransactionCompleted,
+			OccurredAt:   time.Now().UTC(),
+			Payload:      []byte(`{"data":{}}`),
+		},
+		reconcileEmail: "user@example.com",
+		resolveStatus:  sharedbilling.CheckoutEventStatusSucceeded,
+		parseErr:       ErrBillingEventIgnored,
+	}
+	response = doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{"transaction_id":"txn_foreign"}`)
+	if response.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400 for foreign reconcile, got %d", response.Code)
 	}
 }

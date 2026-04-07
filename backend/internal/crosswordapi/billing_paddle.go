@@ -30,10 +30,11 @@ const (
 	paddleEventTypeTransactionUpdated   = "transaction.updated"
 	paddleEventTypeTransactionCompleted = "transaction.completed"
 
-	paddleMetadataUserIDKey    = "crossword_user_id"
-	paddleMetadataUserEmailKey = "user_email"
-	paddleMetadataPackCodeKey  = "pack_code"
-	paddleMetadataCreditsKey   = "credits"
+	paddleMetadataBillingPriceIDKey = "billing_price_id"
+	paddleMetadataUserIDKey         = "crossword_user_id"
+	paddleMetadataUserEmailKey      = "user_email"
+	paddleMetadataPackCodeKey       = "pack_code"
+	paddleMetadataCreditsKey        = "credits"
 
 	paddleCollectionModeAutomatic    = "automatic"
 	paddleCheckoutURLMissingCode     = "transaction_default_checkout_url_not_set"
@@ -350,9 +351,13 @@ func (provider *paddleBillingProvider) ParseWebhookEvent(payload []byte) (billin
 		userEmail = strings.TrimSpace(envelope.Data.Customer.EmailAddress)
 	}
 
-	packCode := normalizeBillingPackCode(readPaddleMetadataValue(envelope.Data.CustomData, paddleMetadataPackCodeKey))
-	priceID := resolvePaddlePriceID(envelope.Data.Items)
-	credits := provider.resolveCredits(packCode, priceID, readPaddleMetadataValue(envelope.Data.CustomData, paddleMetadataCreditsKey))
+	configuredPack, configuredPriceID, hasConfiguredPack := provider.resolveConfiguredPackPriceID(
+		resolvePaddlePriceID(envelope.Data.Items),
+		readPaddleMetadataValue(envelope.Data.CustomData, paddleMetadataBillingPriceIDKey),
+	)
+	if !hasConfiguredPack {
+		return billingProviderEvent{}, ErrBillingEventIgnored
+	}
 
 	eventRecord := BillingEventRecord{
 		Provider:         provider.Code(),
@@ -362,7 +367,7 @@ func (provider *paddleBillingProvider) ParseWebhookEvent(payload []byte) (billin
 		UserEmail:        userEmail,
 		PaddleCustomerID: strings.TrimSpace(envelope.Data.CustomerID),
 		TransactionID:    strings.TrimSpace(envelope.Data.ID),
-		PackCode:         packCode,
+		PackCode:         configuredPack.Code,
 		CreditsDelta:     0,
 		Status:           strings.TrimSpace(envelope.Data.Status),
 		OccurredAt:       occurredAt.UTC(),
@@ -374,8 +379,8 @@ func (provider *paddleBillingProvider) ParseWebhookEvent(payload []byte) (billin
 	}
 
 	providerEvent := billingProviderEvent{EventRecord: eventRecord}
-	if eventRecord.EventType == paddleEventTypeTransactionCompleted && credits > 0 {
-		providerEvent.EventRecord.CreditsDelta = credits
+	if eventRecord.EventType == paddleEventTypeTransactionCompleted {
+		providerEvent.EventRecord.CreditsDelta = configuredPack.Credits
 		if strings.TrimSpace(envelope.Data.CustomerID) != "" {
 			providerEvent.CustomerLink = &BillingCustomerLink{
 				UserID:           userID,
@@ -386,7 +391,7 @@ func (provider *paddleBillingProvider) ParseWebhookEvent(payload []byte) (billin
 		}
 		providerEvent.GrantEvent = &BillingGrantEvent{
 			User:       userID,
-			Credits:    credits,
+			Credits:    configuredPack.Credits,
 			Reference:  "paddle:credit_pack:" + strings.TrimSpace(envelope.Data.ID),
 			ReasonCode: "billing_credit_pack",
 			Metadata: map[string]string{
@@ -394,8 +399,8 @@ func (provider *paddleBillingProvider) ParseWebhookEvent(payload []byte) (billin
 				"billing_event_id":       strings.TrimSpace(envelope.EventID),
 				"billing_event_type":     strings.TrimSpace(envelope.EventType),
 				"billing_transaction_id": strings.TrimSpace(envelope.Data.ID),
-				"billing_pack_code":      packCode,
-				"billing_price_id":       priceID,
+				"billing_pack_code":      configuredPack.Code,
+				"billing_price_id":       configuredPriceID,
 				"user_email":             strings.TrimSpace(userEmail),
 			},
 			Provider: provider.Code(),
@@ -411,6 +416,10 @@ func (provider *paddleBillingProvider) parseSharedWebhookEvent(payload []byte) (
 	if err := json.Unmarshal(payload, &envelope); err != nil {
 		return billingProviderEvent{}, err
 	}
+	configuredPack, configuredPriceID, hasConfiguredPack := provider.resolveConfiguredPackPriceID(
+		resolvePaddlePriceID(envelope.Data.Items),
+		readPaddleMetadataValue(envelope.Data.CustomData, paddleMetadataBillingPriceIDKey),
+	)
 
 	eventMetadata, err := provider.sharedProvider.ParseWebhookEvent(payload)
 	if err != nil {
@@ -425,7 +434,13 @@ func (provider *paddleBillingProvider) parseSharedWebhookEvent(payload []byte) (
 		Payload:      payload,
 	})
 	if grantErr != nil {
+		if !hasConfiguredPack && isIgnorableSharedGrantResolveError(grantErr) {
+			return billingProviderEvent{}, ErrBillingEventIgnored
+		}
 		return billingProviderEvent{}, grantErr
+	}
+	if !hasConfiguredPack {
+		return billingProviderEvent{}, ErrBillingEventIgnored
 	}
 
 	userID := strings.TrimSpace(grant.SubjectID)
@@ -440,19 +455,6 @@ func (provider *paddleBillingProvider) parseSharedWebhookEvent(payload []byte) (
 		userEmail = strings.TrimSpace(envelope.Data.Customer.EmailAddress)
 	}
 
-	packCode := normalizeBillingPackCode(readPaddleMetadataValue(envelope.Data.CustomData, paddleMetadataPackCodeKey))
-	if packCode == "" && shouldGrant {
-		packCode = normalizeBillingPackCode(grant.Metadata["billing_pack_code"])
-	}
-	priceID := resolvePaddlePriceID(envelope.Data.Items)
-	if priceID == "" && shouldGrant {
-		priceID = strings.TrimSpace(grant.Metadata["billing_price_id"])
-	}
-	credits := provider.resolveCredits(packCode, priceID, readPaddleMetadataValue(envelope.Data.CustomData, paddleMetadataCreditsKey))
-	if shouldGrant && grant.Credits > 0 {
-		credits = grant.Credits
-	}
-
 	eventRecord := BillingEventRecord{
 		Provider:         provider.Code(),
 		EventID:          strings.TrimSpace(eventMetadata.EventID),
@@ -461,7 +463,7 @@ func (provider *paddleBillingProvider) parseSharedWebhookEvent(payload []byte) (
 		UserEmail:        userEmail,
 		PaddleCustomerID: strings.TrimSpace(envelope.Data.CustomerID),
 		TransactionID:    strings.TrimSpace(envelope.Data.ID),
-		PackCode:         packCode,
+		PackCode:         configuredPack.Code,
 		CreditsDelta:     0,
 		Status:           strings.TrimSpace(envelope.Data.Status),
 		OccurredAt:       eventMetadata.OccurredAt.UTC(),
@@ -473,14 +475,17 @@ func (provider *paddleBillingProvider) parseSharedWebhookEvent(payload []byte) (
 	}
 
 	providerEvent := billingProviderEvent{EventRecord: eventRecord}
-	if eventRecord.EventType == paddleEventTypeTransactionCompleted && credits > 0 {
-		providerEvent.EventRecord.CreditsDelta = credits
+	if eventRecord.EventType == paddleEventTypeTransactionCompleted && shouldGrant {
+		providerEvent.EventRecord.CreditsDelta = configuredPack.Credits
+		grantMetadata := cloneBillingMetadata(grant.Metadata, userEmail)
+		grantMetadata["billing_pack_code"] = configuredPack.Code
+		grantMetadata["billing_price_id"] = configuredPriceID
 		providerEvent.GrantEvent = &BillingGrantEvent{
 			User:       userID,
-			Credits:    credits,
+			Credits:    configuredPack.Credits,
 			Reference:  strings.TrimSpace(grant.Reference),
 			ReasonCode: strings.TrimSpace(grant.Reason),
-			Metadata:   cloneBillingMetadata(grant.Metadata, userEmail),
+			Metadata:   grantMetadata,
 			Provider:   provider.Code(),
 			EventID:    strings.TrimSpace(eventMetadata.EventID),
 		}
@@ -495,6 +500,37 @@ func (provider *paddleBillingProvider) parseSharedWebhookEvent(payload []byte) (
 	}
 
 	return providerEvent, nil
+}
+
+func (provider *paddleBillingProvider) resolveConfiguredPackPriceID(
+	transactionPriceID string,
+	metadataPriceID string,
+) (BillingPack, string, bool) {
+	for _, candidatePriceID := range []string{
+		strings.TrimSpace(transactionPriceID),
+		strings.TrimSpace(metadataPriceID),
+	} {
+		if candidatePriceID == "" {
+			continue
+		}
+		for configuredPackCode, configuredPackPriceID := range provider.packPrices {
+			if strings.TrimSpace(configuredPackPriceID) != candidatePriceID {
+				continue
+			}
+			configuredPack, found := provider.cfg.FindBillingPack(configuredPackCode)
+			if !found {
+				return BillingPack{}, "", false
+			}
+			return configuredPack, candidatePriceID, true
+		}
+	}
+	return BillingPack{}, "", false
+}
+
+func isIgnorableSharedGrantResolveError(resolveError error) bool {
+	return errors.Is(resolveError, sharedbilling.ErrWebhookGrantMetadataInvalid) ||
+		errors.Is(resolveError, sharedbilling.ErrWebhookGrantPackUnknown) ||
+		errors.Is(resolveError, sharedbilling.ErrWebhookGrantPlanUnknown)
 }
 
 func (provider *paddleBillingProvider) resolveCredits(packCode string, priceID string, metadataCredits string) int64 {

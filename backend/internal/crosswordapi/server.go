@@ -457,6 +457,8 @@ func (handler *httpHandler) handleBillingCheckoutReconcile(ctx *gin.Context) {
 			ctx.JSON(http.StatusBadRequest, errorResponse("billing_checkout_invalid", "billing reconcile requires an account email"))
 		case errors.Is(err, sharedbilling.ErrPaddleAPITransactionNotFound):
 			ctx.JSON(http.StatusBadRequest, errorResponse("billing_checkout_invalid", "billing transaction not found"))
+		case errors.Is(err, ErrBillingCheckoutNotApplicable):
+			ctx.JSON(http.StatusBadRequest, errorResponse("billing_checkout_invalid", "billing transaction is not a crossword checkout"))
 		case errors.Is(err, sharedbilling.ErrBillingCheckoutOwnershipMismatch):
 			ctx.JSON(http.StatusForbidden, errorResponse("billing_checkout_forbidden", "billing transaction does not belong to the current user"))
 		case errors.Is(err, sharedbilling.ErrBillingCheckoutReconciliationUnsupported):
@@ -518,6 +520,8 @@ func (handler *httpHandler) handleBillingWebhook(ctx *gin.Context) {
 
 	if err := handler.billingService.HandleWebhook(ctx.Request.Context(), signatureHeader, payload); err != nil {
 		switch {
+		case errors.Is(err, ErrBillingEventIgnored):
+			ctx.JSON(http.StatusOK, gin.H{"ok": true})
 		case errors.Is(err, ErrBillingUnauthorized):
 			ctx.JSON(http.StatusUnauthorized, errorResponse("unauthorized", "invalid webhook signature"))
 		case errors.Is(err, ErrBillingWebhookInvalid):
