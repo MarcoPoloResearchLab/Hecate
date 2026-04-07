@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.2.1] - 2026-04-07
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Paddle billing webhook processing now only handles events for configured packs and price IDs to prevent processing unrelated transactions.
+
+### Bug Fixes 🐛
+- Ignore webhook events with unrecognized billing pack or price IDs to avoid processing foreign or invalid events.
+
+### Testing 🧪
+- Added coverage for paddle billing webhook parsing with various scenarios including legacy payloads, shared grants, and foreign events.
+- Tested new logic to resolve configured pack price IDs and error ignoring on unknown shared grant errors.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.2.0] - 2026-04-07
 
 ### Features ✨
