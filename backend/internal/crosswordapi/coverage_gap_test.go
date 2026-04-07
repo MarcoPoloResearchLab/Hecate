@@ -153,8 +153,8 @@ func TestCoverageGapBillingServiceReconcileBranches(t *testing.T) {
 }
 
 func TestCoverageGapProcessSharedProviderEventBranches(t *testing.T) {
-	if err := (*billingService)(nil).processSharedProviderEvent(context.Background(), sharedbilling.WebhookEvent{}, "user-1"); !errors.Is(err, ErrBillingDisabled) {
-		t.Fatalf("expected disabled shared provider event error, got %v", err)
+	if err := (*billingService)(nil).processSharedProviderEvent(context.Background(), sharedbilling.WebhookEvent{}, "user-1"); !errors.Is(err, errBillingServiceUnavailable) {
+		t.Fatalf("expected unavailable shared provider event error, got %v", err)
 	}
 
 	service := &billingService{
@@ -245,8 +245,8 @@ func TestCoverageGapProcessSharedProviderEventBackfillsFallbackUserAndProvider(t
 }
 
 func TestCoverageGapProcessProviderEventGuardsAndErrors(t *testing.T) {
-	if err := (*billingService)(nil).processProviderEvent(context.Background(), billingProviderEvent{}); !errors.Is(err, ErrBillingDisabled) {
-		t.Fatalf("expected disabled provider event error, got %v", err)
+	if err := (*billingService)(nil).processProviderEvent(context.Background(), billingProviderEvent{}); !errors.Is(err, errBillingServiceUnavailable) {
+		t.Fatalf("expected unavailable provider event error, got %v", err)
 	}
 
 	service := &billingService{
@@ -332,7 +332,7 @@ func TestCoverageGapBillingWebhookPayloadHelpers(t *testing.T) {
 }
 
 func TestCoverageGapServerBillingHandlers(t *testing.T) {
-	t.Run("billing sync returns unavailable when provider is disabled", func(t *testing.T) {
+	t.Run("billing sync returns internal error when provider is missing", func(t *testing.T) {
 		handler := testHandlerWithConfig(&mockLedgerClient{}, nil, &mockStore{}, validBillingConfig())
 		handler.billingService = &billingService{
 			cfg:          validBillingConfig(),
@@ -343,8 +343,8 @@ func TestCoverageGapServerBillingHandlers(t *testing.T) {
 		router := testRouterWithClaims(handler, testClaims())
 
 		response := doRequest(router, http.MethodPost, "/api/billing/sync", `{}`)
-		if response.Code != http.StatusServiceUnavailable {
-			t.Fatalf("expected 503 from billing sync with disabled provider, got %d", response.Code)
+		if response.Code != http.StatusInternalServerError {
+			t.Fatalf("expected 500 from billing sync with missing provider, got %d", response.Code)
 		}
 	})
 
@@ -365,7 +365,7 @@ func TestCoverageGapServerBillingHandlers(t *testing.T) {
 		}
 	})
 
-	t.Run("billing reconcile returns unavailable when provider is disabled", func(t *testing.T) {
+	t.Run("billing reconcile returns internal error when provider is missing", func(t *testing.T) {
 		handler := testHandlerWithConfig(&mockLedgerClient{}, nil, &mockStore{}, validBillingConfig())
 		handler.billingService = &billingService{
 			cfg:          validBillingConfig(),
@@ -376,8 +376,8 @@ func TestCoverageGapServerBillingHandlers(t *testing.T) {
 		router := testRouterWithClaims(handler, testClaims())
 
 		response := doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{"transaction_id":"txn_1"}`)
-		if response.Code != http.StatusServiceUnavailable {
-			t.Fatalf("expected 503 from billing reconcile with disabled provider, got %d", response.Code)
+		if response.Code != http.StatusInternalServerError {
+			t.Fatalf("expected 500 from billing reconcile with missing provider, got %d", response.Code)
 		}
 	})
 

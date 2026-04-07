@@ -24,10 +24,16 @@ func TestNewBillingServiceCoverage(t *testing.T) {
 
 	service, err := newBillingService(cfg, &mockLedgerClient{}, &mockStore{}, zap.NewNop())
 	if err != nil {
-		t.Fatalf("newBillingService(disabled) error = %v", err)
+		t.Fatalf("newBillingService(valid) error = %v", err)
 	}
-	if service != nil {
-		t.Fatalf("expected nil billing service when billing is disabled, got %#v", service)
+	if service == nil || service.provider == nil {
+		t.Fatalf("expected billing service with provider, got %#v", service)
+	}
+
+	cfg = validConfig()
+	cfg.BillingProvider = ""
+	if _, err := newBillingService(cfg, &mockLedgerClient{}, &mockStore{}, zap.NewNop()); err == nil || !strings.Contains(err.Error(), "billing provider is required") {
+		t.Fatalf("expected missing-provider error, got %v", err)
 	}
 
 	cfg = validBillingConfig()
@@ -45,7 +51,7 @@ func TestNewBillingServiceCoverage(t *testing.T) {
 	cfg = validBillingConfig()
 	service, err = newBillingService(cfg, &mockLedgerClient{}, &mockStore{}, zap.NewNop())
 	if err != nil {
-		t.Fatalf("newBillingService(enabled) error = %v", err)
+		t.Fatalf("newBillingService(live) error = %v", err)
 	}
 	if service == nil || service.provider == nil {
 		t.Fatalf("expected billing service with provider, got %#v", service)
@@ -54,11 +60,8 @@ func TestNewBillingServiceCoverage(t *testing.T) {
 
 func TestBillingServiceSummaryCoverage(t *testing.T) {
 	summary, err := (*billingService)(nil).Summary(context.Background(), "user-123")
-	if err != nil {
-		t.Fatalf("nil Summary() error = %v", err)
-	}
-	if summary.Enabled || summary.PortalAvailable || len(summary.Packs) != 0 || len(summary.Activity) != 0 {
-		t.Fatalf("unexpected nil summary payload %#v", summary)
+	if !errors.Is(err, errBillingServiceUnavailable) {
+		t.Fatalf("expected unavailable summary error, got summary=%#v err=%v", summary, err)
 	}
 
 	service := &billingService{
@@ -181,8 +184,8 @@ func TestBillingActivityHelpersCoverage(t *testing.T) {
 }
 
 func TestBillingServiceCreateCheckoutCoverage(t *testing.T) {
-	if _, err := (*billingService)(nil).CreateCheckout(context.Background(), "user-1", "user@example.com", "starter", "https://site.example.com"); !errors.Is(err, ErrBillingDisabled) {
-		t.Fatalf("expected disabled checkout error, got %v", err)
+	if _, err := (*billingService)(nil).CreateCheckout(context.Background(), "user-1", "user@example.com", "starter", "https://site.example.com"); !errors.Is(err, errBillingServiceUnavailable) {
+		t.Fatalf("expected unavailable checkout error, got %v", err)
 	}
 
 	service := &billingService{
@@ -214,8 +217,8 @@ func TestBillingServiceCreateCheckoutCoverage(t *testing.T) {
 }
 
 func TestBillingServiceCreatePortalSessionCoverage(t *testing.T) {
-	if _, err := (*billingService)(nil).CreatePortalSession(context.Background(), "user-1"); !errors.Is(err, ErrBillingDisabled) {
-		t.Fatalf("expected disabled portal error, got %v", err)
+	if _, err := (*billingService)(nil).CreatePortalSession(context.Background(), "user-1"); !errors.Is(err, errBillingServiceUnavailable) {
+		t.Fatalf("expected unavailable portal error, got %v", err)
 	}
 
 	service := &billingService{
@@ -274,8 +277,8 @@ func TestBillingServiceCreatePortalSessionCoverage(t *testing.T) {
 }
 
 func TestBillingServiceHandleWebhookCoverage(t *testing.T) {
-	if err := (*billingService)(nil).HandleWebhook(context.Background(), "sig", []byte(`{}`)); !errors.Is(err, ErrBillingDisabled) {
-		t.Fatalf("expected disabled webhook error, got %v", err)
+	if err := (*billingService)(nil).HandleWebhook(context.Background(), "sig", []byte(`{}`)); !errors.Is(err, errBillingServiceUnavailable) {
+		t.Fatalf("expected unavailable webhook error, got %v", err)
 	}
 
 	service := &billingService{
@@ -596,8 +599,8 @@ func TestBillingServiceResolveBillingGrantUserIDCoverage(t *testing.T) {
 }
 
 func TestBillingServiceSyncUserBillingEventsCoverage(t *testing.T) {
-	if err := (*billingService)(nil).SyncUserBillingEvents(context.Background(), "user-1", "user@example.com"); !errors.Is(err, ErrBillingDisabled) {
-		t.Fatalf("expected disabled sync error, got %v", err)
+	if err := (*billingService)(nil).SyncUserBillingEvents(context.Background(), "user-1", "user@example.com"); !errors.Is(err, errBillingServiceUnavailable) {
+		t.Fatalf("expected unavailable sync error, got %v", err)
 	}
 
 	service := &billingService{
@@ -682,8 +685,8 @@ func TestBillingServiceSyncUserBillingEventsCoverage(t *testing.T) {
 }
 
 func TestBillingServiceReconcileCheckoutCoverage(t *testing.T) {
-	if _, err := (*billingService)(nil).ReconcileCheckout(context.Background(), "user-1", "user@example.com", "txn_1"); !errors.Is(err, ErrBillingDisabled) {
-		t.Fatalf("expected disabled reconcile error, got %v", err)
+	if _, err := (*billingService)(nil).ReconcileCheckout(context.Background(), "user-1", "user@example.com", "txn_1"); !errors.Is(err, errBillingServiceUnavailable) {
+		t.Fatalf("expected unavailable reconcile error, got %v", err)
 	}
 
 	service := &billingService{

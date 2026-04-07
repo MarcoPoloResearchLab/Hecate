@@ -5,6 +5,7 @@
   var services = window.LLMCrosswordServices || null;
   var _fetch = window.authFetch || window.fetch.bind(window);
   var billingRestoreDrawerStorageKey = "llm-crossword-billing-restore-drawer";
+  var billingUnavailableMessage = "Billing details are unavailable right now.";
   var defaultCoinValueCents = 100;
   var placeholderValue = "—";
 
@@ -273,7 +274,6 @@
     return {
       activity: Array.isArray(summary.activity) ? summary.activity : [],
       balance: summary.balance || null,
-      enabled: summary.enabled === true,
       packs: Array.isArray(summary.packs) ? summary.packs : [],
       portal_available: summary.portal_available === true,
       provider_code: hasDisplayValue(summary.provider_code) ? String(summary.provider_code) : "",
@@ -402,7 +402,7 @@
       var empty = document.createElement("div");
 
       empty.className = "billing-pack-list__empty";
-      empty.textContent = "Credit packs are not configured for this deployment.";
+      empty.textContent = billingUnavailableMessage;
       settingsBillingPackList.appendChild(empty);
       return;
     }
@@ -451,20 +451,12 @@
   function renderBillingSummary() {
     var balanceCredits;
     var generationCostCredits;
+    var summary = billingSummary;
 
     if (!settingsBillingPanel || !settingsBillingBalanceValue || !settingsBillingBalanceMeta) return;
 
-    if (!billingSummary || billingSummary.enabled !== true) {
-      settingsBillingBalanceValue.textContent = placeholderValue;
-      settingsBillingBalanceMeta.textContent = "Credit purchases are not enabled on this deployment.";
-      if (settingsManageBillingButton) settingsManageBillingButton.style.display = "none";
-      renderBillingPacks([]);
-      renderBillingActivity([]);
-      return;
-    }
-
-    balanceCredits = getBalanceCredits(billingSummary.balance);
-    generationCostCredits = getGenerationCostCredits(billingSummary.balance);
+    balanceCredits = getBalanceCredits(summary && summary.balance);
+    generationCostCredits = getGenerationCostCredits(summary && summary.balance);
     settingsBillingBalanceValue.textContent = balanceCredits === null ? placeholderValue : balanceCredits + " credits";
     if (generationCostCredits === null) {
       settingsBillingBalanceMeta.textContent = "Purchases are granted after Paddle confirms payment.";
@@ -477,12 +469,12 @@
     if (settingsManageBillingButton) {
       // Keep the portal action hidden until the server reports a complete
       // billing-customer link. Do not optimistically expose fallback paths.
-      settingsManageBillingButton.style.display = billingSummary.portal_available ? "" : "none";
-      settingsManageBillingButton.disabled = billingSummary.portal_available !== true;
+      settingsManageBillingButton.style.display = summary && summary.portal_available ? "" : "none";
+      settingsManageBillingButton.disabled = !summary || summary.portal_available !== true;
     }
 
-    renderBillingPacks(billingSummary.packs);
-    renderBillingActivity(billingSummary.activity);
+    renderBillingPacks(summary && summary.packs);
+    renderBillingActivity(summary && summary.activity);
     setBillingActionState(false);
   }
 

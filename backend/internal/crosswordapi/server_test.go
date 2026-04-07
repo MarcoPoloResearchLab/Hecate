@@ -81,23 +81,10 @@ func (m *mockLedgerClient) ListReservations(ctx context.Context, in *creditv1.Li
 // --- test helpers ---
 
 func testConfig() Config {
-	return Config{
-		ListenAddr:        ":0",
-		LedgerAddress:     "localhost:50051",
-		LedgerInsecure:    true,
-		LedgerTimeout:     5 * time.Second,
-		LedgerSecretKey:   "test-secret",
-		DefaultTenantID:   "tenant-1",
-		DefaultLedgerID:   "ledger-1",
-		AllowedOrigins:    []string{"http://localhost:8000"},
-		SessionSigningKey: "test-secret-key-that-is-long-enough",
-		SessionIssuer:     "tauth",
-		SessionCookieName: "app_session",
-		TAuthBaseURL:      "http://localhost:8080",
-		LLMProxyURL:       "http://localhost:9999",
-		LLMProxyKey:       "test-key",
-		LLMProxyTimeout:   30 * time.Second,
-	}
+	cfg := validConfig()
+	cfg.ListenAddr = ":0"
+	cfg.SessionSigningKey = "test-secret-key-that-is-long-enough"
+	return cfg
 }
 
 func testHandler(ledger *mockLedgerClient, llmServer *httptest.Server) *httpHandler {

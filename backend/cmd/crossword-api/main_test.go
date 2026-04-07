@@ -45,31 +45,12 @@ func TestLoadConfig_MissingRequired(t *testing.T) {
 }
 
 func TestLoadConfig_AllSet(t *testing.T) {
-	envVars := map[string]string{
-		"CROSSWORDAPI_LISTEN_ADDR":       ":9090",
-		"CROSSWORDAPI_LEDGER_ADDR":       "localhost:50051",
-		"CROSSWORDAPI_LEDGER_INSECURE":   "true",
-		"CROSSWORDAPI_LEDGER_TIMEOUT":    "5s",
-		"CROSSWORDAPI_LEDGER_SECRET_KEY": "test-secret",
-		"CROSSWORDAPI_DEFAULT_TENANT_ID": "t1",
-		"CROSSWORDAPI_DEFAULT_LEDGER_ID": "l1",
-		"CROSSWORDAPI_ALLOWED_ORIGINS":   "http://localhost:8000",
-		"CROSSWORDAPI_JWT_SIGNING_KEY":   "test-key",
-		"CROSSWORDAPI_JWT_ISSUER":        "tauth",
-		"CROSSWORDAPI_JWT_COOKIE_NAME":   "app_session",
-		"CROSSWORDAPI_TAUTH_BASE_URL":    "http://localhost:8080",
-		"CROSSWORDAPI_LLM_PROXY_URL":     "http://localhost:9999",
-		"CROSSWORDAPI_LLM_PROXY_KEY":     "secret",
-		"CROSSWORDAPI_LLM_PROXY_TIMEOUT": "30s",
-	}
-	for k, v := range envVars {
-		os.Setenv(k, v)
-	}
-	defer func() {
-		for k := range envVars {
-			os.Unsetenv(k)
-		}
-	}()
+	setRequiredConfigEnv(t)
+	t.Setenv("CROSSWORDAPI_LISTEN_ADDR", ":9090")
+	t.Setenv("CROSSWORDAPI_DEFAULT_TENANT_ID", "t1")
+	t.Setenv("CROSSWORDAPI_DEFAULT_LEDGER_ID", "l1")
+	t.Setenv("CROSSWORDAPI_JWT_SIGNING_KEY", "test-key")
+	useTestAppConfig(t, "")
 
 	cmd := newRootCommand()
 	cfg := &crosswordapi.Config{}
@@ -88,50 +69,12 @@ func TestLoadConfig_AllSet(t *testing.T) {
 }
 
 func TestLoadConfig_AdminEmailsFromConfigYAML(t *testing.T) {
-	envVars := map[string]string{
-		"CROSSWORDAPI_LISTEN_ADDR":       ":9090",
-		"CROSSWORDAPI_LEDGER_ADDR":       "localhost:50051",
-		"CROSSWORDAPI_LEDGER_INSECURE":   "true",
-		"CROSSWORDAPI_LEDGER_TIMEOUT":    "5s",
-		"CROSSWORDAPI_LEDGER_SECRET_KEY": "test-secret",
-		"CROSSWORDAPI_DEFAULT_TENANT_ID": "t1",
-		"CROSSWORDAPI_DEFAULT_LEDGER_ID": "l1",
-		"CROSSWORDAPI_ALLOWED_ORIGINS":   "http://localhost:8000",
-		"CROSSWORDAPI_JWT_SIGNING_KEY":   "test-key",
-		"CROSSWORDAPI_JWT_ISSUER":        "tauth",
-		"CROSSWORDAPI_JWT_COOKIE_NAME":   "app_session",
-		"CROSSWORDAPI_TAUTH_BASE_URL":    "http://localhost:8080",
-		"CROSSWORDAPI_LLM_PROXY_URL":     "http://localhost:9999",
-		"CROSSWORDAPI_LLM_PROXY_KEY":     "secret",
-		"CROSSWORDAPI_LLM_PROXY_TIMEOUT": "30s",
-	}
-	for key, value := range envVars {
-		os.Setenv(key, value)
-	}
-	defer func() {
-		for key := range envVars {
-			os.Unsetenv(key)
-		}
-	}()
-
-	tempDir := t.TempDir()
-	configDir := filepath.Join(tempDir, "configs")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("mkdir configs: %v", err)
-	}
-	configPath := filepath.Join(configDir, "config.yml")
-	if err := os.WriteFile(configPath, []byte("administrators:\n  - \"admin@example.com\"\n"), 0o644); err != nil {
-		t.Fatalf("write config.yml: %v", err)
-	}
-
-	originalWorkingDirectory, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(tempDir); err != nil {
-		t.Fatalf("chdir tempDir: %v", err)
-	}
-	defer os.Chdir(originalWorkingDirectory)
+	setRequiredConfigEnv(t)
+	t.Setenv("CROSSWORDAPI_LISTEN_ADDR", ":9090")
+	t.Setenv("CROSSWORDAPI_DEFAULT_TENANT_ID", "t1")
+	t.Setenv("CROSSWORDAPI_DEFAULT_LEDGER_ID", "l1")
+	t.Setenv("CROSSWORDAPI_JWT_SIGNING_KEY", "test-key")
+	useTestAppConfig(t, "administrators:\n  - \"admin@example.com\"\n")
 
 	cmd := newRootCommand()
 	cfg := &crosswordapi.Config{}
@@ -144,51 +87,13 @@ func TestLoadConfig_AdminEmailsFromConfigYAML(t *testing.T) {
 }
 
 func TestLoadConfig_AdminEmailsMergeEnvAndConfig(t *testing.T) {
-	envVars := map[string]string{
-		"CROSSWORDAPI_LISTEN_ADDR":       ":9090",
-		"CROSSWORDAPI_LEDGER_ADDR":       "localhost:50051",
-		"CROSSWORDAPI_LEDGER_INSECURE":   "true",
-		"CROSSWORDAPI_LEDGER_TIMEOUT":    "5s",
-		"CROSSWORDAPI_LEDGER_SECRET_KEY": "test-secret",
-		"CROSSWORDAPI_DEFAULT_TENANT_ID": "t1",
-		"CROSSWORDAPI_DEFAULT_LEDGER_ID": "l1",
-		"CROSSWORDAPI_ALLOWED_ORIGINS":   "http://localhost:8000",
-		"CROSSWORDAPI_JWT_SIGNING_KEY":   "test-key",
-		"CROSSWORDAPI_JWT_ISSUER":        "tauth",
-		"CROSSWORDAPI_JWT_COOKIE_NAME":   "app_session",
-		"CROSSWORDAPI_TAUTH_BASE_URL":    "http://localhost:8080",
-		"CROSSWORDAPI_LLM_PROXY_URL":     "http://localhost:9999",
-		"CROSSWORDAPI_LLM_PROXY_KEY":     "secret",
-		"CROSSWORDAPI_LLM_PROXY_TIMEOUT": "30s",
-		"CROSSWORDAPI_ADMIN_EMAILS":      "env-admin@example.com",
-	}
-	for key, value := range envVars {
-		os.Setenv(key, value)
-	}
-	defer func() {
-		for key := range envVars {
-			os.Unsetenv(key)
-		}
-	}()
-
-	tempDir := t.TempDir()
-	configDir := filepath.Join(tempDir, "configs")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("mkdir configs: %v", err)
-	}
-	configPath := filepath.Join(configDir, "config.yml")
-	if err := os.WriteFile(configPath, []byte("administrators:\n  - \"file-admin@example.com\"\n"), 0o644); err != nil {
-		t.Fatalf("write config.yml: %v", err)
-	}
-
-	originalWorkingDirectory, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(tempDir); err != nil {
-		t.Fatalf("chdir tempDir: %v", err)
-	}
-	defer os.Chdir(originalWorkingDirectory)
+	setRequiredConfigEnv(t)
+	t.Setenv("CROSSWORDAPI_LISTEN_ADDR", ":9090")
+	t.Setenv("CROSSWORDAPI_DEFAULT_TENANT_ID", "t1")
+	t.Setenv("CROSSWORDAPI_DEFAULT_LEDGER_ID", "l1")
+	t.Setenv("CROSSWORDAPI_JWT_SIGNING_KEY", "test-key")
+	t.Setenv("CROSSWORDAPI_ADMIN_EMAILS", "env-admin@example.com")
+	useTestAppConfig(t, "administrators:\n  - \"file-admin@example.com\"\n")
 
 	cmd := newRootCommand()
 	cfg := &crosswordapi.Config{}
@@ -204,38 +109,11 @@ func TestLoadConfig_AdminEmailsMergeEnvAndConfig(t *testing.T) {
 }
 
 func TestLoadConfig_EconomyFromConfigYAML(t *testing.T) {
-	envVars := map[string]string{
-		"CROSSWORDAPI_LISTEN_ADDR":       ":9090",
-		"CROSSWORDAPI_LEDGER_ADDR":       "localhost:50051",
-		"CROSSWORDAPI_LEDGER_INSECURE":   "true",
-		"CROSSWORDAPI_LEDGER_TIMEOUT":    "5s",
-		"CROSSWORDAPI_LEDGER_SECRET_KEY": "test-secret",
-		"CROSSWORDAPI_DEFAULT_TENANT_ID": "t1",
-		"CROSSWORDAPI_DEFAULT_LEDGER_ID": "l1",
-		"CROSSWORDAPI_ALLOWED_ORIGINS":   "http://localhost:8000",
-		"CROSSWORDAPI_JWT_SIGNING_KEY":   "test-key",
-		"CROSSWORDAPI_JWT_ISSUER":        "tauth",
-		"CROSSWORDAPI_JWT_COOKIE_NAME":   "app_session",
-		"CROSSWORDAPI_TAUTH_BASE_URL":    "http://localhost:8080",
-		"CROSSWORDAPI_LLM_PROXY_URL":     "http://localhost:9999",
-		"CROSSWORDAPI_LLM_PROXY_KEY":     "secret",
-		"CROSSWORDAPI_LLM_PROXY_TIMEOUT": "30s",
-	}
-	for key, value := range envVars {
-		os.Setenv(key, value)
-	}
-	defer func() {
-		for key := range envVars {
-			os.Unsetenv(key)
-		}
-	}()
-
-	tempDir := t.TempDir()
-	configDir := filepath.Join(tempDir, "configs")
-	if err := os.MkdirAll(configDir, 0o755); err != nil {
-		t.Fatalf("mkdir configs: %v", err)
-	}
-	configPath := filepath.Join(configDir, "config.yml")
+	setRequiredConfigEnv(t)
+	t.Setenv("CROSSWORDAPI_LISTEN_ADDR", ":9090")
+	t.Setenv("CROSSWORDAPI_DEFAULT_TENANT_ID", "t1")
+	t.Setenv("CROSSWORDAPI_DEFAULT_LEDGER_ID", "l1")
+	t.Setenv("CROSSWORDAPI_JWT_SIGNING_KEY", "test-key")
 	configYAML := strings.Join([]string{
 		"economy:",
 		"  coin_value_cents: 10",
@@ -255,18 +133,7 @@ func TestLoadConfig_EconomyFromConfigYAML(t *testing.T) {
 		"    creator_shared_daily_cap_credits: 200",
 		"",
 	}, "\n")
-	if err := os.WriteFile(configPath, []byte(configYAML), 0o644); err != nil {
-		t.Fatalf("write config.yml: %v", err)
-	}
-
-	originalWorkingDirectory, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(tempDir); err != nil {
-		t.Fatalf("chdir tempDir: %v", err)
-	}
-	defer os.Chdir(originalWorkingDirectory)
+	useTestAppConfig(t, configYAML)
 
 	cmd := newRootCommand()
 	cfg := &crosswordapi.Config{}
@@ -313,31 +180,14 @@ func TestRun_SuccessPath(t *testing.T) {
 func TestRun_RunE_WithEnvVars(t *testing.T) {
 	// Set ALL required env vars so PreRunE (loadConfig) succeeds,
 	// but use an unreachable ledger address so RunE fails with a connection error.
-	envVars := map[string]string{
-		"CROSSWORDAPI_LISTEN_ADDR":       ":0",
-		"CROSSWORDAPI_LEDGER_ADDR":       "127.0.0.1:1", // unreachable
-		"CROSSWORDAPI_LEDGER_INSECURE":   "true",
-		"CROSSWORDAPI_LEDGER_TIMEOUT":    "1s",
-		"CROSSWORDAPI_LEDGER_SECRET_KEY": "test-secret",
-		"CROSSWORDAPI_DEFAULT_TENANT_ID": "t1",
-		"CROSSWORDAPI_DEFAULT_LEDGER_ID": "l1",
-		"CROSSWORDAPI_ALLOWED_ORIGINS":   "http://localhost",
-		"CROSSWORDAPI_JWT_SIGNING_KEY":   "test-secret-key-long-enough-for-hmac",
-		"CROSSWORDAPI_JWT_ISSUER":        "tauth",
-		"CROSSWORDAPI_JWT_COOKIE_NAME":   "app_session",
-		"CROSSWORDAPI_TAUTH_BASE_URL":    "http://localhost:8080",
-		"CROSSWORDAPI_LLM_PROXY_URL":     "http://localhost:9999",
-		"CROSSWORDAPI_LLM_PROXY_KEY":     "secret",
-		"CROSSWORDAPI_LLM_PROXY_TIMEOUT": "1s",
-	}
-	for k, v := range envVars {
-		os.Setenv(k, v)
-	}
-	defer func() {
-		for k := range envVars {
-			os.Unsetenv(k)
-		}
-	}()
+	setRequiredConfigEnv(t)
+	t.Setenv("CROSSWORDAPI_LISTEN_ADDR", ":0")
+	t.Setenv("CROSSWORDAPI_LEDGER_ADDR", "127.0.0.1:1")
+	t.Setenv("CROSSWORDAPI_LEDGER_TIMEOUT", "1s")
+	t.Setenv("CROSSWORDAPI_ALLOWED_ORIGINS", "http://localhost")
+	t.Setenv("CROSSWORDAPI_JWT_SIGNING_KEY", "test-secret-key-long-enough-for-hmac")
+	t.Setenv("CROSSWORDAPI_LLM_PROXY_TIMEOUT", "1s")
+	useTestAppConfig(t, "")
 
 	// Use newRootCommand directly with a context that has a timeout,
 	// so the connection attempt to the unreachable address times out.
@@ -391,30 +241,17 @@ func TestLoadAdminEmailsFromConfigPaths(t *testing.T) {
 }
 
 func TestLoadConfig_ValidationError(t *testing.T) {
-	envVars := map[string]string{
-		"CROSSWORDAPI_LISTEN_ADDR":       "   ", // whitespace only — fails Validate
-		"CROSSWORDAPI_LEDGER_ADDR":       "localhost:50051",
-		"CROSSWORDAPI_LEDGER_INSECURE":   "true",
-		"CROSSWORDAPI_LEDGER_TIMEOUT":    "5s",
-		"CROSSWORDAPI_LEDGER_SECRET_KEY": "test-secret",
-		"CROSSWORDAPI_DEFAULT_TENANT_ID": "t1",
-		"CROSSWORDAPI_DEFAULT_LEDGER_ID": "l1",
-		"CROSSWORDAPI_ALLOWED_ORIGINS":   "http://localhost",
-		"CROSSWORDAPI_JWT_SIGNING_KEY":   "key",
-		"CROSSWORDAPI_JWT_ISSUER":        "tauth",
-		"CROSSWORDAPI_JWT_COOKIE_NAME":   "sess",
-		"CROSSWORDAPI_TAUTH_BASE_URL":    "http://localhost",
-		"CROSSWORDAPI_LLM_PROXY_URL":     "http://localhost",
-		"CROSSWORDAPI_LLM_PROXY_KEY":     "key",
-	}
-	for k, v := range envVars {
-		os.Setenv(k, v)
-	}
-	defer func() {
-		for k := range envVars {
-			os.Unsetenv(k)
-		}
-	}()
+	setRequiredConfigEnv(t)
+	t.Setenv("CROSSWORDAPI_LISTEN_ADDR", "   ")
+	t.Setenv("CROSSWORDAPI_DEFAULT_TENANT_ID", "t1")
+	t.Setenv("CROSSWORDAPI_DEFAULT_LEDGER_ID", "l1")
+	t.Setenv("CROSSWORDAPI_ALLOWED_ORIGINS", "http://localhost")
+	t.Setenv("CROSSWORDAPI_JWT_SIGNING_KEY", "key")
+	t.Setenv("CROSSWORDAPI_JWT_COOKIE_NAME", "sess")
+	t.Setenv("CROSSWORDAPI_TAUTH_BASE_URL", "http://localhost")
+	t.Setenv("CROSSWORDAPI_LLM_PROXY_URL", "http://localhost")
+	t.Setenv("CROSSWORDAPI_LLM_PROXY_KEY", "key")
+	useTestAppConfig(t, "")
 
 	cmd := newRootCommand()
 	cfg := &crosswordapi.Config{}

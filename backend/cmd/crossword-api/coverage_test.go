@@ -27,6 +27,41 @@ func setRequiredConfigEnv(t *testing.T) {
 	t.Setenv("CROSSWORDAPI_LLM_PROXY_URL", "http://localhost:9999")
 	t.Setenv("CROSSWORDAPI_LLM_PROXY_KEY", "secret")
 	t.Setenv("CROSSWORDAPI_LLM_PROXY_TIMEOUT", "30s")
+	t.Setenv("CROSSWORDAPI_BILLING_PROVIDER", "paddle")
+	t.Setenv("CROSSWORDAPI_PADDLE_ENVIRONMENT", "sandbox")
+	t.Setenv("CROSSWORDAPI_PADDLE_API_KEY", "test-api-key")
+	t.Setenv("CROSSWORDAPI_PADDLE_CLIENT_TOKEN", "test-client-token")
+	t.Setenv("CROSSWORDAPI_PADDLE_WEBHOOK_SECRET", "test-webhook-secret")
+	t.Setenv("CROSSWORDAPI_PADDLE_PRICE_ID_PACK_STARTER", "pri_test_starter")
+}
+
+func useTestAppConfig(t *testing.T, extraYAML string) string {
+	t.Helper()
+
+	configPath := filepath.Join(t.TempDir(), "config.yml")
+	configSections := []string{
+		strings.TrimSpace(extraYAML),
+		strings.TrimSpace(`
+billing:
+  packs:
+    - code: starter
+      label: Starter Pack
+      credits: 20
+      price_cents: 2000
+`),
+	}
+	configContents := strings.TrimSpace(strings.Join(configSections, "\n\n")) + "\n"
+	if err := os.WriteFile(configPath, []byte(configContents), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	originalPaths := append([]string(nil), defaultAppConfigPaths...)
+	defaultAppConfigPaths = []string{configPath}
+	t.Cleanup(func() {
+		defaultAppConfigPaths = originalPaths
+	})
+
+	return configPath
 }
 
 func TestMain_UsesExitFunc(t *testing.T) {
@@ -98,6 +133,22 @@ func TestLoadAdminEmailsFromConfigPaths_SkipsBlankAndMissing(t *testing.T) {
 	}
 	if len(emails) != 1 || emails[0] != "admin@example.com" {
 		t.Fatalf("unexpected emails: %v", emails)
+	}
+}
+
+func TestLoadAppConfigFromPaths_ReturnsEmptyConfigWhenNothingFound(t *testing.T) {
+	configFile, loadedPath, err := loadAppConfigFromPaths([]string{
+		"   ",
+		filepath.Join(t.TempDir(), "missing.yml"),
+	})
+	if err != nil {
+		t.Fatalf("loadAppConfigFromPaths() error = %v", err)
+	}
+	if configFile == nil {
+		t.Fatal("expected empty config file result")
+	}
+	if loadedPath != "" {
+		t.Fatalf("expected no loaded path, got %q", loadedPath)
 	}
 }
 

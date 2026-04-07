@@ -5,7 +5,6 @@ const { createBillingSummary, json, setupLoggedInRoutes, setupLoggedOutRoutes } 
 
 function buildEnabledBillingSummary(overrides = {}) {
   return createBillingSummary({
-    enabled: true,
     provider_code: "paddle",
     balance: { coins: 2 },
     packs: [

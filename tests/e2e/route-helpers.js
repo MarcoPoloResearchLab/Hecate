@@ -104,10 +104,16 @@ function text(status, body) {
 
 function createBillingSummary(overrides = {}) {
   return {
-    enabled: false,
-    provider_code: "",
+    provider_code: "paddle",
     balance: null,
-    packs: [],
+    packs: [
+      {
+        code: "starter",
+        credits: 20,
+        label: "Starter Pack",
+        price_display: "$20.00",
+      },
+    ],
     activity: [],
     portal_available: false,
     ...(overrides || {}),

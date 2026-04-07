@@ -48,6 +48,8 @@ func TestWithStore_SetsStore(t *testing.T) {
 func TestRun_UsesInjectedStore(t *testing.T) {
 	addr, stopLedger := startFakeLedger(t)
 	defer stopLedger()
+	paddleBaseURL, stopPaddle := startFakePaddleCatalog(t)
+	defer stopPaddle()
 
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -56,23 +58,12 @@ func TestRun_UsesInjectedStore(t *testing.T) {
 	httpAddr := listener.Addr().String()
 	listener.Close()
 
-	cfg := Config{
-		ListenAddr:        httpAddr,
-		LedgerAddress:     addr,
-		LedgerInsecure:    true,
-		LedgerTimeout:     5 * time.Second,
-		LedgerSecretKey:   "test-secret",
-		DefaultTenantID:   "tenant-1",
-		DefaultLedgerID:   "ledger-1",
-		AllowedOrigins:    []string{"http://localhost"},
-		SessionSigningKey: "test-secret-key-long-enough-for-hmac",
-		SessionIssuer:     "tauth",
-		SessionCookieName: "app_session",
-		TAuthBaseURL:      "http://localhost:8080",
-		LLMProxyURL:       "http://localhost:9999",
-		LLMProxyKey:       "key",
-		LLMProxyTimeout:   5 * time.Second,
-	}
+	cfg := testConfig()
+	cfg.ListenAddr = httpAddr
+	cfg.LedgerAddress = addr
+	cfg.AllowedOrigins = []string{"http://localhost"}
+	cfg.LLMProxyTimeout = 5 * time.Second
+	cfg.PaddleAPIBaseURL = paddleBaseURL
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -99,24 +90,12 @@ func TestRun_DatabaseOpenError(t *testing.T) {
 	addr, stopLedger := startFakeLedger(t)
 	defer stopLedger()
 
-	cfg := Config{
-		ListenAddr:        "127.0.0.1:0",
-		LedgerAddress:     addr,
-		LedgerInsecure:    true,
-		LedgerTimeout:     5 * time.Second,
-		LedgerSecretKey:   "test-secret",
-		DefaultTenantID:   "tenant-1",
-		DefaultLedgerID:   "ledger-1",
-		AllowedOrigins:    []string{"http://localhost"},
-		SessionSigningKey: "test-secret-key-long-enough-for-hmac",
-		SessionIssuer:     "tauth",
-		SessionCookieName: "app_session",
-		TAuthBaseURL:      "http://localhost:8080",
-		LLMProxyURL:       "http://localhost:9999",
-		LLMProxyKey:       "key",
-		LLMProxyTimeout:   5 * time.Second,
-		DatabaseDSN:       t.TempDir(),
-	}
+	cfg := testConfig()
+	cfg.ListenAddr = "127.0.0.1:0"
+	cfg.LedgerAddress = addr
+	cfg.AllowedOrigins = []string{"http://localhost"}
+	cfg.LLMProxyTimeout = 5 * time.Second
+	cfg.DatabaseDSN = t.TempDir()
 
 	err := Run(context.Background(), cfg)
 	if err == nil {
@@ -140,6 +119,25 @@ func TestRun_BillingInitError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "billing init") {
 		t.Fatalf("expected billing init error, got %v", err)
+	}
+}
+
+func TestRun_BillingProviderRequired(t *testing.T) {
+	addr, stopLedger := startFakeLedger(t)
+	defer stopLedger()
+
+	cfg := testConfig()
+	cfg.ListenAddr = "127.0.0.1:0"
+	cfg.LedgerAddress = addr
+	cfg.AllowedOrigins = []string{"http://localhost"}
+	cfg.BillingProvider = ""
+
+	err := Run(context.Background(), cfg, WithStore(&mockStore{}))
+	if err == nil {
+		t.Fatal("expected billing provider startup error")
+	}
+	if !strings.Contains(err.Error(), "billing init") || !strings.Contains(err.Error(), "billing provider is required") {
+		t.Fatalf("expected billing provider startup error, got %v", err)
 	}
 }
 

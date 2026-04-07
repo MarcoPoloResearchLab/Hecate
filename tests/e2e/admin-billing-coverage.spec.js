@@ -122,7 +122,7 @@ test.describe("Admin billing coverage", () => {
       window.sessionStorage.getItem = originalGetItem;
 
       admin.setBillingSummary(null);
-      outcomes.disabledSummary = {
+      outcomes.emptySummary = {
         balance: document.getElementById("settingsBillingBalanceValue").textContent,
         manageDisplay: manageButton.style.display,
         meta: document.getElementById("settingsBillingBalanceMeta").textContent,
@@ -141,7 +141,6 @@ test.describe("Admin billing coverage", () => {
           },
         ],
         balance: { available_cents: 350, generation_cost_coins: 6 },
-        enabled: true,
         packs: [
           {
             code: "starter",
@@ -153,7 +152,7 @@ test.describe("Admin billing coverage", () => {
         portal_available: true,
       });
 
-      outcomes.enabledSummary = {
+      outcomes.liveSummary = {
         activityText: document.getElementById("settingsBillingActivityList").textContent,
         balance: document.getElementById("settingsBillingBalanceValue").textContent,
         manageDisabled: manageButton.disabled,
@@ -207,7 +206,6 @@ test.describe("Admin billing coverage", () => {
       admin.setBillingSummary({
         activity: [],
         balance: {},
-        enabled: true,
         packs: [
           {
             code: "",
@@ -218,7 +216,7 @@ test.describe("Admin billing coverage", () => {
         ],
         portal_available: false,
       });
-      outcomes.disabledPortalSummary = {
+      outcomes.noPortalSummary = {
         balance: document.getElementById("settingsBillingBalanceValue").textContent,
         manageDisplay: manageButton.style.display,
         packButtonValue: document.querySelector("[data-billing-pack-button]").getAttribute("data-billing-pack-button"),
@@ -243,27 +241,27 @@ test.describe("Admin billing coverage", () => {
     expect(result.emptyPackLabel).toBe("");
     expect(result.pendingReturnError).toBe(false);
     expect(result.restoreDrawerError).toBe(false);
-    expect(result.disabledSummary).toEqual({
+    expect(result.emptySummary).toEqual({
       balance: "—",
       manageDisplay: "none",
-      meta: "Credit purchases are not enabled on this deployment.",
+      meta: "Purchases are granted after Paddle confirms payment.",
     });
-    expect(result.enabledSummary.balance).toBe("3 credits");
-    expect(result.enabledSummary.manageDisplay).toBe("");
-    expect(result.enabledSummary.manageDisabled).toBe(false);
-    expect(result.enabledSummary.meta).toBe("Each new crossword costs 6 credits. Purchases are granted after Paddle confirms payment.");
-    expect(result.enabledSummary.packText).toContain("—");
-    expect(result.enabledSummary.activityText).toContain("Billing activity recorded.");
-    expect(result.enabledSummary.activityText).toContain("completed");
-    expect(result.enabledSummary.activityText).toContain("+20 credits");
-    expect(result.enabledSummary.activityText).toContain("invalid-date");
-    expect(result.enabledSummary.activityText).toContain("Transaction txn_123");
+    expect(result.liveSummary.balance).toBe("3 credits");
+    expect(result.liveSummary.manageDisplay).toBe("");
+    expect(result.liveSummary.manageDisabled).toBe(false);
+    expect(result.liveSummary.meta).toBe("Each new crossword costs 6 credits. Purchases are granted after Paddle confirms payment.");
+    expect(result.liveSummary.packText).toContain("—");
+    expect(result.liveSummary.activityText).toContain("Billing activity recorded.");
+    expect(result.liveSummary.activityText).toContain("completed");
+    expect(result.liveSummary.activityText).toContain("+20 credits");
+    expect(result.liveSummary.activityText).toContain("invalid-date");
+    expect(result.liveSummary.activityText).toContain("Transaction txn_123");
     expect(result.checkoutCallsWithoutProvider).toEqual([]);
     expect(result.portalCallsWithoutProvider).toBe(0);
     expect(result.requestSummaryResult).toBeNull();
     expect(result.syncedStatus).toContain("Billing synced");
     expect(result.statusAfterEmptyEvent).toBe("");
-    expect(result.disabledPortalSummary).toEqual({
+    expect(result.noPortalSummary).toEqual({
       balance: "—",
       manageDisplay: "none",
       packButtonValue: "",
@@ -327,7 +325,6 @@ test.describe("Admin billing coverage", () => {
       admin.setBillingSummary({
         activity: null,
         balance: {},
-        enabled: true,
         packs: null,
         portal_available: false,
       });

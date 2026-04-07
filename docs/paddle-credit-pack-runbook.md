@@ -21,7 +21,7 @@ The app expects:
    - hosted: `https://llm-crossword.mprlab.com/pay.html`
 3. Create one webhook destination per environment:
    - sandbox: `https://<your-public-host>/api/billing/paddle/webhook`
-   - production: `https://llm-crossword.mprlab.com/api/billing/paddle/webhook`
+   - production: `https://llm-crossword-api.mprlab.com/api/billing/paddle/webhook`
 4. Subscribe the webhook destination to:
    - `transaction.created`
    - `transaction.updated`
@@ -44,10 +44,11 @@ Set these in the crossword API profile file you are using, typically [configs/.e
 
 ## Startup Validation
 
-When billing is enabled, `crossword-api` validates the configured Paddle pack catalog during startup using live Paddle API calls.
+`crossword-api` always validates the configured Paddle pack catalog during startup using live Paddle API calls. There is no supported deployment mode without live billing.
 
 Startup fails if:
 
+- the billing provider is missing or unsupported
 - any configured pack price ID is missing in Paddle
 - a configured price is not a one-time price
 - the configured price amount does not match `configs/config.yml`

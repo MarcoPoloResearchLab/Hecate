@@ -137,17 +137,15 @@ func Run(ctx context.Context, cfg Config, opts ...RunOption) error {
 	if billingErr != nil {
 		return fmt.Errorf("billing init: %w", billingErr)
 	}
-	if billingService != nil && billingService.provider != nil {
-		if catalogValidationProvider, ok := billingService.provider.(billingCatalogValidationProvider); ok {
-			logger.Info("validating billing catalog with provider on startup", zap.String("provider", billingService.provider.Code()))
-			catalogValidationCtx, cancelCatalogValidation := context.WithTimeout(ctx, billingCatalogValidationTimeout)
-			catalogValidationErr := catalogValidationProvider.ValidateCatalog(catalogValidationCtx)
-			cancelCatalogValidation()
-			if catalogValidationErr != nil {
-				return fmt.Errorf("billing init: validate billing catalog: %w", catalogValidationErr)
-			}
-			logger.Info("billing catalog validation passed", zap.String("provider", billingService.provider.Code()))
+	if catalogValidationProvider, ok := billingService.provider.(billingCatalogValidationProvider); ok {
+		logger.Info("validating billing catalog with provider on startup", zap.String("provider", billingService.provider.Code()))
+		catalogValidationCtx, cancelCatalogValidation := context.WithTimeout(ctx, billingCatalogValidationTimeout)
+		catalogValidationErr := catalogValidationProvider.ValidateCatalog(catalogValidationCtx)
+		cancelCatalogValidation()
+		if catalogValidationErr != nil {
+			return fmt.Errorf("billing init: validate billing catalog: %w", catalogValidationErr)
 		}
+		logger.Info("billing catalog validation passed", zap.String("provider", billingService.provider.Code()))
 	}
 	handler.billingService = billingService
 
@@ -260,8 +258,9 @@ type httpHandler struct {
 }
 
 const (
-	adminGrantHistoryLimit = 20
-	adminGrantReasonMaxLen = 240
+	adminGrantHistoryLimit           = 20
+	adminGrantReasonMaxLen           = 240
+	billingServiceUnavailableMessage = "billing service unavailable"
 )
 
 func (handler *httpHandler) handleSession(ctx *gin.Context) {
@@ -345,7 +344,6 @@ func (handler *httpHandler) handleBillingSummary(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, gin.H{
-		"enabled":          summary.Enabled,
 		"provider_code":    summary.ProviderCode,
 		"balance":          balance,
 		"packs":            summary.Packs,
@@ -361,7 +359,7 @@ func (handler *httpHandler) handleBillingSync(ctx *gin.Context) {
 		return
 	}
 	if handler.billingService == nil {
-		ctx.JSON(http.StatusServiceUnavailable, errorResponse("billing_unavailable", "billing is not enabled"))
+		ctx.JSON(http.StatusInternalServerError, errorResponse("server_error", billingServiceUnavailableMessage))
 		return
 	}
 
@@ -371,8 +369,8 @@ func (handler *httpHandler) handleBillingSync(ctx *gin.Context) {
 		claims.GetUserEmail(),
 	); err != nil {
 		switch {
-		case errors.Is(err, ErrBillingDisabled):
-			ctx.JSON(http.StatusServiceUnavailable, errorResponse("billing_unavailable", "billing is not enabled"))
+		case errors.Is(err, errBillingServiceUnavailable):
+			ctx.JSON(http.StatusInternalServerError, errorResponse("server_error", billingServiceUnavailableMessage))
 		case errors.Is(err, sharedbilling.ErrBillingUserEmailInvalid):
 			ctx.JSON(http.StatusBadRequest, errorResponse("billing_sync_invalid", "billing sync requires an account email"))
 		default:
@@ -392,7 +390,7 @@ func (handler *httpHandler) handleBillingCheckout(ctx *gin.Context) {
 		return
 	}
 	if handler.billingService == nil {
-		ctx.JSON(http.StatusServiceUnavailable, errorResponse("billing_unavailable", "billing is not enabled"))
+		ctx.JSON(http.StatusInternalServerError, errorResponse("server_error", billingServiceUnavailableMessage))
 		return
 	}
 
@@ -414,8 +412,8 @@ func (handler *httpHandler) handleBillingCheckout(ctx *gin.Context) {
 		switch {
 		case errors.Is(err, ErrBillingPackUnknown):
 			ctx.JSON(http.StatusBadRequest, errorResponse("invalid_pack", "billing pack not found"))
-		case errors.Is(err, ErrBillingDisabled):
-			ctx.JSON(http.StatusServiceUnavailable, errorResponse("billing_unavailable", "billing is not enabled"))
+		case errors.Is(err, errBillingServiceUnavailable):
+			ctx.JSON(http.StatusInternalServerError, errorResponse("server_error", billingServiceUnavailableMessage))
 		case errors.Is(err, ErrPaddleCheckoutURLMissing):
 			ctx.JSON(http.StatusBadGateway, errorResponse("billing_checkout_missing", "configure Paddle default payment link before checkout"))
 		default:
@@ -435,7 +433,7 @@ func (handler *httpHandler) handleBillingCheckoutReconcile(ctx *gin.Context) {
 		return
 	}
 	if handler.billingService == nil {
-		ctx.JSON(http.StatusServiceUnavailable, errorResponse("billing_unavailable", "billing is not enabled"))
+		ctx.JSON(http.StatusInternalServerError, errorResponse("server_error", billingServiceUnavailableMessage))
 		return
 	}
 
@@ -453,8 +451,8 @@ func (handler *httpHandler) handleBillingCheckoutReconcile(ctx *gin.Context) {
 	)
 	if err != nil {
 		switch {
-		case errors.Is(err, ErrBillingDisabled):
-			ctx.JSON(http.StatusServiceUnavailable, errorResponse("billing_unavailable", "billing is not enabled"))
+		case errors.Is(err, errBillingServiceUnavailable):
+			ctx.JSON(http.StatusInternalServerError, errorResponse("server_error", billingServiceUnavailableMessage))
 		case errors.Is(err, sharedbilling.ErrBillingUserEmailInvalid):
 			ctx.JSON(http.StatusBadRequest, errorResponse("billing_checkout_invalid", "billing reconcile requires an account email"))
 		case errors.Is(err, sharedbilling.ErrPaddleAPITransactionNotFound):
@@ -480,7 +478,7 @@ func (handler *httpHandler) handleBillingPortal(ctx *gin.Context) {
 		return
 	}
 	if handler.billingService == nil {
-		ctx.JSON(http.StatusServiceUnavailable, errorResponse("billing_unavailable", "billing is not enabled"))
+		ctx.JSON(http.StatusInternalServerError, errorResponse("server_error", billingServiceUnavailableMessage))
 		return
 	}
 
@@ -489,8 +487,8 @@ func (handler *httpHandler) handleBillingPortal(ctx *gin.Context) {
 		switch {
 		case errors.Is(err, ErrBillingPortalUnavailable):
 			ctx.JSON(http.StatusBadRequest, errorResponse("billing_portal_unavailable", "billing portal is unavailable"))
-		case errors.Is(err, ErrBillingDisabled):
-			ctx.JSON(http.StatusServiceUnavailable, errorResponse("billing_unavailable", "billing is not enabled"))
+		case errors.Is(err, errBillingServiceUnavailable):
+			ctx.JSON(http.StatusInternalServerError, errorResponse("server_error", billingServiceUnavailableMessage))
 		default:
 			handler.logger.Error("billing portal failed", zap.Error(err), zap.String("user_id", claims.GetUserID()))
 			ctx.JSON(http.StatusBadGateway, errorResponse("billing_portal_failed", "unable to open billing portal"))
@@ -501,8 +499,8 @@ func (handler *httpHandler) handleBillingPortal(ctx *gin.Context) {
 }
 
 func (handler *httpHandler) handleBillingWebhook(ctx *gin.Context) {
-	if handler.billingService == nil {
-		ctx.JSON(http.StatusServiceUnavailable, errorResponse("billing_unavailable", "billing is not enabled"))
+	if handler.billingService == nil || handler.billingService.provider == nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse("server_error", billingServiceUnavailableMessage))
 		return
 	}
 

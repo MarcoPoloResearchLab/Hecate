@@ -1245,13 +1245,6 @@
     if (summary && summary.balance) {
       updateBalance(summary.balance);
     }
-    if (!summary || summary.enabled !== true) {
-      setGenerateBuyCreditsVisible(false);
-      return;
-    }
-    if (state.loggedIn && isBalanceReady() && !hasEnoughCreditsForGeneration()) {
-      setGenerateBuyCreditsVisible(true);
-    }
   });
 
   updateAuthUI();

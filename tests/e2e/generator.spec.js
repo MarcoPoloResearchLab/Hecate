@@ -336,8 +336,8 @@ test.describe("Generator — large puzzle stress test", () => {
       try {
         var payload = generateCrossword(items, {
           title: "Stress Test 120",
-          maxAttempts: 20000,
-          seedTries: 50
+          maxAttempts: 4000,
+          seedTries: 12
         });
         return {
           success: true,

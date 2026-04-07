@@ -1,10 +1,8 @@
 services:
   ledger:
-    build:
-      context: ./tools/ledger
-      dockerfile: Dockerfile
-    image: crossword-ledger:local
+    image: "${LEDGER_IMAGE:-ghcr.io/tyemirov/ledger:latest}"
     container_name: crossword-ledger
+    pull_policy: always
     environment:
       DATABASE_URL: "sqlite:///srv/data/ledger.db"
       GRPC_LISTEN_ADDR: ":50051"

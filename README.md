@@ -7,6 +7,7 @@ A crossword puzzle builder, powered by LLM.
 Billing is a business-critical path in this product. The billing flow is intentionally fail-closed.
 
 - Checkout, portal access, webhook processing, reconciliation, and customer-link resolution must use explicitly required billing data.
+- Every deployment must be able to accept live payments for configured credit packs before the application is allowed to start.
 - Missing or inconsistent billing data is treated as a product or operational defect to fix, not as a reason to guess, infer, or unlock a fallback path.
 - Do not add defensive billing fallbacks such as alternate customer lookup heuristics or optimistic UI unlocks for portal access.
 - When required billing state is unavailable, the correct behavior is to return an error and keep the path blocked until the underlying issue is corrected.
@@ -34,6 +35,8 @@ The repository includes `.nojekyll` so branch-based GitHub Pages publishing can 
 ## Local Docker
 
 Use `make up` to start the stack and `make down` to stop it. If the default site port `8000` or one of the other exposed host ports is already occupied, `make up` automatically picks the next available port and writes the resolved values to `.runtime/ports.env`.
+
+The local stack builds only the local `crossword-api` image. Ledger is pulled from `ghcr.io/tyemirov/ledger:latest` and configured locally through `.runtime/ledger.config.yml`; it is not rebuilt from `tools/ledger`.
 
 Billing is required for this app. `crossword-api` enforces that requirement during startup and exits if billing is not fully configured or if Paddle catalog validation fails.
 
@@ -97,6 +100,12 @@ as a multi-arch image for `linux/amd64,linux/arm64` using `backend/Dockerfile`.
 When `HEAD` is exactly on a git tag, it also pushes the matching version tag.
 
 This is the image name expected by the `mprlab-gateway` deployment contract.
+
+## Core Docs
+
+- [PRD](./docs/prd.md)
+- [Architecture](./docs/architecture.md)
+- [Paddle Credit-Pack Runbook](./docs/paddle-credit-pack-runbook.md)
 
 ## Planning Docs
 

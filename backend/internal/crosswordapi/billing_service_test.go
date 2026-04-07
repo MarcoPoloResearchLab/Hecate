@@ -130,9 +130,6 @@ func TestBillingServiceSummary_IncludesPortalAndActivity(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Summary() error = %v", err)
 	}
-	if !summary.Enabled {
-		t.Fatal("expected billing summary to be enabled")
-	}
 	if !summary.PortalAvailable {
 		t.Fatal("expected portal to be available")
 	}

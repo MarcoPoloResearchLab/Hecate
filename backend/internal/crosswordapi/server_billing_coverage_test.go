@@ -78,8 +78,8 @@ func TestHandleBillingCheckoutCoverage(t *testing.T) {
 	router = testRouterWithClaims(handler, testClaims())
 
 	response = doRequest(router, http.MethodPost, "/api/billing/checkout", `{"pack_id":"starter"}`)
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 when billing service is nil, got %d", response.Code)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when billing service is nil, got %d", response.Code)
 	}
 
 	handler.billingService = &billingService{
@@ -102,8 +102,8 @@ func TestHandleBillingCheckoutCoverage(t *testing.T) {
 	}
 	router = testRouterWithClaims(handler, testClaims())
 	response = doRequest(router, http.MethodPost, "/api/billing/checkout", `{"pack_id":"starter"}`)
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 for disabled billing service, got %d", response.Code)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for billing service without provider, got %d", response.Code)
 	}
 
 	handler.billingService = &billingService{
@@ -149,8 +149,8 @@ func TestHandleBillingPortalCoverage(t *testing.T) {
 	handler = testHandlerWithConfig(&mockLedgerClient{}, nil, &mockStore{}, validBillingConfig())
 	router = testRouterWithClaims(handler, testClaims())
 	response = doRequest(router, http.MethodPost, "/api/billing/portal", "")
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 when billing service is nil, got %d", response.Code)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when billing service is nil, got %d", response.Code)
 	}
 
 	handler.billingService = &billingService{
@@ -160,8 +160,8 @@ func TestHandleBillingPortalCoverage(t *testing.T) {
 	}
 	router = testRouterWithClaims(handler, testClaims())
 	response = doRequest(router, http.MethodPost, "/api/billing/portal", "")
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 for disabled billing service, got %d", response.Code)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 for billing service without provider, got %d", response.Code)
 	}
 
 	handler.billingService = &billingService{
@@ -229,8 +229,20 @@ func TestHandleBillingWebhookCoverage(t *testing.T) {
 	router := testRouterWithClaims(handler, testClaims())
 
 	response := doRequest(router, http.MethodPost, "/api/billing/paddle/webhook", `{}`)
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 when billing service is nil, got %d", response.Code)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when billing service is nil, got %d", response.Code)
+	}
+
+	handler.billingService = &billingService{
+		cfg:          validBillingConfig(),
+		ledgerClient: &mockLedgerClient{},
+		logger:       zap.NewNop(),
+		store:        &mockStore{},
+	}
+	router = testRouterWithClaims(handler, testClaims())
+	response = doRequest(router, http.MethodPost, "/api/billing/paddle/webhook", `{}`)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when billing provider is nil, got %d", response.Code)
 	}
 
 	largeBody := strings.Repeat("a", 1024*1024+1)
@@ -346,8 +358,8 @@ func TestHandleBillingSyncCoverage(t *testing.T) {
 	handler = testHandlerWithConfig(&mockLedgerClient{}, nil, &mockStore{}, validBillingConfig())
 	router = testRouterWithClaims(handler, testClaims())
 	response = doRequest(router, http.MethodPost, "/api/billing/sync", "")
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 when billing service is nil, got %d", response.Code)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when billing service is nil, got %d", response.Code)
 	}
 
 	handler.billingService = &billingService{
@@ -396,8 +408,8 @@ func TestHandleBillingCheckoutReconcileCoverage(t *testing.T) {
 	handler = testHandlerWithConfig(&mockLedgerClient{}, nil, &mockStore{}, validBillingConfig())
 	router = testRouterWithClaims(handler, testClaims())
 	response = doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{"transaction_id":"txn_1"}`)
-	if response.Code != http.StatusServiceUnavailable {
-		t.Fatalf("expected 503 when billing service is nil, got %d", response.Code)
+	if response.Code != http.StatusInternalServerError {
+		t.Fatalf("expected 500 when billing service is nil, got %d", response.Code)
 	}
 
 	handler.billingService = &billingService{

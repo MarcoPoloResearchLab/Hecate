@@ -34,7 +34,6 @@
 
   function createEmptySummary() {
     return {
-      enabled: false,
       provider_code: "",
       balance: null,
       packs: [],
@@ -72,7 +71,6 @@
     var summary = rawSummary && typeof rawSummary === "object" ? rawSummary : {};
 
     return {
-      enabled: summary.enabled === true,
       provider_code: typeof summary.provider_code === "string" ? summary.provider_code : "",
       balance: summary.balance || null,
       packs: Array.isArray(summary.packs) ? summary.packs : [],
@@ -122,7 +120,7 @@
         if (result.ok) {
           return applySummary(result.data);
         }
-        if (result.status === 401 || result.status === 403 || result.status === 404 || result.status === 503) {
+        if (result.status === 401 || result.status === 403) {
           return applySummary(createEmptySummary());
         }
         throw new Error(describeBillingError(result, "We couldn't load billing right now."));
@@ -164,7 +162,7 @@
         if (result.ok) {
           return result.data || {};
         }
-        if (result.status === 401 || result.status === 403 || result.status === 404 || result.status === 503) {
+        if (result.status === 401 || result.status === 403) {
           return result.data || {};
         }
         throw new Error(describeBillingError(result, "We couldn't refresh billing right now."));

@@ -18,15 +18,15 @@ import (
 )
 
 var (
-	ErrBillingDisabled          = errors.New("billing.disabled")
 	ErrBillingPackUnknown       = errors.New("billing.pack.unknown")
 	ErrBillingPortalUnavailable = errors.New("billing.portal.unavailable")
 	ErrBillingUnauthorized      = errors.New("billing.webhook.unauthorized")
 	ErrBillingWebhookInvalid    = errors.New("billing.webhook.invalid")
+
+	errBillingServiceUnavailable = errors.New("billing.service.unavailable")
 )
 
 type billingSummary struct {
-	Enabled         bool                   `json:"enabled"`
 	ProviderCode    string                 `json:"provider_code,omitempty"`
 	Packs           []BillingPack          `json:"packs"`
 	Activity        []BillingActivityEntry `json:"activity"`
@@ -42,10 +42,6 @@ type billingService struct {
 }
 
 func newBillingService(cfg Config, ledgerClient creditv1.CreditServiceClient, store Store, logger *zap.Logger) (*billingService, error) {
-	if !cfg.BillingEnabled() {
-		return nil, nil
-	}
-
 	var provider billingProvider
 	switch strings.ToLower(strings.TrimSpace(cfg.BillingProvider)) {
 	case billingProviderPaddle:
@@ -55,6 +51,9 @@ func newBillingService(cfg Config, ledgerClient creditv1.CreditServiceClient, st
 		}
 		provider = paddleProvider
 	default:
+		if strings.TrimSpace(cfg.BillingProvider) == "" {
+			return nil, fmt.Errorf("billing provider is required")
+		}
 		return nil, fmt.Errorf("unsupported billing provider %q", cfg.BillingProvider)
 	}
 
@@ -67,17 +66,23 @@ func newBillingService(cfg Config, ledgerClient creditv1.CreditServiceClient, st
 	}, nil
 }
 
+func (service *billingService) requireProvider() error {
+	if service == nil || service.provider == nil {
+		return errBillingServiceUnavailable
+	}
+	return nil
+}
+
 func (service *billingService) Summary(ctx context.Context, userID string) (*billingSummary, error) {
+	if err := service.requireProvider(); err != nil {
+		return nil, err
+	}
+
 	summary := &billingSummary{
-		Enabled:         service != nil && service.provider != nil,
 		Packs:           []BillingPack{},
 		Activity:        []BillingActivityEntry{},
 		PortalAvailable: false,
 	}
-	if service == nil || service.provider == nil {
-		return summary, nil
-	}
-
 	summary.ProviderCode = service.provider.Code()
 	summary.Packs = service.cfg.NormalizedBillingPacks()
 
@@ -146,8 +151,8 @@ func billingActivitySummary(record BillingEventRecord) string {
 }
 
 func (service *billingService) CreateCheckout(ctx context.Context, userID string, userEmail string, packCode string, returnURL string) (billingCheckoutSession, error) {
-	if service == nil || service.provider == nil {
-		return billingCheckoutSession{}, ErrBillingDisabled
+	if err := service.requireProvider(); err != nil {
+		return billingCheckoutSession{}, err
 	}
 	pack, ok := service.cfg.FindBillingPack(packCode)
 	if !ok {
@@ -157,8 +162,8 @@ func (service *billingService) CreateCheckout(ctx context.Context, userID string
 }
 
 func (service *billingService) SyncUserBillingEvents(ctx context.Context, userID string, userEmail string) error {
-	if service == nil || service.provider == nil {
-		return ErrBillingDisabled
+	if err := service.requireProvider(); err != nil {
+		return err
 	}
 
 	syncProvider, ok := service.provider.(billingUserSyncProvider)
@@ -199,8 +204,8 @@ func (service *billingService) ReconcileCheckout(
 		ProviderCode: service.providerCode(),
 		Status:       string(sharedbilling.CheckoutEventStatusUnknown),
 	}
-	if service == nil || service.provider == nil {
-		return result, ErrBillingDisabled
+	if err := service.requireProvider(); err != nil {
+		return result, err
 	}
 
 	reconcileProvider, ok := service.provider.(billingCheckoutReconcileProvider)
@@ -242,8 +247,8 @@ func (service *billingService) ReconcileCheckout(
 }
 
 func (service *billingService) CreatePortalSession(ctx context.Context, userID string) (billingPortalSession, error) {
-	if service == nil || service.provider == nil {
-		return billingPortalSession{}, ErrBillingDisabled
+	if err := service.requireProvider(); err != nil {
+		return billingPortalSession{}, err
 	}
 	if service.store == nil {
 		return billingPortalSession{}, ErrBillingPortalUnavailable
@@ -266,8 +271,8 @@ func (service *billingService) CreatePortalSession(ctx context.Context, userID s
 }
 
 func (service *billingService) HandleWebhook(ctx context.Context, signatureHeader string, payload []byte) error {
-	if service == nil || service.provider == nil {
-		return ErrBillingDisabled
+	if err := service.requireProvider(); err != nil {
+		return err
 	}
 	if err := service.provider.VerifyWebhookSignature(signatureHeader, payload); err != nil {
 		return fmt.Errorf("%w: %v", ErrBillingUnauthorized, err)
@@ -316,8 +321,8 @@ func (service *billingService) processSharedProviderEvent(
 	event sharedbilling.WebhookEvent,
 	fallbackUserID string,
 ) error {
-	if service == nil || service.provider == nil {
-		return ErrBillingDisabled
+	if err := service.requireProvider(); err != nil {
+		return err
 	}
 
 	payload, err := wrapBillingWebhookPayload(event)
@@ -346,8 +351,8 @@ func (service *billingService) processSharedProviderEvent(
 }
 
 func (service *billingService) processProviderEvent(ctx context.Context, providerEvent billingProviderEvent) error {
-	if service == nil || service.provider == nil {
-		return ErrBillingDisabled
+	if err := service.requireProvider(); err != nil {
+		return err
 	}
 	if service.store == nil {
 		return fmt.Errorf("billing store is required")

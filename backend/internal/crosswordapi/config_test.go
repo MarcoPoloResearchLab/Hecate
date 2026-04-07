@@ -7,7 +7,7 @@ import (
 	"time"
 )
 
-func validConfig() Config {
+func baseConfig() Config {
 	return Config{
 		ListenAddr:        ":9090",
 		LedgerAddress:     "localhost:50051",
@@ -27,8 +27,8 @@ func validConfig() Config {
 	}
 }
 
-func validBillingConfig() Config {
-	cfg := validConfig()
+func validConfig() Config {
+	cfg := baseConfig()
 	cfg.BillingProvider = billingProviderPaddle
 	cfg.CoinValueCents = defaultCoinValueCents
 	cfg.BillingPacks = []BillingPack{
@@ -49,6 +49,10 @@ func validBillingConfig() Config {
 	return cfg
 }
 
+func validBillingConfig() Config {
+	return validConfig()
+}
+
 func TestValidate_Valid(t *testing.T) {
 	cfg := validConfig()
 	if err := cfg.Validate(); err != nil {
@@ -62,9 +66,6 @@ func TestValidate_BillingValid(t *testing.T) {
 		t.Fatalf("expected no error, got %v", err)
 	}
 
-	if !cfg.BillingEnabled() {
-		t.Fatal("expected billing to be enabled")
-	}
 	if cfg.BillingPublicConfig().ClientToken != "test_client_token" {
 		t.Fatalf("unexpected billing client token %q", cfg.BillingPublicConfig().ClientToken)
 	}
@@ -80,12 +81,16 @@ func TestValidate_BillingValid(t *testing.T) {
 
 func TestValidate_DefaultsLLMProxyTimeout(t *testing.T) {
 	cfg := validConfig()
+	cfg.CoinValueCents = 0
 	cfg.LLMProxyTimeout = 0
 	if err := cfg.Validate(); err != nil {
 		t.Fatalf("expected no error, got %v", err)
 	}
 	if cfg.LLMProxyTimeout != 30*time.Second {
 		t.Fatalf("expected default timeout 30s, got %v", cfg.LLMProxyTimeout)
+	}
+	if cfg.CoinValueCents != defaultCoinValueCents {
+		t.Fatalf("expected coin value default %d, got %d", defaultCoinValueCents, cfg.CoinValueCents)
 	}
 	if cfg.BootstrapCoins != defaultBootstrapCoins {
 		t.Fatalf("expected bootstrap default %d, got %d", defaultBootstrapCoins, cfg.BootstrapCoins)

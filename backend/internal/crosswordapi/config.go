@@ -165,10 +165,7 @@ func (cfg *Config) Validate() error {
 func (cfg Config) validateBilling() error {
 	providerCode := strings.ToLower(strings.TrimSpace(cfg.BillingProvider))
 	if providerCode == "" {
-		if len(cfg.BillingPacks) > 0 {
-			return fmt.Errorf("billing provider is required when billing packs are configured")
-		}
-		return nil
+		return fmt.Errorf("billing provider is required")
 	}
 	if providerCode != billingProviderPaddle {
 		return fmt.Errorf("billing provider %q is not supported", providerCode)
@@ -176,7 +173,7 @@ func (cfg Config) validateBilling() error {
 
 	packCodes := make(map[string]struct{}, len(cfg.BillingPacks))
 	if len(cfg.BillingPacks) == 0 {
-		return fmt.Errorf("billing packs are required when billing provider is enabled")
+		return fmt.Errorf("billing packs are required")
 	}
 	for _, rawPack := range cfg.BillingPacks {
 		pack := cloneBillingPack(rawPack)
@@ -339,10 +336,6 @@ func (cfg *Config) IsAdmin(email string) bool {
 		}
 	}
 	return false
-}
-
-func (cfg Config) BillingEnabled() bool {
-	return strings.TrimSpace(cfg.BillingProvider) != ""
 }
 
 func (cfg Config) BillingPublicConfig() billingPublicConfig {

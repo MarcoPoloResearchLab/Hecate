@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -52,32 +53,37 @@ func startFakeLedger(t *testing.T) (addr string, stop func()) {
 	return lis.Addr().String(), s.GracefulStop
 }
 
+func startFakePaddleCatalog(t *testing.T) (baseURL string, stop func()) {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+		if request.Method != http.MethodGet || request.URL.Path != "/prices" {
+			t.Fatalf("unexpected Paddle catalog request %s %s", request.Method, request.URL.String())
+		}
+		_, _ = writer.Write([]byte(`{"data":[{"id":"pri_test_starter","product_id":"pro_test_starter","name":"Starter Pack","unit_price":{"amount":"2000"},"product":{"id":"pro_test_starter","name":"Starter Pack"}}]}`))
+	}))
+	return server.URL, server.Close
+}
+
 func TestRun_StartsAndShuts(t *testing.T) {
 	addr, stopLedger := startFakeLedger(t)
 	defer stopLedger()
+	paddleBaseURL, stopPaddle := startFakePaddleCatalog(t)
+	defer stopPaddle()
 
 	// Find a free port for the HTTP server.
 	lis, _ := net.Listen("tcp", "127.0.0.1:0")
 	httpAddr := lis.Addr().String()
 	lis.Close()
 
-	cfg := Config{
-		ListenAddr:        httpAddr,
-		LedgerAddress:     addr,
-		LedgerInsecure:    true,
-		LedgerTimeout:     5 * time.Second,
-		LedgerSecretKey:   "test-secret",
-		DefaultTenantID:   "t1",
-		DefaultLedgerID:   "l1",
-		AllowedOrigins:    []string{"http://localhost"},
-		SessionSigningKey: "test-secret-key-long-enough-for-hmac",
-		SessionIssuer:     "tauth",
-		SessionCookieName: "app_session",
-		TAuthBaseURL:      "http://localhost:8080",
-		LLMProxyURL:       "http://localhost:9999",
-		LLMProxyKey:       "key",
-		LLMProxyTimeout:   5 * time.Second,
-	}
+	cfg := testConfig()
+	cfg.ListenAddr = httpAddr
+	cfg.LedgerAddress = addr
+	cfg.AllowedOrigins = []string{"http://localhost"}
+	cfg.DefaultTenantID = "t1"
+	cfg.DefaultLedgerID = "l1"
+	cfg.LLMProxyTimeout = 5 * time.Second
+	cfg.PaddleAPIBaseURL = paddleBaseURL
 
 	ctx, cancel := context.WithCancel(context.Background())
 	errCh := make(chan error, 1)
@@ -103,23 +109,15 @@ func TestRun_StartsAndShuts(t *testing.T) {
 
 func TestRun_TLSLedger(t *testing.T) {
 	// Test the TLS dial branch — will fail to connect but exercises the code path.
-	cfg := Config{
-		ListenAddr:        "127.0.0.1:0",
-		LedgerAddress:     "127.0.0.1:1", // won't connect
-		LedgerInsecure:    false,         // TLS path
-		LedgerTimeout:     5 * time.Second,
-		LedgerSecretKey:   "test-secret",
-		DefaultTenantID:   "t1",
-		DefaultLedgerID:   "l1",
-		AllowedOrigins:    []string{"http://localhost"},
-		SessionSigningKey: "test-key",
-		SessionIssuer:     "tauth",
-		SessionCookieName: "app_session",
-		TAuthBaseURL:      "http://localhost:8080",
-		LLMProxyURL:       "http://localhost:9999",
-		LLMProxyKey:       "key",
-		LLMProxyTimeout:   5 * time.Second,
-	}
+	cfg := testConfig()
+	cfg.ListenAddr = "127.0.0.1:0"
+	cfg.LedgerAddress = "127.0.0.1:1"
+	cfg.LedgerInsecure = false
+	cfg.AllowedOrigins = []string{"http://localhost"}
+	cfg.DefaultTenantID = "t1"
+	cfg.DefaultLedgerID = "l1"
+	cfg.SessionSigningKey = "test-key"
+	cfg.LLMProxyTimeout = 5 * time.Second
 
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
@@ -220,6 +218,8 @@ func TestRun_ListenError(t *testing.T) {
 	// Bind a port first so Run fails with "address already in use".
 	addr, stopLedger := startFakeLedger(t)
 	defer stopLedger()
+	paddleBaseURL, stopPaddle := startFakePaddleCatalog(t)
+	defer stopPaddle()
 
 	lis, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -228,23 +228,14 @@ func TestRun_ListenError(t *testing.T) {
 	defer lis.Close()
 	occupiedAddr := lis.Addr().String()
 
-	cfg := Config{
-		ListenAddr:        occupiedAddr,
-		LedgerAddress:     addr,
-		LedgerInsecure:    true,
-		LedgerTimeout:     5 * time.Second,
-		LedgerSecretKey:   "test-secret",
-		DefaultTenantID:   "t1",
-		DefaultLedgerID:   "l1",
-		AllowedOrigins:    []string{"http://localhost"},
-		SessionSigningKey: "test-secret-key-long-enough-for-hmac",
-		SessionIssuer:     "tauth",
-		SessionCookieName: "app_session",
-		TAuthBaseURL:      "http://localhost:8080",
-		LLMProxyURL:       "http://localhost:9999",
-		LLMProxyKey:       "key",
-		LLMProxyTimeout:   5 * time.Second,
-	}
+	cfg := testConfig()
+	cfg.ListenAddr = occupiedAddr
+	cfg.LedgerAddress = addr
+	cfg.AllowedOrigins = []string{"http://localhost"}
+	cfg.DefaultTenantID = "t1"
+	cfg.DefaultLedgerID = "l1"
+	cfg.LLMProxyTimeout = 5 * time.Second
+	cfg.PaddleAPIBaseURL = paddleBaseURL
 
 	// Use a long-lived context so the errCh branch is hit before ctx.Done().
 	ctx := context.Background()
@@ -259,23 +250,14 @@ func TestRun_InvalidSessionValidator(t *testing.T) {
 	addr, stopLedger := startFakeLedger(t)
 	defer stopLedger()
 
-	cfg := Config{
-		ListenAddr:        "127.0.0.1:0",
-		LedgerAddress:     addr,
-		LedgerInsecure:    true,
-		LedgerTimeout:     5 * time.Second,
-		LedgerSecretKey:   "test-secret",
-		DefaultTenantID:   "t1",
-		DefaultLedgerID:   "l1",
-		AllowedOrigins:    []string{"http://localhost"},
-		SessionSigningKey: "", // empty key causes sessionvalidator.New to fail
-		SessionIssuer:     "tauth",
-		SessionCookieName: "app_session",
-		TAuthBaseURL:      "http://localhost:8080",
-		LLMProxyURL:       "http://localhost:9999",
-		LLMProxyKey:       "key",
-		LLMProxyTimeout:   5 * time.Second,
-	}
+	cfg := testConfig()
+	cfg.ListenAddr = "127.0.0.1:0"
+	cfg.LedgerAddress = addr
+	cfg.AllowedOrigins = []string{"http://localhost"}
+	cfg.DefaultTenantID = "t1"
+	cfg.DefaultLedgerID = "l1"
+	cfg.SessionSigningKey = ""
+	cfg.LLMProxyTimeout = 5 * time.Second
 
 	err := Run(context.Background(), cfg)
 	if err == nil {
@@ -314,23 +296,14 @@ func newTestValidator(cfg Config) (*sessionvalidator.Validator, error) {
 }
 
 func TestRun_GRPCDialError(t *testing.T) {
-	cfg := Config{
-		ListenAddr:        ":0",
-		LedgerAddress:     "127.0.0.1:1",
-		LedgerInsecure:    true,
-		LedgerTimeout:     5 * time.Second,
-		LedgerSecretKey:   "test-secret",
-		DefaultTenantID:   "t1",
-		DefaultLedgerID:   "l1",
-		AllowedOrigins:    []string{"http://localhost"},
-		SessionSigningKey: "test-key",
-		SessionIssuer:     "tauth",
-		SessionCookieName: "app_session",
-		TAuthBaseURL:      "http://localhost:8080",
-		LLMProxyURL:       "http://localhost:9999",
-		LLMProxyKey:       "key",
-		LLMProxyTimeout:   5 * time.Second,
-	}
+	cfg := testConfig()
+	cfg.ListenAddr = ":0"
+	cfg.LedgerAddress = "127.0.0.1:1"
+	cfg.AllowedOrigins = []string{"http://localhost"}
+	cfg.DefaultTenantID = "t1"
+	cfg.DefaultLedgerID = "l1"
+	cfg.SessionSigningKey = "test-key"
+	cfg.LLMProxyTimeout = 5 * time.Second
 
 	failDial := func(target string, opts ...grpc.DialOption) (*grpc.ClientConn, error) {
 		return nil, fmt.Errorf("forced dial error")
@@ -350,28 +323,21 @@ func TestRun_ErrServerClosed(t *testing.T) {
 	// which causes ListenAndServe to return http.ErrServerClosed.
 	addr, stopLedger := startFakeLedger(t)
 	defer stopLedger()
+	paddleBaseURL, stopPaddle := startFakePaddleCatalog(t)
+	defer stopPaddle()
 
 	lis, _ := net.Listen("tcp", "127.0.0.1:0")
 	httpAddr := lis.Addr().String()
 	lis.Close()
 
-	cfg := Config{
-		ListenAddr:        httpAddr,
-		LedgerAddress:     addr,
-		LedgerInsecure:    true,
-		LedgerTimeout:     5 * time.Second,
-		LedgerSecretKey:   "test-secret",
-		DefaultTenantID:   "t1",
-		DefaultLedgerID:   "l1",
-		AllowedOrigins:    []string{"http://localhost"},
-		SessionSigningKey: "test-secret-key-long-enough-for-hmac",
-		SessionIssuer:     "tauth",
-		SessionCookieName: "app_session",
-		TAuthBaseURL:      "http://localhost:8080",
-		LLMProxyURL:       "http://localhost:9999",
-		LLMProxyKey:       "key",
-		LLMProxyTimeout:   5 * time.Second,
-	}
+	cfg := testConfig()
+	cfg.ListenAddr = httpAddr
+	cfg.LedgerAddress = addr
+	cfg.AllowedOrigins = []string{"http://localhost"}
+	cfg.DefaultTenantID = "t1"
+	cfg.DefaultLedgerID = "l1"
+	cfg.LLMProxyTimeout = 5 * time.Second
+	cfg.PaddleAPIBaseURL = paddleBaseURL
 
 	var srv *http.Server
 	readyHook := withOnServerReady(func(s *http.Server) {
@@ -407,28 +373,21 @@ func TestRun_ShutdownError(t *testing.T) {
 	// and using a very short shutdown timeout.
 	addr, stopLedger := startFakeLedger(t)
 	defer stopLedger()
+	paddleBaseURL, stopPaddle := startFakePaddleCatalog(t)
+	defer stopPaddle()
 
 	lis, _ := net.Listen("tcp", "127.0.0.1:0")
 	httpAddr := lis.Addr().String()
 	lis.Close()
 
-	cfg := Config{
-		ListenAddr:        httpAddr,
-		LedgerAddress:     addr,
-		LedgerInsecure:    true,
-		LedgerTimeout:     5 * time.Second,
-		LedgerSecretKey:   "test-secret",
-		DefaultTenantID:   "t1",
-		DefaultLedgerID:   "l1",
-		AllowedOrigins:    []string{"http://localhost"},
-		SessionSigningKey: "test-secret-key-long-enough-for-hmac",
-		SessionIssuer:     "tauth",
-		SessionCookieName: "app_session",
-		TAuthBaseURL:      "http://localhost:8080",
-		LLMProxyURL:       "http://localhost:9999",
-		LLMProxyKey:       "key",
-		LLMProxyTimeout:   5 * time.Second,
-	}
+	cfg := testConfig()
+	cfg.ListenAddr = httpAddr
+	cfg.LedgerAddress = addr
+	cfg.AllowedOrigins = []string{"http://localhost"}
+	cfg.DefaultTenantID = "t1"
+	cfg.DefaultLedgerID = "l1"
+	cfg.LLMProxyTimeout = 5 * time.Second
+	cfg.PaddleAPIBaseURL = paddleBaseURL
 
 	var srvRef *http.Server
 	ctx, cancel := context.WithCancel(context.Background())
@@ -690,23 +649,14 @@ func TestSharedEndpoint_Integration_BackfillsExistingPuzzles(t *testing.T) {
 }
 
 func TestRun_LoggerInitError(t *testing.T) {
-	cfg := Config{
-		ListenAddr:        ":0",
-		LedgerAddress:     "127.0.0.1:1",
-		LedgerInsecure:    true,
-		LedgerTimeout:     5 * time.Second,
-		LedgerSecretKey:   "test-secret",
-		DefaultTenantID:   "t1",
-		DefaultLedgerID:   "l1",
-		AllowedOrigins:    []string{"http://localhost"},
-		SessionSigningKey: "test-key",
-		SessionIssuer:     "tauth",
-		SessionCookieName: "app_session",
-		TAuthBaseURL:      "http://localhost:8080",
-		LLMProxyURL:       "http://localhost:9999",
-		LLMProxyKey:       "key",
-		LLMProxyTimeout:   5 * time.Second,
-	}
+	cfg := testConfig()
+	cfg.ListenAddr = ":0"
+	cfg.LedgerAddress = "127.0.0.1:1"
+	cfg.AllowedOrigins = []string{"http://localhost"}
+	cfg.DefaultTenantID = "t1"
+	cfg.DefaultLedgerID = "l1"
+	cfg.SessionSigningKey = "test-key"
+	cfg.LLMProxyTimeout = 5 * time.Second
 
 	failFactory := func() (*zap.Logger, error) {
 		return nil, fmt.Errorf("logger init failed")

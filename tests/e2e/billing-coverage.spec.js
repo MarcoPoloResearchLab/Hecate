@@ -42,7 +42,6 @@ test.describe("Billing coverage", () => {
       var knownSummary = {
         activity: [],
         balance: null,
-        enabled: true,
         packs: [{ code: "starter" }],
         portal_available: false,
         provider_code: "paddle",
@@ -156,7 +155,7 @@ test.describe("Billing coverage", () => {
 	        outcomes.syncError = error.message;
 	      }
 	      outcomes.syncAcceptedStatuses = [];
-	      for (const status of [401, 403, 404, 503]) {
+	      for (const status of [401, 403]) {
 	        window.fetch = function () {
 	          return Promise.resolve({
 	            json: function () {
@@ -167,6 +166,23 @@ test.describe("Billing coverage", () => {
 	          });
 	        };
 	        outcomes.syncAcceptedStatuses.push(await billing.requestBillingSync());
+	      }
+	      outcomes.syncRejectedStatuses = [];
+	      for (const status of [404, 503]) {
+	        window.fetch = function () {
+	          return Promise.resolve({
+	            json: function () {
+	              return Promise.resolve({ message: "sync status " + status });
+	            },
+	            ok: false,
+	            status: status,
+	          });
+	        };
+	        try {
+	          await billing.requestBillingSync();
+	        } catch (error) {
+	          outcomes.syncRejectedStatuses.push(error.message);
+	        }
 	      }
 	      window.fetch = function () {
 	        return Promise.resolve({
@@ -301,7 +317,6 @@ test.describe("Billing coverage", () => {
     expect(result.normalized).toEqual({
       activity: [],
       balance: null,
-      enabled: false,
       packs: [],
       portal_available: false,
       provider_code: "",
@@ -327,7 +342,6 @@ test.describe("Billing coverage", () => {
     expect(result.unauthorizedSummary).toEqual({
       activity: [],
       balance: null,
-      enabled: false,
       packs: [],
       portal_available: false,
       provider_code: "",
@@ -335,7 +349,6 @@ test.describe("Billing coverage", () => {
 	    expect(result.loggedOutSummary).toEqual({
 	      activity: [],
 	      balance: null,
-	      enabled: false,
       packs: [],
 	      portal_available: false,
 	      provider_code: "",
@@ -347,8 +360,10 @@ test.describe("Billing coverage", () => {
 	    expect(result.syncAcceptedStatuses).toEqual([
 	      { accepted_status: 401 },
 	      { accepted_status: 403 },
-	      { accepted_status: 404 },
-	      { accepted_status: 503 },
+	    ]);
+	    expect(result.syncRejectedStatuses).toEqual([
+	      "sync status 404",
+	      "sync status 503",
 	    ]);
 	    expect(result.syncAcceptedEmpty).toEqual({});
 	    expect(result.reconcileWhileLoggedOut).toEqual({
@@ -379,7 +394,6 @@ test.describe("Billing coverage", () => {
 	    expect(result.setLoggedInSummary).toEqual({
 	      activity: [],
 	      balance: null,
-      enabled: true,
       packs: [{ code: "starter" }],
       portal_available: false,
       provider_code: "paddle",
@@ -392,7 +406,6 @@ test.describe("Billing coverage", () => {
     expect(result.restoredSummary).toEqual({
       activity: [],
       balance: null,
-      enabled: true,
       packs: [{ code: "starter" }],
       portal_available: false,
       provider_code: "paddle",
@@ -512,7 +525,6 @@ test.describe("Billing coverage", () => {
           json: function () {
             return Promise.resolve({
               activity: [{ status: "pending", transaction_id: "txn-timeout-activity" }],
-              enabled: true,
             });
           },
           ok: true,
@@ -532,7 +544,6 @@ test.describe("Billing coverage", () => {
           json: function () {
             return Promise.resolve({
               activity: [],
-              enabled: true,
             });
           },
           ok: true,
@@ -552,7 +563,6 @@ test.describe("Billing coverage", () => {
           json: function () {
             return Promise.resolve({
               activity: [{ status: "pending", transaction_id: "txn-pending" }],
-              enabled: true,
             });
           },
           ok: true,
@@ -572,7 +582,6 @@ test.describe("Billing coverage", () => {
           json: function () {
             return Promise.resolve({
               activity: [],
-              enabled: true,
             });
           },
           ok: true,
@@ -592,7 +601,6 @@ test.describe("Billing coverage", () => {
           json: function () {
             return Promise.resolve({
               activity: [{ event_type: "transaction.completed", transaction_id: "txn-complete" }],
-              enabled: true,
             });
           },
           ok: true,
@@ -891,7 +899,6 @@ test.describe("Billing coverage", () => {
     expect(result.openWithoutOptions).toEqual({
       activity: [],
       balance: null,
-      enabled: false,
       packs: [],
       portal_available: false,
       provider_code: "",
