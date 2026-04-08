@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.2.3] - 2026-04-08
+
+### Features ✨
+- Switch checkout flow to direct Paddle overlay.
+- Add Paddle overlay checkout contract.
+
+### Improvements ⚙️
+- Align pay-page checkout with Paddle _ptxn links.
+- Remove deprecated checkout URL building; unify to overlay mode checkout.
+
+### Bug Fixes 🐛
+- Reject blank checkout transaction IDs consistently in Paddle provider.
+- Fix billing checkout transaction ID validation errors.
+
+### Testing 🧪
+- Update billing coverage tests and JS billing logic.
+- Enhance billing end-to-end tests to cover request URL fallback branches.
+- Add tests ensuring rejection of missing transaction IDs upstream.
+- Refactor tests to align with new Paddle overlay checkout flow.
+
+### Docs 📚
+- Update Paddle overlay runbooks for billing and credit pack integration.
+
 ## [v0.2.2] - 2026-04-07
 
 ### Features ✨
