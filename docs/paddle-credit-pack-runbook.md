@@ -7,7 +7,8 @@ Use this runbook when configuring Paddle for one-time LLM Crossword credit packs
 The app expects:
 
 - one active billing provider: `paddle`
-- one app-owned default payment-link page: `/pay.html`
+- one approved Paddle default payment link URL on the crossword domain
+- browser checkout opened directly from the app by transaction id
 - webhook-driven credit settlement only
 
 ## Required Dashboard Setup
@@ -16,9 +17,10 @@ The app expects:
    - `starter`
    - `creator`
    - `publisher`
-2. In Paddle `Checkout -> Checkout settings`, set the default payment link to:
-   - local tunnel: `https://<your-public-host>/pay.html`
-   - hosted: `https://llm-crossword.mprlab.com/pay.html`
+2. In Paddle `Checkout -> Checkout settings`, set the default payment link to any approved crossword URL:
+   - local tunnel: `https://<your-public-host>/`
+   - hosted: `https://llm-crossword.mprlab.com/`
+   - Paddle requires this to create transactions, even though the app opens checkout directly by transaction id.
 3. Create one webhook destination per environment:
    - sandbox: `https://<your-public-host>/api/billing/paddle/webhook`
    - production: `https://llm-crossword-api.mprlab.com/api/billing/paddle/webhook`
@@ -77,24 +79,24 @@ It must never expose:
 1. Start the crossword stack with sandbox billing env vars.
 2. Expose the app through a public HTTPS tunnel.
 3. Point Paddle sandbox webhook delivery at the tunnel URL.
-4. Point the Paddle default payment link at the tunneled `/pay.html`.
+4. Point the Paddle default payment link at the tunneled app origin.
 
 ## Smoke Test
 
 1. Sign in and open the generator.
 2. Click the header credit badge or exhaust credits and click `Buy credits`.
 3. Confirm Settings -> Account shows pack cards and billing activity.
-4. Start checkout and verify the app redirects to `/pay.html?...&_ptxn=txn_...`.
+4. Start checkout and verify the app stays on the crossword page while the Paddle overlay opens.
 5. Complete a sandbox payment.
-6. Verify the app returns to `/?billing_transaction_id=txn_...`.
-7. Verify the header badge and Settings activity update after the webhook lands.
+6. Verify the header badge and Settings activity update after the webhook lands.
 
 ## Failure Map
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| Checkout fails with `transaction_default_checkout_url_not_set` | Paddle default payment link is missing | Point Paddle Checkout settings at `/pay.html`. |
+| Checkout fails with `transaction_default_checkout_url_not_set` | Paddle default payment link is missing | Configure any approved default payment link URL in Paddle Checkout settings. |
 | Webhook returns `401` | wrong webhook secret or wrong environment | Match `CROSSWORDAPI_PADDLE_ENVIRONMENT` and the environment-specific webhook secret. |
 | Credits never arrive after payment | webhook destination is not public HTTPS or not subscribed to `transaction.completed` | Fix the destination URL and enabled events. |
 | API fails during startup with a catalog validation error | Paddle price IDs or amounts do not match the configured packs | Fix the Paddle catalog or the configured `CROSSWORDAPI_PADDLE_PRICE_ID_PACK_*` values, then restart. |
-| `/pay.html` loads but checkout does not open | missing client token or wrong sandbox/production runtime config | Re-run `./scripts/render-runtime-auth-config.sh` with the correct env vars. |
+| The app shows packs but no Paddle modal opens | missing client token or wrong sandbox/production runtime config | Re-run `./scripts/render-runtime-auth-config.sh` with the correct env vars and confirm `GET /api/billing/summary` returns `client_token` plus `environment`. |
+| Paddle overlay opens and immediately shows an error | the transaction was rejected upstream or the environment/token pair does not match | Confirm the live runtime config, the transaction environment, and the Paddle account settings match. |

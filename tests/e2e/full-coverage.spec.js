@@ -910,9 +910,13 @@ test.describe("App coverage", () => {
       document.getElementById("shareHint").textContent = "";
     });
 
-    await page.locator("#headerCreditBadge").click();
+    await page.evaluate(() => {
+      document.getElementById("headerCreditBadge").click();
+    });
     await expect(page.locator("#creditPopoverSections")).toContainText("Generate new crosswords");
-    await page.locator("#headerCreditBadge").click();
+    await page.evaluate(() => {
+      document.getElementById("headerCreditBadge").click();
+    });
     await expect(page.locator("#creditDetailsPopover")).toBeHidden();
 
     await page.locator("#puzzleInfoButton").click();

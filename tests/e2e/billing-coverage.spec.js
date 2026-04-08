@@ -1,7 +1,7 @@
 // @ts-check
 
 const { test, expect } = require("./coverage-fixture");
-const { mountAppShell, setupLoggedOutRoutes } = require("./route-helpers");
+const { createBillingSummary, mountAppShell, setupLoggedOutRoutes } = require("./route-helpers");
 
 async function loadScript(page, fileName) {
   await page.addScriptTag({ url: `/js/${fileName}` });
@@ -14,17 +14,36 @@ async function stubPaddleCheckout(page) {
       body: `
         window.__paddleCalls = {
           environment: [],
+          eventCallback: null,
           initialize: null,
+          initializeCalls: [],
           opens: [],
+          updates: [],
+        };
+        window.__emitPaddleEvent = function (name, detail) {
+          var eventData = Object.assign({ name: name }, detail || {});
+          if (typeof window.__paddleCalls.eventCallback === "function") {
+            window.__paddleCalls.eventCallback(eventData);
+          }
         };
         window.Paddle = {
+          Initialized: false,
           Environment: {
             set: function (value) {
               window.__paddleCalls.environment.push(value);
             }
           },
           Initialize: function (options) {
+            window.Paddle.Initialized = true;
             window.__paddleCalls.initialize = options;
+            window.__paddleCalls.initializeCalls.push(options);
+            window.__paddleCalls.eventCallback = options && options.eventCallback;
+          },
+          Update: function (options) {
+            window.__paddleCalls.updates.push(options);
+            if (options && Object.prototype.hasOwnProperty.call(options, "eventCallback")) {
+              window.__paddleCalls.eventCallback = options.eventCallback;
+            }
           },
           Checkout: {
             open: function (options) {
@@ -73,6 +92,8 @@ test.describe("Billing coverage", () => {
       var knownSummary = {
         activity: [],
         balance: null,
+        client_token: "test_client_token",
+        environment: "sandbox",
         packs: [{ code: "starter" }],
         portal_available: false,
         provider_code: "paddle",
@@ -249,13 +270,32 @@ test.describe("Billing coverage", () => {
 	      outcomes.reconcileFallback = await billing.requestCheckoutReconcile("txn_failed");
 
 	      billing.setState({ summary: knownSummary });
-	      window.fetch = function () {
-	        return Promise.reject(new Error("offline"));
+      window.fetch = function () {
+        return Promise.reject(new Error("offline"));
       };
       delete window.authFetch;
       outcomes.setLoggedInSummary = await window.CrosswordBilling.setLoggedIn(true);
 
-      window.fetch = function () {
+      window.Paddle = {
+        Environment: {
+          set: function () {},
+        },
+        Initialize: function () {},
+        Checkout: {
+          open: function () {},
+        },
+      };
+
+      window.fetch = function (url) {
+        if (String(url).indexOf("/api/billing/summary") >= 0) {
+          return Promise.resolve({
+            json: function () {
+              return Promise.resolve(knownSummary);
+            },
+            ok: true,
+            status: 200,
+          });
+        }
         return Promise.resolve({
           json: function () {
             return Promise.resolve({ message: "  Pack unavailable  " });
@@ -270,7 +310,16 @@ test.describe("Billing coverage", () => {
         outcomes.checkoutError = error.message;
       }
 
-      window.fetch = function () {
+      window.fetch = function (url) {
+        if (String(url).indexOf("/api/billing/summary") >= 0) {
+          return Promise.resolve({
+            json: function () {
+              return Promise.resolve(knownSummary);
+            },
+            ok: true,
+            status: 200,
+          });
+        }
         return Promise.resolve({
           json: function () {
             return Promise.resolve({});
@@ -282,7 +331,7 @@ test.describe("Billing coverage", () => {
       try {
         await billing.requestCheckout("starter");
       } catch (error) {
-        outcomes.checkoutMissingURL = error.message;
+        outcomes.checkoutMissingTransaction = error.message;
       }
 
       try {
@@ -348,6 +397,8 @@ test.describe("Billing coverage", () => {
     expect(result.normalized).toEqual({
       activity: [],
       balance: null,
+      client_token: "",
+      environment: "",
       packs: [],
       portal_available: false,
       provider_code: "",
@@ -373,6 +424,8 @@ test.describe("Billing coverage", () => {
     expect(result.unauthorizedSummary).toEqual({
       activity: [],
       balance: null,
+      client_token: "",
+      environment: "",
       packs: [],
       portal_available: false,
       provider_code: "",
@@ -380,6 +433,8 @@ test.describe("Billing coverage", () => {
 	    expect(result.loggedOutSummary).toEqual({
 	      activity: [],
 	      balance: null,
+	      client_token: "",
+	      environment: "",
       packs: [],
 	      portal_available: false,
 	      provider_code: "",
@@ -425,18 +480,22 @@ test.describe("Billing coverage", () => {
 	    expect(result.setLoggedInSummary).toEqual({
 	      activity: [],
 	      balance: null,
+      client_token: "test_client_token",
+      environment: "sandbox",
       packs: [{ code: "starter" }],
       portal_available: false,
       provider_code: "paddle",
     });
     expect(result.checkoutError).toBe("Pack unavailable");
-    expect(result.checkoutMissingURL).toBe("Checkout did not return a URL.");
+    expect(result.checkoutMissingTransaction).toBe("Checkout did not return a transaction.");
     expect(result.checkoutBlankPack).toBe("Choose a credit pack first.");
     expect(result.portalError).toBe("We couldn't open billing right now.");
     expect(result.portalMissingURL).toBe("Billing portal did not return a URL.");
     expect(result.restoredSummary).toEqual({
       activity: [],
       balance: null,
+      client_token: "test_client_token",
+      environment: "sandbox",
       packs: [{ code: "starter" }],
       portal_available: false,
       provider_code: "paddle",
@@ -775,25 +834,43 @@ test.describe("Billing coverage", () => {
   });
 
   test("covers checkout success handling without losing billing coverage", async ({ page }) => {
+    await stubPaddleCheckout(page);
+    await page.route("**/api/billing/summary", (route) =>
+      route.fulfill(jsonResponse(200, createBillingSummary()))
+    );
     await page.route("**/api/billing/checkout", (route) =>
-      route.fulfill(jsonResponse(200, { checkout_url: "#checkout-success" }))
+      route.fulfill(jsonResponse(200, {
+        checkout_mode: "overlay",
+        provider_code: "paddle",
+        transaction_id: "txn_checkout_success",
+      }))
     );
 
     await page.goto("/blank.html");
+    await page.evaluate(() => {
+      window.__LLM_CROSSWORD_TEST__ = {};
+    });
     await loadScript(page, "billing.js");
 
     const result = await page.evaluate(async () => {
+      window.__LLM_CROSSWORD_TEST__.billing.setState({ loggedIn: true });
       return window.CrosswordBilling.requestCheckout("starter").then(function (data) {
         return {
-          checkoutURL: data.checkout_url,
-          locationHash: window.location.hash,
+          checkoutMode: data.checkout_mode,
+          environmentCalls: window.__paddleCalls.environment.slice(),
+          initializeToken: window.__paddleCalls.initialize && window.__paddleCalls.initialize.token,
+          openCalls: window.__paddleCalls.opens.slice(),
+          transactionID: data.transaction_id,
         };
       });
     });
 
     expect(result).toEqual({
-      checkoutURL: "#checkout-success",
-      locationHash: "#checkout-success",
+      checkoutMode: "overlay",
+      environmentCalls: ["sandbox"],
+      initializeToken: "test_client_token",
+      openCalls: [{ transactionId: "txn_checkout_success" }],
+      transactionID: "txn_checkout_success",
     });
   });
 
@@ -823,7 +900,7 @@ test.describe("Billing coverage", () => {
     });
   });
 
-  test("covers billing redirect fallbacks and default hook paths", async ({ page }) => {
+  test("covers billing direct-checkout fallbacks and default hook paths", async ({ page }) => {
     await page.goto("/blank.html");
     await loadScript(page, "billing.js");
 
@@ -860,17 +937,48 @@ test.describe("Billing coverage", () => {
         outcomes.checkoutFallbackStatus = window.CrosswordBilling.getState().lastStatus;
       }
 
-      window.fetch = function () {
+      window.Paddle = {
+        Environment: {
+          set: function (value) {
+            outcomes.checkoutEnvironment = value;
+          },
+        },
+        Initialize: function (options) {
+          outcomes.checkoutToken = options.token;
+        },
+        Checkout: {
+          open: function (options) {
+            outcomes.checkoutOpen = options;
+          },
+        },
+      };
+      window.fetch = function (url) {
+        if (String(url).indexOf("/api/billing/summary") >= 0) {
+          return Promise.resolve({
+            json: function () {
+              return Promise.resolve({
+                client_token: "direct_token",
+                environment: "production",
+                provider_code: "paddle",
+              });
+            },
+            ok: true,
+            status: 200,
+          });
+        }
         return Promise.resolve({
           json: function () {
-            return Promise.resolve({ checkout_url: "#checkout-direct-success" });
+            return Promise.resolve({
+              checkout_mode: "overlay",
+              transaction_id: "txn_direct_success",
+            });
           },
           ok: true,
           status: 200,
         });
       };
       outcomes.checkoutSuccess = await billing.requestCheckout("starter");
-      outcomes.checkoutHash = window.location.hash;
+      outcomes.checkoutStatus = window.CrosswordBilling.getState().lastStatus;
 
       window.fetch = function () {
         return Promise.reject({});
@@ -915,9 +1023,19 @@ test.describe("Billing coverage", () => {
       tone: "error",
     });
     expect(result.checkoutSuccess).toEqual({
-      checkout_url: "#checkout-direct-success",
+      checkout_mode: "overlay",
+      transaction_id: "txn_direct_success",
     });
-    expect(result.checkoutHash).toBe("#checkout-direct-success");
+    expect(result.checkoutEnvironment).toBe("production");
+    expect(result.checkoutToken).toBe("direct_token");
+    expect(result.checkoutOpen).toEqual({
+      transactionId: "txn_direct_success",
+    });
+    expect(result.checkoutStatus).toEqual({
+      isBusy: false,
+      message: "Checkout opened. Complete payment in Paddle to continue.",
+      tone: "",
+    });
     expect(result.portalFallbackStatus).toEqual({
       isBusy: false,
       message: "We couldn't open billing right now.",
@@ -930,6 +1048,8 @@ test.describe("Billing coverage", () => {
     expect(result.openWithoutOptions).toEqual({
       activity: [],
       balance: null,
+      client_token: "",
+      environment: "",
       packs: [],
       portal_available: false,
       provider_code: "",
@@ -943,61 +1063,649 @@ test.describe("Billing coverage", () => {
     expect(result.testHookExists).toBe(true);
   });
 
-  test("covers pay page transaction open paths", async ({ page }) => {
+  test("covers direct Paddle checkout lifecycle events", async ({ page }) => {
     await stubPaddleCheckout(page);
-    await page.goto("/pay.html?_ptxn=txn_auto&return_to=https%3A%2F%2Fexample.com%2Freturn");
-
-    const autoResult = await page.evaluate(() => ({
-      initializeSettings: window.__paddleCalls.initialize.checkout.settings,
-      openCalls: window.__paddleCalls.opens.slice(),
-      returnHref: document.getElementById("payReturnLink").href,
-    }));
-
-    expect(autoResult.initializeSettings).toEqual({
-      displayMode: "overlay",
-      locale: "en",
-      theme: "light",
+    await page.goto("/blank.html");
+    await page.evaluate(() => {
+      window.__LLM_CROSSWORD_TEST__ = {};
     });
-    expect(autoResult.openCalls).toEqual([
+    await loadScript(page, "billing.js");
+
+    const result = await page.evaluate(async () => {
+      var billing = window.__LLM_CROSSWORD_TEST__.billing;
+      var events = [];
+
+      await billing.openPaddleCheckout({
+        client_token: "checkout_token",
+        environment: "production",
+        provider_code: "paddle",
+      }, {
+        checkout_mode: "overlay",
+        transaction_id: "txn_lifecycle",
+      }, {
+        onClosed: function (transactionID) {
+          events.push({ name: "closed", transactionID: transactionID });
+        },
+        onCompleted: function (transactionID) {
+          events.push({ name: "completed", transactionID: transactionID });
+        },
+      });
+
+      window.__emitPaddleEvent("checkout.completed", {
+        data: { transaction_id: "txn_other" },
+      });
+      window.__emitPaddleEvent("checkout.completed", {
+        data: { transactionId: "txn_lifecycle" },
+      });
+      window.__emitPaddleEvent("checkout.closed", {
+        transactionId: "txn_lifecycle",
+      });
+
+      return {
+        environmentCalls: window.__paddleCalls.environment.slice(),
+        events: events,
+        initializeToken: window.__paddleCalls.initialize && window.__paddleCalls.initialize.token,
+        openCalls: window.__paddleCalls.opens.slice(),
+      };
+    });
+
+    expect(result.environmentCalls).toEqual(["production"]);
+    expect(result.initializeToken).toBe("checkout_token");
+    expect(result.openCalls).toEqual([
       {
-        transactionId: "txn_auto",
+        transactionId: "txn_lifecycle",
       },
     ]);
-    expect(autoResult.returnHref).toBe("https://example.com/return");
-
-    await page.goto("/pay.html?transaction_id=txn_legacy&return_to=https%3A%2F%2Fexample.com%2Freturn");
-
-    const legacyResult = await page.evaluate(() => ({
-      initializeSettings: window.__paddleCalls.initialize.checkout.settings,
-      openCalls: window.__paddleCalls.opens.slice(),
-      statusText: document.getElementById("payStatus").textContent,
-    }));
-
-    expect(legacyResult.initializeSettings).toEqual({
-      displayMode: "overlay",
-      locale: "en",
-      theme: "light",
-    });
-    expect(legacyResult.openCalls).toEqual([
+    expect(result.events).toEqual([
       {
-        transactionId: "txn_legacy",
+        name: "completed",
+        transactionID: "txn_lifecycle",
+      },
+      {
+        name: "closed",
+        transactionID: "txn_lifecycle",
       },
     ]);
-    expect(legacyResult.statusText).toBe("Preparing your Paddle checkout...");
+  });
 
-    await page.goto("/pay.html?return_to=https%3A%2F%2Fexample.com%2Freturn");
-
-    await expect(page.locator("#payStatus")).toHaveText(
-      "Missing Paddle transaction id. Return to LLM Crossword and start checkout again."
+  test("reuses initialized Paddle checkout state across repeated checkout opens", async ({ page }) => {
+    await page.route("**/cdn.paddle.com/paddle/v2/paddle.js", (route) =>
+      route.fulfill({
+        contentType: "text/javascript",
+        body: `
+          window.__paddleCalls = {
+            environment: [],
+            eventCallback: null,
+            initialize: null,
+            initializeCalls: [],
+            opens: [],
+            updates: [],
+          };
+          window.Paddle = {
+            Initialized: false,
+            Environment: {
+              set: function (value) {
+                window.__paddleCalls.environment.push(value);
+              }
+            },
+            Initialize: function (options) {
+              if (window.Paddle.Initialized) {
+                throw new Error("Initialize called twice");
+              }
+              window.Paddle.Initialized = true;
+              window.__paddleCalls.initialize = options;
+              window.__paddleCalls.initializeCalls.push(options);
+              window.__paddleCalls.eventCallback = options && options.eventCallback;
+            },
+            Update: function (options) {
+              window.__paddleCalls.updates.push(options);
+              if (options && Object.prototype.hasOwnProperty.call(options, "eventCallback")) {
+                window.__paddleCalls.eventCallback = options.eventCallback;
+              }
+            },
+            Checkout: {
+              open: function (options) {
+                window.__paddleCalls.opens.push(options);
+              }
+            }
+          };
+        `,
+        status: 200,
+      })
     );
+    await page.goto("/blank.html");
+    await page.evaluate(() => {
+      window.__LLM_CROSSWORD_TEST__ = {};
+    });
+    await loadScript(page, "billing.js");
 
-    const missingResult = await page.evaluate(() => ({
-      initialize: window.__paddleCalls.initialize,
-      openCalls: window.__paddleCalls.opens.slice(),
-    }));
+    const result = await page.evaluate(async () => {
+      var billing = window.__LLM_CROSSWORD_TEST__.billing;
+      var lastUpdate;
 
-    expect(missingResult.initialize).toBeNull();
-    expect(missingResult.openCalls).toEqual([]);
+      await billing.openPaddleCheckout({
+        client_token: "first_token",
+        environment: "sandbox",
+        provider_code: "paddle",
+      }, {
+        checkout_mode: "overlay",
+        transaction_id: "txn_first",
+      });
+      await billing.openPaddleCheckout({
+        client_token: "rotated_token",
+        environment: "production",
+        provider_code: "paddle",
+      }, {
+        checkout_mode: "overlay",
+        transaction_id: "txn_second",
+      });
+
+      lastUpdate = window.__paddleCalls.updates[window.__paddleCalls.updates.length - 1] || null;
+      return {
+        environmentCalls: window.__paddleCalls.environment.slice(),
+        initializeCallCount: window.__paddleCalls.initializeCalls.length,
+        initializeToken: window.__paddleCalls.initialize && window.__paddleCalls.initialize.token,
+        openCalls: window.__paddleCalls.opens.slice(),
+        updateCallCount: window.__paddleCalls.updates.length,
+        updateHasEventCallback: Boolean(lastUpdate && typeof lastUpdate.eventCallback === "function"),
+      };
+    });
+
+    expect(result).toEqual({
+      environmentCalls: ["sandbox"],
+      initializeCallCount: 1,
+      initializeToken: "first_token",
+      openCalls: [
+        { transactionId: "txn_first" },
+        { transactionId: "txn_second" },
+      ],
+      updateCallCount: 1,
+      updateHasEventCallback: true,
+    });
+  });
+
+  test("covers Paddle SDK helper failures and closed-checkout branches", async ({ page }) => {
+    var successScriptLoads = 0;
+    var invalidScriptLoads = 0;
+    var failedScriptLoads = 0;
+
+    await page.route("https://sdk.local/success.js", (route) => {
+      successScriptLoads += 1;
+      route.fulfill({
+        contentType: "text/javascript",
+        body: `
+          window.Paddle = {
+            Environment: { set: function () {} },
+            Initialize: function () {},
+            Checkout: { open: function () {} }
+          };
+        `,
+        status: 200,
+      });
+    });
+    await page.route("https://sdk.local/invalid.js", (route) => {
+      invalidScriptLoads += 1;
+      route.fulfill({
+        contentType: "text/javascript",
+        body: "window.__invalidPaddleLoaded = true;",
+        status: 200,
+      });
+    });
+    await page.route("https://sdk.local/fail.js", (route) => {
+      failedScriptLoads += 1;
+      route.abort();
+    });
+    await stubPaddleCheckout(page);
+    await page.goto("/blank.html?billing_transaction_id=txn_returned");
+    await page.evaluate(() => {
+      window.__LLM_CROSSWORD_TEST__ = {};
+    });
+    await loadScript(page, "billing.js");
+
+    const result = await page.evaluate(async () => {
+      var billing = window.__LLM_CROSSWORD_TEST__.billing;
+      var baseSummary = {
+        activity: [],
+        balance: null,
+        client_token: "test_client_token",
+        environment: "sandbox",
+        packs: [{ code: "starter" }],
+        portal_available: false,
+        provider_code: "paddle",
+      };
+      var checkoutTransactionID = "txn_closed";
+      var mode = "return-pending";
+      var outcomes = {};
+
+      function completedSummary(transactionID) {
+        return {
+          activity: [{
+            event_id: "evt_" + transactionID,
+            event_type: "transaction.completed",
+            transaction_id: transactionID,
+            status: "completed",
+          }],
+          balance: null,
+          client_token: "test_client_token",
+          environment: "sandbox",
+          packs: [{ code: "starter" }],
+          portal_available: false,
+          provider_code: "paddle",
+        };
+      }
+
+      function jsonResult(body) {
+        return Promise.resolve({
+          json: function () {
+            return Promise.resolve(body);
+          },
+          ok: true,
+          status: 200,
+        });
+      }
+
+      window.fetch = function (url, options) {
+        var normalizedURL = String(url);
+
+        if (normalizedURL.indexOf("/api/billing/sync") >= 0) {
+          return jsonResult({});
+        }
+        if (normalizedURL.indexOf("/api/billing/summary") >= 0) {
+          if (mode === "invalid-summary") {
+            return jsonResult({
+              client_token: "",
+              environment: "sandbox",
+              provider_code: "paddle",
+            });
+          }
+          if (mode === "sync-complete") {
+            return jsonResult(completedSummary("txn_synced"));
+          }
+          if (mode === "sync-succeeded-no-activity") {
+            return jsonResult(baseSummary);
+          }
+          if (mode === "overlay-complete") {
+            return jsonResult(completedSummary("txn_completed"));
+          }
+          if (mode === "sync-succeeded-summary-error") {
+            return Promise.reject(new Error("offline"));
+          }
+          if (mode === "sync-error") {
+            return Promise.reject(new Error("offline"));
+          }
+          return jsonResult(baseSummary);
+        }
+        if (normalizedURL.indexOf("/api/billing/checkout/reconcile") >= 0) {
+          return jsonResult({
+            status: mode === "overlay-complete" || mode === "sync-succeeded-no-activity" || mode === "sync-succeeded-summary-error"
+              ? "succeeded"
+              : "pending",
+            transaction_id: JSON.parse(options.body).transaction_id,
+          });
+        }
+        if (normalizedURL.indexOf("/api/billing/checkout") >= 0) {
+          return jsonResult({
+            checkout_mode: "overlay",
+            transaction_id: checkoutTransactionID,
+          });
+        }
+        return Promise.reject(new Error("unexpected fetch " + normalizedURL));
+      };
+
+      outcomes.nullCallback = billing.normalizeCallback("not-a-function");
+      outcomes.nullInitialized = billing.isPaddleInitialized(null);
+      window.BILLING_PROVIDER_SDK_URLS = { paddle: "https://sdk.local/success.js" };
+      outcomes.customSDK = billing.resolveProviderSDKURL("paddle");
+      outcomes.unknownSDK = billing.resolveProviderSDKURL("unknown");
+      try {
+        await billing.ensureScriptLoaded("");
+      } catch (error) {
+        outcomes.emptyScriptError = error.message;
+      }
+
+      window.BILLING_PROVIDER_SDK_URLS = { paddle: "https://sdk.local/invalid.js" };
+      window.Paddle = { Checkout: { open: function () {} } };
+      try {
+        await billing.resolvePaddleClient();
+      } catch (error) {
+        outcomes.missingInitializeError = error.message;
+      }
+
+      window.Paddle = { Initialize: function () {} };
+      try {
+        await billing.resolvePaddleClient();
+      } catch (error) {
+        outcomes.missingCheckoutError = error.message;
+      }
+
+      delete window.Paddle;
+      window.BILLING_PROVIDER_SDK_URLS = { paddle: "https://sdk.local/success.js" };
+      await billing.ensureScriptLoaded("https://sdk.local/success.js");
+      await billing.ensureScriptLoaded("https://sdk.local/success.js");
+
+      delete window.Paddle;
+      window.BILLING_PROVIDER_SDK_URLS = { paddle: "https://sdk.local/invalid.js" };
+      try {
+        await billing.resolvePaddleClient();
+      } catch (error) {
+        outcomes.invalidLoadedClientError = error.message;
+      }
+
+      delete window.Paddle;
+      window.BILLING_PROVIDER_SDK_URLS = { paddle: "https://sdk.local/fail.js" };
+      try {
+        await billing.resolvePaddleClient();
+      } catch (error) {
+        outcomes.failedScriptError = error.message;
+      }
+
+      try {
+        await billing.initializePaddleClient({});
+      } catch (error) {
+        outcomes.missingTokenError = error.message;
+      }
+
+      window.Paddle = {
+        Initialized: true,
+        Initialize: function () {
+          outcomes.unexpectedReinitialize = true;
+        },
+        Checkout: {
+          open: function () {},
+        },
+      };
+      try {
+        await billing.initializePaddleClient({
+          client_token: "rotated_token",
+          environment: "production",
+        });
+      } catch (error) {
+        outcomes.missingUpdateError = error.message;
+      }
+
+      window.Paddle = {
+        Initialize: function () {
+          outcomes.stateOnlyInitializeCount = (outcomes.stateOnlyInitializeCount || 0) + 1;
+        },
+        Update: function (options) {
+          outcomes.stateOnlyUpdateCount = (outcomes.stateOnlyUpdateCount || 0) + 1;
+          outcomes.stateOnlyUpdateHasEventCallback = Boolean(
+            options && typeof options.eventCallback === "function"
+          );
+        },
+        Checkout: {
+          open: function () {},
+        },
+      };
+      await billing.initializePaddleClient({
+        client_token: "state_only_token",
+        environment: "",
+      });
+      await billing.initializePaddleClient({
+        client_token: "state_only_rotated_token",
+        environment: "production",
+      });
+
+      window.Paddle = {
+        Initialize: function (options) {
+          outcomes.noEnvironmentInitToken = options.token;
+        },
+        Checkout: {
+          open: function () {},
+        },
+      };
+      await billing.initializePaddleClient({
+        client_token: "plain_token",
+        environment: "",
+      });
+
+      window.Paddle = {
+        Environment: {
+          set: function () {},
+        },
+        Initialize: function () {},
+        Checkout: {
+          open: function () {},
+        },
+      };
+      await billing.openPaddleCheckout({
+        client_token: "open_token",
+        environment: "sandbox",
+      }, {
+        checkout_mode: "overlay",
+        transaction_id: "txn_top_level",
+      }, {
+        onClosed: "not-a-function",
+        onCompleted: function (transactionID) {
+          outcomes.topLevelTransactionID = transactionID;
+        },
+      });
+      billing.handlePaddleCheckoutEvent({ name: "checkout.loaded" });
+      billing.handlePaddleCheckoutEvent({
+        name: "checkout.completed",
+        transaction_id: "txn_top_level",
+      });
+      billing.handlePaddleCheckoutEvent({
+        name: "checkout.closed",
+        transactionId: "txn_top_level",
+      });
+
+      window.Paddle = {
+        Environment: {
+          set: function () {},
+        },
+        Initialize: function () {},
+        Checkout: {
+          open: function () {},
+        },
+      };
+      await billing.openPaddleCheckout({
+        client_token: "open_token",
+        environment: "sandbox",
+      }, {
+        checkout_mode: "overlay",
+        transaction_id: "txn_callback_fallback",
+      }, {
+        onClosed: function (transactionID) {
+          outcomes.fallbackClosedTransactionID = transactionID;
+        },
+        onCompleted: "not-a-function",
+      });
+      billing.handlePaddleCheckoutEvent({
+        name: "checkout.completed",
+        data: {},
+      });
+      billing.handlePaddleCheckoutEvent({
+        name: "checkout.closed",
+        data: {},
+      });
+
+      window.Paddle = {
+        Environment: {
+          set: function () {},
+        },
+        Initialize: function () {},
+        Checkout: {
+          open: function () {
+            throw new Error("open failed");
+          },
+        },
+      };
+      try {
+        await billing.openPaddleCheckout({
+          client_token: "open_token",
+          environment: "sandbox",
+        }, {
+          checkout_mode: "hosted",
+          transaction_id: "txn_invalid_mode",
+        }, {
+          onClosed: "not-a-function",
+          onCompleted: "not-a-function",
+        });
+      } catch (error) {
+        outcomes.invalidModeError = error.message;
+      }
+      try {
+        await billing.openPaddleCheckout({
+          client_token: "open_token",
+          environment: "sandbox",
+        }, {
+          checkout_mode: "overlay",
+        }, {
+          onClosed: "not-a-function",
+          onCompleted: "not-a-function",
+        });
+      } catch (error) {
+        outcomes.missingTransactionError = error.message;
+      }
+      try {
+        await billing.openPaddleCheckout({
+          client_token: "open_token",
+          environment: "sandbox",
+        }, {
+          checkout_mode: "overlay",
+          transaction_id: "txn_throw",
+        }, {
+          onClosed: "not-a-function",
+          onCompleted: "not-a-function",
+        });
+      } catch (error) {
+        outcomes.openThrowError = error.message;
+      }
+
+      delete window.Paddle;
+      delete window.BILLING_PROVIDER_SDK_URLS;
+      await window.CrosswordBilling.setLoggedIn(true);
+      outcomes.returnTransactionActive = window.CrosswordBilling.getState().activeTransactionId;
+      billing.clearPollTimer();
+      billing.setState({
+        activeTransactionId: "",
+        pollDeadlineTimestamp: 0,
+        pollTimerId: null,
+      });
+
+      billing.setState({ loggedIn: false });
+      await billing.syncClosedCheckout("");
+      outcomes.blankClosedStatus = window.CrosswordBilling.getState().lastStatus;
+      billing.setState({ loggedIn: true });
+
+      window.history.replaceState({}, "", "/blank.html?billing_transaction_id=txn_clear");
+      billing.clearReturnTransactionID();
+      outcomes.clearedSearch = window.location.search;
+
+      mode = "invalid-summary";
+      try {
+        await billing.requestCheckout("starter");
+      } catch (error) {
+        outcomes.invalidSummaryError = error.message;
+      }
+
+      mode = "closed-empty";
+      checkoutTransactionID = "txn_closed";
+      await billing.requestCheckout("starter");
+      window.__emitPaddleEvent("checkout.closed", {
+        data: {},
+      });
+      await new Promise(function (resolve) {
+        window.setTimeout(resolve, 0);
+      });
+      outcomes.closedStatus = window.CrosswordBilling.getState().lastStatus;
+
+      mode = "overlay-complete";
+      checkoutTransactionID = "txn_completed";
+      await billing.requestCheckout("starter");
+      window.__emitPaddleEvent("checkout.completed", {
+        data: {},
+      });
+      window.__emitPaddleEvent("checkout.closed", {
+        data: { transaction_id: "txn_completed" },
+      });
+      await new Promise(function (resolve) {
+        window.setTimeout(resolve, 0);
+      });
+      outcomes.completedStatus = window.CrosswordBilling.getState().lastStatus;
+
+      mode = "sync-complete";
+      await billing.syncClosedCheckout("txn_synced");
+      outcomes.syncedStatus = window.CrosswordBilling.getState().lastStatus;
+
+      mode = "sync-succeeded-no-activity";
+      await billing.syncClosedCheckout("txn_synced_no_activity");
+      outcomes.syncSucceededNoActivityStatus = window.CrosswordBilling.getState().lastStatus;
+
+      mode = "sync-succeeded-summary-error";
+      await billing.syncClosedCheckout("txn_synced_summary_error");
+      outcomes.syncSucceededSummaryErrorStatus = window.CrosswordBilling.getState().lastStatus;
+
+      mode = "sync-error";
+      await billing.syncClosedCheckout("txn_error");
+      outcomes.syncErrorStatus = window.CrosswordBilling.getState().lastStatus;
+
+      return outcomes;
+    });
+
+    expect(result.nullCallback).toBeNull();
+    expect(result.nullInitialized).toBe(false);
+    expect(result.customSDK).toBe("https://sdk.local/success.js");
+    expect(result.unknownSDK).toBe("");
+    expect(result.emptyScriptError).toBe("We couldn't start checkout.");
+    expect(result.missingInitializeError).toBe("We couldn't start checkout.");
+    expect(result.missingCheckoutError).toBe("We couldn't start checkout.");
+    expect(result.invalidLoadedClientError).toBe("We couldn't start checkout.");
+    expect(result.failedScriptError).toBe("We couldn't start checkout.");
+    expect(result.missingTokenError).toBe("We couldn't start checkout.");
+    expect(result.missingUpdateError).toBe("We couldn't start checkout.");
+    expect(result.stateOnlyInitializeCount).toBe(1);
+    expect(result.stateOnlyUpdateCount).toBe(1);
+    expect(result.stateOnlyUpdateHasEventCallback).toBe(true);
+    expect(result.unexpectedReinitialize).toBeUndefined();
+    expect(result.noEnvironmentInitToken).toBe("plain_token");
+    expect(result.topLevelTransactionID).toBe("txn_top_level");
+    expect(result.fallbackClosedTransactionID).toBe("txn_callback_fallback");
+    expect(result.invalidModeError).toBe("We couldn't start checkout.");
+    expect(result.missingTransactionError).toBe("Checkout did not return a transaction.");
+    expect(result.openThrowError).toBe("open failed");
+    expect(result.returnTransactionActive).toBe("txn_returned");
+    expect(result.blankClosedStatus).toEqual({
+      isBusy: false,
+      message: "Checkout closed before payment completed.",
+      tone: "",
+    });
+    expect(result.clearedSearch).toBe("");
+    expect(result.invalidSummaryError).toBe("We couldn't start checkout.");
+    expect(result.closedStatus).toEqual({
+      isBusy: false,
+      message: "Checkout closed before payment completed.",
+      tone: "",
+    });
+    expect(result.completedStatus).toEqual({
+      isBusy: false,
+      message: "Payment confirmed. Your credits are ready to use.",
+      tone: "success",
+    });
+    expect(result.syncedStatus).toEqual({
+      isBusy: false,
+      message: "Payment confirmed. Your credits are ready to use.",
+      tone: "success",
+    });
+    expect(result.syncSucceededNoActivityStatus).toEqual({
+      isBusy: false,
+      message: "Payment confirmed. Your credits are ready to use.",
+      tone: "success",
+    });
+    expect(result.syncSucceededSummaryErrorStatus).toEqual({
+      isBusy: false,
+      message: "Payment confirmed. Your credits are ready to use.",
+      tone: "success",
+    });
+    expect(result.syncErrorStatus).toEqual({
+      isBusy: false,
+      message: "Checkout closed before payment completed.",
+      tone: "",
+    });
+    expect(successScriptLoads).toBe(1);
+    expect(invalidScriptLoads).toBe(1);
+    expect(failedScriptLoads).toBe(1);
   });
 
   test("covers app billing hooks and summary fallbacks", async ({ page }) => {

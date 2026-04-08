@@ -11,6 +11,7 @@ import (
 
 const (
 	billingProviderPaddle       = "paddle"
+	billingCheckoutModeOverlay  = "overlay"
 	paddleEnvironmentSandbox    = "sandbox"
 	paddleEnvironmentProduction = "production"
 
@@ -91,7 +92,7 @@ type billingCheckoutReconcileRequest struct {
 type billingCheckoutSession struct {
 	ProviderCode  string `json:"provider_code"`
 	TransactionID string `json:"transaction_id"`
-	CheckoutURL   string `json:"checkout_url"`
+	CheckoutMode  string `json:"checkout_mode"`
 }
 
 type billingCheckoutReconcileResult struct {
@@ -117,7 +118,7 @@ type billingProvider interface {
 	SignatureHeaderName() string
 	VerifyWebhookSignature(signatureHeader string, payload []byte) error
 	ParseWebhookEvent(payload []byte) (billingProviderEvent, error)
-	CreateCheckout(ctx context.Context, userID string, userEmail string, pack BillingPack, returnURL string) (billingCheckoutSession, error)
+	CreateCheckout(ctx context.Context, userID string, userEmail string, pack BillingPack) (billingCheckoutSession, error)
 	CreatePortalSession(ctx context.Context, customerLink BillingCustomerLink) (billingPortalSession, error)
 }
 

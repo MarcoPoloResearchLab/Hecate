@@ -184,7 +184,7 @@ func TestBillingActivityHelpersCoverage(t *testing.T) {
 }
 
 func TestBillingServiceCreateCheckoutCoverage(t *testing.T) {
-	if _, err := (*billingService)(nil).CreateCheckout(context.Background(), "user-1", "user@example.com", "starter", "https://site.example.com"); !errors.Is(err, errBillingServiceUnavailable) {
+	if _, err := (*billingService)(nil).CreateCheckout(context.Background(), "user-1", "user@example.com", "starter"); !errors.Is(err, errBillingServiceUnavailable) {
 		t.Fatalf("expected unavailable checkout error, got %v", err)
 	}
 
@@ -194,20 +194,20 @@ func TestBillingServiceCreateCheckoutCoverage(t *testing.T) {
 		logger:       zap.NewNop(),
 		provider:     &mockBillingProvider{code: billingProviderPaddle},
 	}
-	if _, err := service.CreateCheckout(context.Background(), "user-1", "user@example.com", "missing", "https://site.example.com"); !errors.Is(err, ErrBillingPackUnknown) {
+	if _, err := service.CreateCheckout(context.Background(), "user-1", "user@example.com", "missing"); !errors.Is(err, ErrBillingPackUnknown) {
 		t.Fatalf("expected unknown pack error, got %v", err)
 	}
 
 	expectedSession := billingCheckoutSession{
 		ProviderCode:  billingProviderPaddle,
 		TransactionID: "txn_123",
-		CheckoutURL:   "https://checkout.example.com",
+		CheckoutMode:  billingCheckoutModeOverlay,
 	}
 	service.provider = &mockBillingProvider{
 		code:            billingProviderPaddle,
 		checkoutSession: expectedSession,
 	}
-	session, err := service.CreateCheckout(context.Background(), "user-1", "user@example.com", "starter", "https://site.example.com")
+	session, err := service.CreateCheckout(context.Background(), "user-1", "user@example.com", "starter")
 	if err != nil {
 		t.Fatalf("CreateCheckout(success) error = %v", err)
 	}
@@ -467,10 +467,24 @@ func TestBillingServiceHelperCoverage(t *testing.T) {
 		t.Fatalf("unexpected tls url %q", got)
 	}
 
+	plainRequest := httptest.NewRequest(http.MethodGet, "http://localhost/billing", nil)
+	if got := buildAbsoluteRequestURL(plainRequest, "/billing"); got != "http://localhost/billing" {
+		t.Fatalf("unexpected plain http url %q", got)
+	}
+
 	originRequest := httptest.NewRequest(http.MethodGet, "http://localhost/billing", nil)
 	originRequest.Header.Set("Origin", "https://site.example.com")
 	if got := buildAbsoluteRequestURL(originRequest, "/billing"); got != "https://site.example.com/billing" {
 		t.Fatalf("unexpected origin url %q", got)
+	}
+
+	invalidOriginRequest := httptest.NewRequest(http.MethodGet, "http://localhost/billing", nil)
+	invalidOriginRequest.Host = "internal.example.com"
+	invalidOriginRequest.Header.Set("Origin", "://not-a-valid-origin")
+	invalidOriginRequest.Header.Set("X-Forwarded-Proto", "https")
+	invalidOriginRequest.Header.Set("X-Forwarded-Host", "billing.example.com")
+	if got := buildAbsoluteRequestURL(invalidOriginRequest, "/billing"); got != "https://billing.example.com/billing" {
+		t.Fatalf("unexpected invalid-origin fallback url %q", got)
 	}
 
 	forwardedRequest := httptest.NewRequest(http.MethodGet, "http://localhost/billing", nil)

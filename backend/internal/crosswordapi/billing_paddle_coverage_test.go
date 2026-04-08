@@ -753,7 +753,6 @@ func TestPaddleSharedCheckoutAndPortalCoverage(t *testing.T) {
 			" shared-user ",
 			" shared@example.com ",
 			cfg.BillingPacks[0],
-			"https://site.example.com/?billing_transaction_id="+checkoutTransactionIDPlaceholder,
 		)
 		if err != nil {
 			t.Fatalf("CreateCheckout(shared) error = %v", err)
@@ -761,17 +760,14 @@ func TestPaddleSharedCheckoutAndPortalCoverage(t *testing.T) {
 		if session.TransactionID != "txn_shared" {
 			t.Fatalf("unexpected shared checkout session %#v", session)
 		}
+		if session.CheckoutMode != billingCheckoutModeOverlay {
+			t.Fatalf("expected shared checkout mode overlay, got %#v", session)
+		}
 		if !strings.Contains(transactionBody, `"billing_subject_id":"shared-user"`) || !strings.Contains(transactionBody, `"crossword_user_id":"shared-user"`) {
 			t.Fatalf("expected shared transaction metadata to include subject id, got %s", transactionBody)
 		}
 		if !strings.Contains(transactionBody, `"billing_user_email":"shared@example.com"`) || !strings.Contains(transactionBody, `"user_email":"shared@example.com"`) {
 			t.Fatalf("expected shared transaction metadata to include normalized email, got %s", transactionBody)
-		}
-		if !strings.Contains(session.CheckoutURL, "/pay.html?") || !strings.Contains(session.CheckoutURL, "_ptxn=txn_shared") {
-			t.Fatalf("expected shared checkout url to target pay page, got %q", session.CheckoutURL)
-		}
-		if !strings.Contains(session.CheckoutURL, "return_to=https%3A%2F%2Fsite.example.com%2F%3Fbilling_transaction_id%3Dtxn_shared") {
-			t.Fatalf("expected shared checkout url to include replaced return_to, got %q", session.CheckoutURL)
 		}
 	})
 
@@ -796,9 +792,35 @@ func TestPaddleSharedCheckoutAndPortalCoverage(t *testing.T) {
 			t.Fatalf("newPaddleBillingProvider() error = %v", err)
 		}
 
-		_, err = provider.CreateCheckout(context.Background(), "user-1", "shared@example.com", cfg.BillingPacks[0], "https://site.example.com/return")
+		_, err = provider.CreateCheckout(context.Background(), "user-1", "shared@example.com", cfg.BillingPacks[0])
 		if err == nil || !strings.Contains(err.Error(), "shared checkout failed") {
 			t.Fatalf("expected shared checkout error, got %v", err)
+		}
+	})
+
+	t.Run("shared checkout rejects missing transaction id upstream", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			switch {
+			case request.Method == http.MethodGet && request.URL.Path == "/customers":
+				_, _ = io.WriteString(writer, `{"data":[{"id":"ctm_shared"}]}`)
+			case request.Method == http.MethodPost && request.URL.Path == "/transactions":
+				_, _ = io.WriteString(writer, `{"data":{"id":"   "}}`)
+			default:
+				t.Fatalf("unexpected request %s %s", request.Method, request.URL.String())
+			}
+		}))
+		defer server.Close()
+
+		cfg := validBillingConfig()
+		cfg.PaddleAPIBaseURL = server.URL
+		provider, err := newPaddleBillingProvider(cfg)
+		if err != nil {
+			t.Fatalf("newPaddleBillingProvider() error = %v", err)
+		}
+
+		_, err = provider.CreateCheckout(context.Background(), "user-1", "shared@example.com", cfg.BillingPacks[0])
+		if err == nil || !strings.Contains(err.Error(), "transaction") {
+			t.Fatalf("expected shared checkout to reject missing transaction id, got %v", err)
 		}
 	})
 
@@ -855,53 +877,6 @@ func TestPaddleSharedCheckoutAndPortalCoverage(t *testing.T) {
 	})
 }
 
-func TestBuildPayPageCheckoutURLCoverage(t *testing.T) {
-	if got := buildPayPageCheckoutURL(" ", " "); got != "/pay.html" {
-		t.Fatalf("expected blank pay page checkout url, got %q", got)
-	}
-
-	got := buildPayPageCheckoutURL(" txn_123 ", "https://site.example.com/?billing_transaction_id="+checkoutTransactionIDPlaceholder)
-	if !strings.HasPrefix(got, "/pay.html?") {
-		t.Fatalf("expected pay page path with query, got %q", got)
-	}
-	if !strings.Contains(got, "_ptxn=txn_123") {
-		t.Fatalf("expected transaction id query parameter, got %q", got)
-	}
-	if !strings.Contains(got, "return_to=https%3A%2F%2Fsite.example.com%2F%3Fbilling_transaction_id%3Dtxn_123") {
-		t.Fatalf("expected replaced return_to query parameter, got %q", got)
-	}
-}
-
-func TestAppendCheckoutReturnURLCoverage(t *testing.T) {
-	if got := appendCheckoutReturnURL("", "https://site.example.com"); got != "" {
-		t.Fatalf("expected blank checkout url to stay blank, got %q", got)
-	}
-	if got := appendCheckoutReturnURL("https://checkout.example.com", "   "); got != "https://checkout.example.com" {
-		t.Fatalf("expected blank return url to keep checkout url, got %q", got)
-	}
-	if got := appendCheckoutReturnURL("://bad-url", "https://site.example.com"); got != "://bad-url" {
-		t.Fatalf("expected invalid checkout url to pass through, got %q", got)
-	}
-	got := appendCheckoutReturnURL("https://checkout.example.com/session?existing=1", "https://site.example.com/return")
-	if !strings.Contains(got, "return_to=https%3A%2F%2Fsite.example.com%2Freturn") {
-		t.Fatalf("expected checkout url to include return_to, got %q", got)
-	}
-}
-
-func TestReplaceCheckoutTransactionPlaceholderCoverage(t *testing.T) {
-	returnURL := "https://site.example.com/?billing_transaction_id=" + checkoutTransactionIDPlaceholder
-	if got := replaceCheckoutTransactionPlaceholder(returnURL, " txn_123 "); got != "https://site.example.com/?billing_transaction_id=txn_123" {
-		t.Fatalf("expected placeholder replacement, got %q", got)
-	}
-	checkoutURL := "https://checkout.example.com/session?return_to=https%3A%2F%2Fsite.example.com%2F%3Fbilling_transaction_id%3D%7Btransaction_id%7D"
-	if got := replaceCheckoutTransactionPlaceholder(checkoutURL, " txn_123 "); got != "https://checkout.example.com/session?return_to=https%3A%2F%2Fsite.example.com%2F%3Fbilling_transaction_id%3Dtxn_123" {
-		t.Fatalf("expected encoded placeholder replacement, got %q", got)
-	}
-	if got := replaceCheckoutTransactionPlaceholder(returnURL, "   "); got != returnURL {
-		t.Fatalf("expected blank transaction id to keep return url, got %q", got)
-	}
-}
-
 func TestPaddleProviderAndClientCheckoutCoverage(t *testing.T) {
 	t.Run("provider checkout success and portal success", func(t *testing.T) {
 		var createCustomerCalls int
@@ -921,8 +896,6 @@ func TestPaddleProviderAndClientCheckoutCoverage(t *testing.T) {
 				body, _ := io.ReadAll(request.Body)
 				createTransactionBody = string(body)
 				return jsonHTTPResponse(http.StatusOK, `{"data":{"id":"txn_123"}}`), nil
-			case request.Method == http.MethodGet && request.URL.Path == "/transactions/txn_123":
-				return jsonHTTPResponse(http.StatusOK, `{"data":{"checkout":{"url":"https://checkout.example.com/session"}}}`), nil
 			case request.Method == http.MethodPost && request.URL.Path == "/customers/ctm_new/portal-sessions":
 				return jsonHTTPResponse(http.StatusOK, `{"data":{"urls":{"general":{"overview":"https://portal.example.com"}}}}`), nil
 			default:
@@ -946,7 +919,6 @@ func TestPaddleProviderAndClientCheckoutCoverage(t *testing.T) {
 			"user-123",
 			"new@example.com",
 			provider.cfg.BillingPacks[0],
-			"https://site.example.com/?billing_transaction_id="+checkoutTransactionIDPlaceholder,
 		)
 		if err != nil {
 			t.Fatalf("CreateCheckout() error = %v", err)
@@ -954,11 +926,8 @@ func TestPaddleProviderAndClientCheckoutCoverage(t *testing.T) {
 		if checkoutSession.TransactionID != "txn_123" {
 			t.Fatalf("unexpected checkout session %#v", checkoutSession)
 		}
-		if strings.Contains(checkoutSession.CheckoutURL, "%7Btransaction_id%7D") {
-			t.Fatalf("expected checkout url to resolve the transaction placeholder, got %q", checkoutSession.CheckoutURL)
-		}
-		if !strings.Contains(checkoutSession.CheckoutURL, "return_to=https%3A%2F%2Fsite.example.com%2F%3Fbilling_transaction_id%3Dtxn_123") {
-			t.Fatalf("expected checkout url to include return_to, got %q", checkoutSession.CheckoutURL)
+		if checkoutSession.CheckoutMode != billingCheckoutModeOverlay {
+			t.Fatalf("expected overlay checkout mode, got %#v", checkoutSession)
 		}
 		if createCustomerCalls != 1 {
 			t.Fatalf("expected one created customer, got %d", createCustomerCalls)
@@ -982,7 +951,7 @@ func TestPaddleProviderAndClientCheckoutCoverage(t *testing.T) {
 		})
 		provider := newTestPaddleProvider(client)
 
-		_, err := provider.CreateCheckout(context.Background(), "user-123", "new@example.com", provider.cfg.BillingPacks[0], "https://site.example.com/return")
+		_, err := provider.CreateCheckout(context.Background(), "user-123", "new@example.com", provider.cfg.BillingPacks[0])
 		if err == nil || !strings.Contains(err.Error(), "customer lookup failed") {
 			t.Fatalf("expected resolver error, got %v", err)
 		}
@@ -1002,21 +971,19 @@ func TestPaddleProviderAndClientCheckoutCoverage(t *testing.T) {
 		})
 		provider := newTestPaddleProvider(client)
 
-		_, err := provider.CreateCheckout(context.Background(), "user-123", "existing@example.com", provider.cfg.BillingPacks[0], "https://site.example.com/return")
+		_, err := provider.CreateCheckout(context.Background(), "user-123", "existing@example.com", provider.cfg.BillingPacks[0])
 		if err == nil || !strings.Contains(err.Error(), "transaction create failed") {
 			t.Fatalf("expected transaction creation error, got %v", err)
 		}
 	})
 
-	t.Run("provider checkout returns checkout url error", func(t *testing.T) {
+	t.Run("provider checkout rejects missing transaction id", func(t *testing.T) {
 		client := newTestPaddleAPIClient(func(request *http.Request) (*http.Response, error) {
 			switch {
 			case request.Method == http.MethodGet && request.URL.Path == "/customers":
 				return jsonHTTPResponse(http.StatusOK, `{"data":[{"id":"ctm_existing"}]}`), nil
 			case request.Method == http.MethodPost && request.URL.Path == "/transactions":
-				return jsonHTTPResponse(http.StatusOK, `{"data":{"id":"txn_123"}}`), nil
-			case request.Method == http.MethodGet && request.URL.Path == "/transactions/txn_123":
-				return jsonHTTPResponse(http.StatusOK, `{"data":{"checkout":{"url":""}}}`), nil
+				return jsonHTTPResponse(http.StatusOK, `{"data":{"id":"   "}}`), nil
 			default:
 				t.Fatalf("unexpected request %s %s", request.Method, request.URL.String())
 				return nil, nil
@@ -1024,9 +991,9 @@ func TestPaddleProviderAndClientCheckoutCoverage(t *testing.T) {
 		})
 		provider := newTestPaddleProvider(client)
 
-		_, err := provider.CreateCheckout(context.Background(), "user-123", "existing@example.com", provider.cfg.BillingPacks[0], "https://site.example.com/return")
-		if !errors.Is(err, ErrPaddleCheckoutURLMissing) {
-			t.Fatalf("expected missing checkout url error, got %v", err)
+		_, err := provider.CreateCheckout(context.Background(), "user-123", "existing@example.com", provider.cfg.BillingPacks[0])
+		if !errors.Is(err, ErrPaddleTransactionIDMissing) {
+			t.Fatalf("expected missing transaction id error, got %v", err)
 		}
 	})
 
@@ -1108,7 +1075,7 @@ func TestPaddleAPIClientDirectMethodCoverage(t *testing.T) {
 		}
 	})
 
-	t.Run("create transaction covers success and error", func(t *testing.T) {
+	t.Run("create transaction covers success, missing id, and error", func(t *testing.T) {
 		successClient := newTestPaddleAPIClient(func(request *http.Request) (*http.Response, error) {
 			return jsonHTTPResponse(http.StatusOK, `{"data":{"id":"txn_created"}}`), nil
 		})
@@ -1118,6 +1085,13 @@ func TestPaddleAPIClientDirectMethodCoverage(t *testing.T) {
 		}
 		if transactionID != "txn_created" {
 			t.Fatalf("unexpected transaction id %q", transactionID)
+		}
+
+		missingIDClient := newTestPaddleAPIClient(func(request *http.Request) (*http.Response, error) {
+			return jsonHTTPResponse(http.StatusOK, `{"data":{"id":"   "}}`), nil
+		})
+		if _, err := missingIDClient.CreateTransaction(context.Background(), "ctm_123", "pri_test_starter", nil); !errors.Is(err, ErrPaddleTransactionIDMissing) {
+			t.Fatalf("expected missing transaction id error, got %v", err)
 		}
 
 		errorClient := newTestPaddleAPIClient(func(request *http.Request) (*http.Response, error) {
