@@ -104,6 +104,8 @@ function text(status, body) {
 
 function createBillingSummary(overrides = {}) {
   return {
+    client_token: "test_client_token",
+    environment: "sandbox",
     provider_code: "paddle",
     balance: null,
     packs: [
