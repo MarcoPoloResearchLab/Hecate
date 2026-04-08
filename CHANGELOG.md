@@ -4,6 +4,28 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.2.2] - 2026-04-07
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Update runtime-auth-config.js defaults to production Paddle billing with live client token.
+- Modify render-runtime-auth-config.sh to default committed output to production env file for better deployment consistency.
+- Allow browser runtime config to respect Origin header for correct absolute request URLs.
+- Update README to clarify runtime-auth-config.js regeneration uses production env by default.
+
+### Bug Fixes 🐛
+- Fix buildAbsoluteRequestURL to correctly respect Origin header, ensuring accurate billing return URLs.
+
+### Testing 🧪
+- Add tests covering origin header handling in billing service URL building.
+- Add coverage tests for billing checkout handling with Origin header.
+- Add e2e test verifying committed runtime config defaults to production Paddle billing.
+
+### Docs 📚
+- Clarify README on regenerating runtime-auth-config.js and default environment behavior.
+
 ## [v0.2.1] - 2026-04-07
 
 ### Features ✨
