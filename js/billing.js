@@ -16,10 +16,8 @@
   var pollTimeoutMs = 90000;
   var loadedScriptPromises = {};
   var paddleInitializationState = {
-    client: null,
-    environment: "",
-    initialized: false,
     token: "",
+    environment: "",
   };
   var paddleCheckoutEventState = {
     closureNotified: false,
@@ -179,29 +177,6 @@
       });
   }
 
-  function isPaddleInitialized(paddle) {
-    if (!paddle || typeof paddle !== "object") {
-      return false;
-    }
-    if (paddle.Initialized === true) {
-      return true;
-    }
-    if (paddleInitializationState.client !== paddle) {
-      return false;
-    }
-    return paddleInitializationState.initialized === true;
-  }
-
-  function updatePaddleClient(paddle) {
-    if (!paddle || typeof paddle.Update !== "function") {
-      throw new Error("We couldn't start checkout.");
-    }
-
-    paddle.Update({
-      eventCallback: handlePaddleCheckoutEvent,
-    });
-  }
-
   function clearPaddleCheckoutEventState() {
     paddleCheckoutEventState.transactionID = "";
     paddleCheckoutEventState.onCompleted = null;
@@ -272,24 +247,20 @@
 
     return resolvePaddleClient()
       .then(function (paddle) {
-        if (!isPaddleInitialized(paddle)) {
-          if (paddle.Environment && typeof paddle.Environment.set === "function" && environment) {
-            paddle.Environment.set(environment);
-          }
+        if (paddle.Environment && typeof paddle.Environment.set === "function" && environment) {
+          paddle.Environment.set(environment);
+        }
+        if (
+          paddleInitializationState.token !== clientToken ||
+          paddleInitializationState.environment !== environment
+        ) {
           paddle.Initialize({
             eventCallback: handlePaddleCheckoutEvent,
             token: clientToken,
           });
-          paddleInitializationState.client = paddle;
           paddleInitializationState.token = clientToken;
           paddleInitializationState.environment = environment;
-          paddleInitializationState.initialized = true;
-          return paddle;
         }
-
-        updatePaddleClient(paddle);
-        paddleInitializationState.client = paddle;
-        paddleInitializationState.initialized = true;
         return paddle;
       });
   }
@@ -856,7 +827,6 @@
     ensureScriptLoaded: ensureScriptLoaded,
     findTransactionActivity: findTransactionActivity,
     getReturnTransactionID: getReturnTransactionID,
-    isPaddleInitialized: isPaddleInitialized,
     normalizeCallback: normalizeCallback,
     isCompletedTransactionActivity: isCompletedTransactionActivity,
     loadSummary: loadSummary,

@@ -1139,7 +1139,6 @@ test.describe("Billing coverage", () => {
             initialize: null,
             initializeCalls: [],
             opens: [],
-            updates: [],
           };
           window.Paddle = {
             Initialized: false,
@@ -1149,19 +1148,10 @@ test.describe("Billing coverage", () => {
               }
             },
             Initialize: function (options) {
-              if (window.Paddle.Initialized) {
-                throw new Error("Initialize called twice");
-              }
               window.Paddle.Initialized = true;
               window.__paddleCalls.initialize = options;
               window.__paddleCalls.initializeCalls.push(options);
               window.__paddleCalls.eventCallback = options && options.eventCallback;
-            },
-            Update: function (options) {
-              window.__paddleCalls.updates.push(options);
-              if (options && Object.prototype.hasOwnProperty.call(options, "eventCallback")) {
-                window.__paddleCalls.eventCallback = options.eventCallback;
-              }
             },
             Checkout: {
               open: function (options) {
@@ -1181,7 +1171,6 @@ test.describe("Billing coverage", () => {
 
     const result = await page.evaluate(async () => {
       var billing = window.__LLM_CROSSWORD_TEST__.billing;
-      var lastUpdate;
 
       await billing.openPaddleCheckout({
         client_token: "first_token",
@@ -1200,27 +1189,22 @@ test.describe("Billing coverage", () => {
         transaction_id: "txn_second",
       });
 
-      lastUpdate = window.__paddleCalls.updates[window.__paddleCalls.updates.length - 1] || null;
       return {
         environmentCalls: window.__paddleCalls.environment.slice(),
         initializeCallCount: window.__paddleCalls.initializeCalls.length,
         initializeToken: window.__paddleCalls.initialize && window.__paddleCalls.initialize.token,
         openCalls: window.__paddleCalls.opens.slice(),
-        updateCallCount: window.__paddleCalls.updates.length,
-        updateHasEventCallback: Boolean(lastUpdate && typeof lastUpdate.eventCallback === "function"),
       };
     });
 
     expect(result).toEqual({
-      environmentCalls: ["sandbox"],
-      initializeCallCount: 1,
-      initializeToken: "first_token",
+      environmentCalls: ["sandbox", "production"],
+      initializeCallCount: 2,
+      initializeToken: "rotated_token",
       openCalls: [
         { transactionId: "txn_first" },
         { transactionId: "txn_second" },
       ],
-      updateCallCount: 1,
-      updateHasEventCallback: true,
     });
   });
 
@@ -1353,7 +1337,6 @@ test.describe("Billing coverage", () => {
       };
 
       outcomes.nullCallback = billing.normalizeCallback("not-a-function");
-      outcomes.nullInitialized = billing.isPaddleInitialized(null);
       window.BILLING_PROVIDER_SDK_URLS = { paddle: "https://sdk.local/success.js" };
       outcomes.customSDK = billing.resolveProviderSDKURL("paddle");
       outcomes.unknownSDK = billing.resolveProviderSDKURL("unknown");
@@ -1407,36 +1390,37 @@ test.describe("Billing coverage", () => {
 
       window.Paddle = {
         Initialized: true,
-        Initialize: function () {
-          outcomes.unexpectedReinitialize = true;
+        Initialize: function (options) {
+          outcomes.rotatedInitializeCount = (outcomes.rotatedInitializeCount || 0) + 1;
+          outcomes.rotatedInitializeToken = options && options.token;
         },
         Checkout: {
           open: function () {},
         },
       };
-      try {
-        await billing.initializePaddleClient({
-          client_token: "rotated_token",
-          environment: "production",
-        });
-      } catch (error) {
-        outcomes.missingUpdateError = error.message;
-      }
+      await billing.initializePaddleClient({
+        client_token: "rotated_token",
+        environment: "production",
+      });
 
       window.Paddle = {
+        Environment: {
+          set: function (value) {
+            outcomes.stateOnlyEnvironmentCalls = outcomes.stateOnlyEnvironmentCalls || [];
+            outcomes.stateOnlyEnvironmentCalls.push(value);
+          },
+        },
         Initialize: function () {
           outcomes.stateOnlyInitializeCount = (outcomes.stateOnlyInitializeCount || 0) + 1;
         },
-        Update: function (options) {
-          outcomes.stateOnlyUpdateCount = (outcomes.stateOnlyUpdateCount || 0) + 1;
-          outcomes.stateOnlyUpdateHasEventCallback = Boolean(
-            options && typeof options.eventCallback === "function"
-          );
-        },
         Checkout: {
           open: function () {},
         },
       };
+      await billing.initializePaddleClient({
+        client_token: "state_only_token",
+        environment: "",
+      });
       await billing.initializePaddleClient({
         client_token: "state_only_token",
         environment: "",
@@ -1645,7 +1629,6 @@ test.describe("Billing coverage", () => {
     });
 
     expect(result.nullCallback).toBeNull();
-    expect(result.nullInitialized).toBe(false);
     expect(result.customSDK).toBe("https://sdk.local/success.js");
     expect(result.unknownSDK).toBe("");
     expect(result.emptyScriptError).toBe("We couldn't start checkout.");
@@ -1654,11 +1637,10 @@ test.describe("Billing coverage", () => {
     expect(result.invalidLoadedClientError).toBe("We couldn't start checkout.");
     expect(result.failedScriptError).toBe("We couldn't start checkout.");
     expect(result.missingTokenError).toBe("We couldn't start checkout.");
-    expect(result.missingUpdateError).toBe("We couldn't start checkout.");
-    expect(result.stateOnlyInitializeCount).toBe(1);
-    expect(result.stateOnlyUpdateCount).toBe(1);
-    expect(result.stateOnlyUpdateHasEventCallback).toBe(true);
-    expect(result.unexpectedReinitialize).toBeUndefined();
+    expect(result.rotatedInitializeCount).toBe(1);
+    expect(result.rotatedInitializeToken).toBe("rotated_token");
+    expect(result.stateOnlyInitializeCount).toBe(2);
+    expect(result.stateOnlyEnvironmentCalls).toEqual(["production"]);
     expect(result.noEnvironmentInitToken).toBe("plain_token");
     expect(result.topLevelTransactionID).toBe("txn_top_level");
     expect(result.fallbackClosedTransactionID).toBe("txn_callback_fallback");

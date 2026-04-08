@@ -120,6 +120,10 @@ func TestHandleBillingCheckoutCoverage(t *testing.T) {
 	if response.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502 for missing checkout url, got %d", response.Code)
 	}
+	payload := decodeJSONMap(t, response.Body.String())
+	if payload["error"] != "billing_checkout_missing" {
+		t.Fatalf("expected billing_checkout_missing error, got %#v", payload)
+	}
 
 	handler.billingService = &billingService{
 		cfg:          validBillingConfig(),
@@ -174,7 +178,7 @@ func TestHandleBillingCheckoutCoverage(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200 for checkout with origin, got %d", recorder.Code)
 	}
-	payload := decodeJSONMap(t, recorder.Body.String())
+	payload = decodeJSONMap(t, recorder.Body.String())
 	if payload["checkout_mode"] != billingCheckoutModeOverlay {
 		t.Fatalf("unexpected checkout response %#v", payload)
 	}
