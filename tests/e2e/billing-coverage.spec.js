@@ -1215,8 +1215,14 @@ test.describe("Billing coverage", () => {
           if (mode === "sync-complete") {
             return jsonResult(completedSummary("txn_synced"));
           }
+          if (mode === "sync-succeeded-no-activity") {
+            return jsonResult(baseSummary);
+          }
           if (mode === "overlay-complete") {
             return jsonResult(completedSummary("txn_completed"));
+          }
+          if (mode === "sync-succeeded-summary-error") {
+            return Promise.reject(new Error("offline"));
           }
           if (mode === "sync-error") {
             return Promise.reject(new Error("offline"));
@@ -1225,7 +1231,9 @@ test.describe("Billing coverage", () => {
         }
         if (normalizedURL.indexOf("/api/billing/checkout/reconcile") >= 0) {
           return jsonResult({
-            status: mode === "overlay-complete" ? "succeeded" : "pending",
+            status: mode === "overlay-complete" || mode === "sync-succeeded-no-activity" || mode === "sync-succeeded-summary-error"
+              ? "succeeded"
+              : "pending",
             transaction_id: JSON.parse(options.body).transaction_id,
           });
         }
@@ -1473,6 +1481,14 @@ test.describe("Billing coverage", () => {
       await billing.syncClosedCheckout("txn_synced");
       outcomes.syncedStatus = window.CrosswordBilling.getState().lastStatus;
 
+      mode = "sync-succeeded-no-activity";
+      await billing.syncClosedCheckout("txn_synced_no_activity");
+      outcomes.syncSucceededNoActivityStatus = window.CrosswordBilling.getState().lastStatus;
+
+      mode = "sync-succeeded-summary-error";
+      await billing.syncClosedCheckout("txn_synced_summary_error");
+      outcomes.syncSucceededSummaryErrorStatus = window.CrosswordBilling.getState().lastStatus;
+
       mode = "sync-error";
       await billing.syncClosedCheckout("txn_error");
       outcomes.syncErrorStatus = window.CrosswordBilling.getState().lastStatus;
@@ -1514,6 +1530,16 @@ test.describe("Billing coverage", () => {
       tone: "success",
     });
     expect(result.syncedStatus).toEqual({
+      isBusy: false,
+      message: "Payment confirmed. Your credits are ready to use.",
+      tone: "success",
+    });
+    expect(result.syncSucceededNoActivityStatus).toEqual({
+      isBusy: false,
+      message: "Payment confirmed. Your credits are ready to use.",
+      tone: "success",
+    });
+    expect(result.syncSucceededSummaryErrorStatus).toEqual({
       isBusy: false,
       message: "Payment confirmed. Your credits are ready to use.",
       tone: "success",

@@ -445,6 +445,10 @@
       });
   }
 
+  function isSuccessfulCheckoutReconcile(reconcileResult) {
+    return normalizeString(reconcileResult && reconcileResult.status).toLowerCase() === "succeeded";
+  }
+
   function clearPollTimer() {
     if (!state.pollTimerId) return;
     window.clearTimeout(state.pollTimerId);
@@ -536,24 +540,32 @@
     }
 
     return requestCheckoutReconcile(normalizedTransactionID)
-      .then(function () {
-        return loadSummary({ force: true, suppressErrors: true });
-      })
-      .then(function (summary) {
-        var activity = findTransactionActivity(summary, normalizedTransactionID);
+      .then(function (reconcileResult) {
+        return loadSummary({ force: true, suppressErrors: true })
+          .then(function (summary) {
+            var activity = findTransactionActivity(summary, normalizedTransactionID);
 
-        if (activity && isCompletedTransactionActivity(activity)) {
-          updateBillingStatus("Payment confirmed. Your credits are ready to use.", "success", false);
-          dispatchBillingEvent("billing-transaction-complete", {
-            activity: activity,
-            transaction_id: normalizedTransactionID,
+            if (activity && isCompletedTransactionActivity(activity)) {
+              updateBillingStatus("Payment confirmed. Your credits are ready to use.", "success", false);
+              dispatchBillingEvent("billing-transaction-complete", {
+                activity: activity,
+                transaction_id: normalizedTransactionID,
+              });
+              return;
+            }
+            if (isSuccessfulCheckoutReconcile(reconcileResult)) {
+              updateBillingStatus("Payment confirmed. Your credits are ready to use.", "success", false);
+              return;
+            }
+            updateBillingStatus("Checkout closed before payment completed.", "", false);
+          })
+          .catch(function () {
+            if (isSuccessfulCheckoutReconcile(reconcileResult)) {
+              updateBillingStatus("Payment confirmed. Your credits are ready to use.", "success", false);
+              return;
+            }
+            updateBillingStatus("Checkout closed before payment completed.", "", false);
           });
-          return;
-        }
-        updateBillingStatus("Checkout closed before payment completed.", "", false);
-      })
-      .catch(function () {
-        updateBillingStatus("Checkout closed before payment completed.", "", false);
       });
   }
 
