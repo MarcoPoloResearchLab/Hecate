@@ -467,6 +467,12 @@ func TestBillingServiceHelperCoverage(t *testing.T) {
 		t.Fatalf("unexpected tls url %q", got)
 	}
 
+	originRequest := httptest.NewRequest(http.MethodGet, "http://localhost/billing", nil)
+	originRequest.Header.Set("Origin", "https://site.example.com")
+	if got := buildAbsoluteRequestURL(originRequest, "/billing"); got != "https://site.example.com/billing" {
+		t.Fatalf("unexpected origin url %q", got)
+	}
+
 	forwardedRequest := httptest.NewRequest(http.MethodGet, "http://localhost/billing", nil)
 	forwardedRequest.Host = "internal.example.com"
 	forwardedRequest.Header.Set("X-Forwarded-Proto", "https")

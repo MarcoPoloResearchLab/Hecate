@@ -5,8 +5,8 @@
 
   globalScope.LLMCrosswordRuntimeConfig = Object.freeze({
     billing: Object.freeze({
-      clientToken: "test_e70ce27b3de57efb0b512c74c8c",
-      environment: "sandbox",
+      clientToken: "live_aee8978f745164b737287e090a9",
+      environment: "production",
       providerCode: "paddle",
     }),
     services: Object.freeze({

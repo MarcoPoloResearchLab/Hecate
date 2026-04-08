@@ -4,7 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 readonly runtime_config_path="${RUNTIME_AUTH_CONFIG_PATH:-js/runtime-auth-config.js}"
-readonly crosswordapi_env_file="${CROSSWORDAPI_ENV_FILE:-configs/.env.crosswordapi.local}"
+readonly default_local_crosswordapi_env_file="configs/.env.crosswordapi.local"
+readonly default_production_crosswordapi_env_file="configs/.env.crosswordapi.production"
 readonly default_tauth_script_url="https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js"
 readonly default_production_api_base_url="https://llm-crossword-api.mprlab.com"
 readonly default_production_auth_base_url="https://tauth-api.mprlab.com"
@@ -23,13 +24,15 @@ read_env_file_value() {
 resolve_crosswordapi_value() {
   local variable_name="$1"
   local resolved_value="${!variable_name:-}"
+  local env_file_path
 
   if [ -n "$resolved_value" ]; then
     printf '%s' "$resolved_value"
     return 0
   fi
 
-  resolved_value="$(read_env_file_value "$crosswordapi_env_file" "$variable_name")"
+  env_file_path="$(resolve_crosswordapi_env_file)"
+  resolved_value="$(read_env_file_value "$env_file_path" "$variable_name")"
   printf '%s' "$resolved_value"
 }
 
@@ -55,6 +58,20 @@ uses_committed_runtime_defaults() {
       return 1
       ;;
   esac
+}
+
+resolve_crosswordapi_env_file() {
+  if [ -n "${CROSSWORDAPI_ENV_FILE:-}" ]; then
+    printf '%s' "$CROSSWORDAPI_ENV_FILE"
+    return 0
+  fi
+
+  if uses_committed_runtime_defaults; then
+    printf '%s' "$default_production_crosswordapi_env_file"
+    return 0
+  fi
+
+  printf '%s' "$default_local_crosswordapi_env_file"
 }
 
 fail() {

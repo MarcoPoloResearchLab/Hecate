@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -565,6 +566,12 @@ func isUniqueConstraintError(err error) bool {
 func buildAbsoluteRequestURL(request *http.Request, path string) string {
 	if request == nil {
 		return path
+	}
+	origin := strings.TrimSpace(request.Header.Get("Origin"))
+	if origin != "" && !strings.EqualFold(origin, "null") {
+		if parsedOrigin, err := url.Parse(origin); err == nil && parsedOrigin.Scheme != "" && parsedOrigin.Host != "" {
+			return fmt.Sprintf("%s://%s%s", parsedOrigin.Scheme, parsedOrigin.Host, path)
+		}
 	}
 	scheme := strings.TrimSpace(request.Header.Get("X-Forwarded-Proto"))
 	if scheme == "" {

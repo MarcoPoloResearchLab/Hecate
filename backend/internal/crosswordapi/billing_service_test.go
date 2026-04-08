@@ -37,6 +37,7 @@ type mockBillingProvider struct {
 	signatureErr    error
 	syncErr         error
 	syncEvents      []sharedbilling.WebhookEvent
+	receivedReturn  string
 }
 
 func (provider *mockBillingProvider) Code() string {
@@ -70,6 +71,7 @@ func (provider *mockBillingProvider) ParseWebhookEvent(payload []byte) (billingP
 }
 
 func (provider *mockBillingProvider) CreateCheckout(ctx context.Context, userID string, userEmail string, pack BillingPack, returnURL string) (billingCheckoutSession, error) {
+	provider.receivedReturn = returnURL
 	return provider.checkoutSession, provider.checkoutErr
 }
 

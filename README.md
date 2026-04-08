@@ -17,7 +17,7 @@ Billing is a business-critical path in this product. The billing flow is intenti
 
 Set `GOOGLE_CLIENT_ID` in `configs/.env.tauth.local` for local work and in `configs/.env.tauth.production` for production deployment so TAuth and related tooling use the expected client. Keep backend settings in `configs/config.yml` and browser-facing auth settings in `configs/frontend-config.yml`. The committed `js/runtime-auth-config.js` is the production-safe browser default. Local Docker and Playwright entry points render overrides into `js/runtime-auth-config.override.js` before startup.
 
-Direct GitHub Pages publishing uses the committed `js/runtime-auth-config.js`. If you intentionally need to regenerate that tracked file, run `bash scripts/render-runtime-auth-config.sh` without `RUNTIME_AUTH_CONFIG_PATH`. Automated local and test flows use the override file instead.
+Direct GitHub Pages publishing uses the committed `js/runtime-auth-config.js`. If you intentionally need to regenerate that tracked file, run `bash scripts/render-runtime-auth-config.sh` without `RUNTIME_AUTH_CONFIG_PATH`; that committed output now defaults to `configs/.env.crosswordapi.production`, while automated local and test flows still render the override file from the local profile by default.
 
 For split-origin deployments, the browser runtime config also supports explicit service URLs:
 

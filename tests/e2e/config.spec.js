@@ -78,6 +78,18 @@ test.describe("Config — default behavior", () => {
     });
   });
 
+  test("committed runtime config keeps production paddle defaults", async ({ page }) => {
+    await page.goto("/blank.html");
+    await page.setContent("<!doctype html><html><body></body></html>");
+    await page.addScriptTag({ url: "/js/runtime-auth-config.js" });
+
+    const billingConfig = await page.evaluate(() => window.LLMCrosswordRuntimeConfig.billing);
+
+    expect(billingConfig.providerCode).toBe("paddle");
+    expect(billingConfig.environment).toBe("production");
+    expect(billingConfig.clientToken).toMatch(/^live_/);
+  });
+
   test("committed frontend config keeps the production auth host aligned with runtime config", async ({ page }) => {
     await page.goto("/blank.html");
 

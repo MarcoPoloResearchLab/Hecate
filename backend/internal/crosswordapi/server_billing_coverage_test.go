@@ -135,6 +135,33 @@ func TestHandleBillingCheckoutCoverage(t *testing.T) {
 	if response.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502 for generic checkout failure, got %d", response.Code)
 	}
+
+	checkoutProvider := &mockBillingProvider{
+		code: billingProviderPaddle,
+		checkoutSession: billingCheckoutSession{
+			ProviderCode:  billingProviderPaddle,
+			TransactionID: "txn_123",
+			CheckoutURL:   "https://example.com/pay",
+		},
+	}
+	handler.billingService = &billingService{
+		cfg:          validBillingConfig(),
+		ledgerClient: &mockLedgerClient{},
+		logger:       zap.NewNop(),
+		provider:     checkoutProvider,
+	}
+	router = testRouterWithClaims(handler, testClaims())
+	request := httptest.NewRequest(http.MethodPost, "/api/billing/checkout", strings.NewReader(`{"pack_id":"starter"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Origin", "https://llm-crossword.mprlab.com")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("expected 200 for checkout with origin, got %d", recorder.Code)
+	}
+	if checkoutProvider.receivedReturn != "https://llm-crossword.mprlab.com/?billing_transaction_id={transaction_id}" {
+		t.Fatalf("unexpected checkout return url %q", checkoutProvider.receivedReturn)
+	}
 }
 
 func TestHandleBillingPortalCoverage(t *testing.T) {
