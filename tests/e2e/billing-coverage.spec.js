@@ -14,26 +14,36 @@ async function stubPaddleCheckout(page) {
       body: `
         window.__paddleCalls = {
           environment: [],
+          eventCallback: null,
           initialize: null,
+          initializeCalls: [],
           opens: [],
+          updates: [],
         };
         window.__emitPaddleEvent = function (name, detail) {
           var eventData = Object.assign({ name: name }, detail || {});
-          if (
-            window.__paddleCalls.initialize &&
-            typeof window.__paddleCalls.initialize.eventCallback === "function"
-          ) {
-            window.__paddleCalls.initialize.eventCallback(eventData);
+          if (typeof window.__paddleCalls.eventCallback === "function") {
+            window.__paddleCalls.eventCallback(eventData);
           }
         };
         window.Paddle = {
+          Initialized: false,
           Environment: {
             set: function (value) {
               window.__paddleCalls.environment.push(value);
             }
           },
           Initialize: function (options) {
+            window.Paddle.Initialized = true;
             window.__paddleCalls.initialize = options;
+            window.__paddleCalls.initializeCalls.push(options);
+            window.__paddleCalls.eventCallback = options && options.eventCallback;
+          },
+          Update: function (options) {
+            window.__paddleCalls.updates.push(options);
+            if (options && Object.prototype.hasOwnProperty.call(options, "eventCallback")) {
+              window.__paddleCalls.eventCallback = options.eventCallback;
+            }
           },
           Checkout: {
             open: function (options) {
@@ -1118,6 +1128,102 @@ test.describe("Billing coverage", () => {
     ]);
   });
 
+  test("reuses initialized Paddle checkout state across repeated checkout opens", async ({ page }) => {
+    await page.route("**/cdn.paddle.com/paddle/v2/paddle.js", (route) =>
+      route.fulfill({
+        contentType: "text/javascript",
+        body: `
+          window.__paddleCalls = {
+            environment: [],
+            eventCallback: null,
+            initialize: null,
+            initializeCalls: [],
+            opens: [],
+            updates: [],
+          };
+          window.Paddle = {
+            Initialized: false,
+            Environment: {
+              set: function (value) {
+                window.__paddleCalls.environment.push(value);
+              }
+            },
+            Initialize: function (options) {
+              if (window.Paddle.Initialized) {
+                throw new Error("Initialize called twice");
+              }
+              window.Paddle.Initialized = true;
+              window.__paddleCalls.initialize = options;
+              window.__paddleCalls.initializeCalls.push(options);
+              window.__paddleCalls.eventCallback = options && options.eventCallback;
+            },
+            Update: function (options) {
+              window.__paddleCalls.updates.push(options);
+              if (options && Object.prototype.hasOwnProperty.call(options, "eventCallback")) {
+                window.__paddleCalls.eventCallback = options.eventCallback;
+              }
+            },
+            Checkout: {
+              open: function (options) {
+                window.__paddleCalls.opens.push(options);
+              }
+            }
+          };
+        `,
+        status: 200,
+      })
+    );
+    await page.goto("/blank.html");
+    await page.evaluate(() => {
+      window.__LLM_CROSSWORD_TEST__ = {};
+    });
+    await loadScript(page, "billing.js");
+
+    const result = await page.evaluate(async () => {
+      var billing = window.__LLM_CROSSWORD_TEST__.billing;
+      var lastUpdate;
+
+      await billing.openPaddleCheckout({
+        client_token: "first_token",
+        environment: "sandbox",
+        provider_code: "paddle",
+      }, {
+        checkout_mode: "overlay",
+        transaction_id: "txn_first",
+      });
+      await billing.openPaddleCheckout({
+        client_token: "rotated_token",
+        environment: "production",
+        provider_code: "paddle",
+      }, {
+        checkout_mode: "overlay",
+        transaction_id: "txn_second",
+      });
+
+      lastUpdate = window.__paddleCalls.updates[window.__paddleCalls.updates.length - 1] || null;
+      return {
+        environmentCalls: window.__paddleCalls.environment.slice(),
+        initializeCallCount: window.__paddleCalls.initializeCalls.length,
+        initializeToken: window.__paddleCalls.initialize && window.__paddleCalls.initialize.token,
+        openCalls: window.__paddleCalls.opens.slice(),
+        updateCallCount: window.__paddleCalls.updates.length,
+        updateHasEventCallback: Boolean(lastUpdate && typeof lastUpdate.eventCallback === "function"),
+      };
+    });
+
+    expect(result).toEqual({
+      environmentCalls: ["sandbox"],
+      initializeCallCount: 1,
+      initializeToken: "first_token",
+      openCalls: [
+        { transactionId: "txn_first" },
+        { transactionId: "txn_second" },
+      ],
+      updateCallCount: 1,
+      updateHasEventCallback: true,
+    });
+  });
+
   test("covers Paddle SDK helper failures and closed-checkout branches", async ({ page }) => {
     var successScriptLoads = 0;
     var invalidScriptLoads = 0;
@@ -1247,6 +1353,7 @@ test.describe("Billing coverage", () => {
       };
 
       outcomes.nullCallback = billing.normalizeCallback("not-a-function");
+      outcomes.nullInitialized = billing.isPaddleInitialized(null);
       window.BILLING_PROVIDER_SDK_URLS = { paddle: "https://sdk.local/success.js" };
       outcomes.customSDK = billing.resolveProviderSDKURL("paddle");
       outcomes.unknownSDK = billing.resolveProviderSDKURL("unknown");
@@ -1297,6 +1404,47 @@ test.describe("Billing coverage", () => {
       } catch (error) {
         outcomes.missingTokenError = error.message;
       }
+
+      window.Paddle = {
+        Initialized: true,
+        Initialize: function () {
+          outcomes.unexpectedReinitialize = true;
+        },
+        Checkout: {
+          open: function () {},
+        },
+      };
+      try {
+        await billing.initializePaddleClient({
+          client_token: "rotated_token",
+          environment: "production",
+        });
+      } catch (error) {
+        outcomes.missingUpdateError = error.message;
+      }
+
+      window.Paddle = {
+        Initialize: function () {
+          outcomes.stateOnlyInitializeCount = (outcomes.stateOnlyInitializeCount || 0) + 1;
+        },
+        Update: function (options) {
+          outcomes.stateOnlyUpdateCount = (outcomes.stateOnlyUpdateCount || 0) + 1;
+          outcomes.stateOnlyUpdateHasEventCallback = Boolean(
+            options && typeof options.eventCallback === "function"
+          );
+        },
+        Checkout: {
+          open: function () {},
+        },
+      };
+      await billing.initializePaddleClient({
+        client_token: "state_only_token",
+        environment: "",
+      });
+      await billing.initializePaddleClient({
+        client_token: "state_only_rotated_token",
+        environment: "production",
+      });
 
       window.Paddle = {
         Initialize: function (options) {
@@ -1497,6 +1645,7 @@ test.describe("Billing coverage", () => {
     });
 
     expect(result.nullCallback).toBeNull();
+    expect(result.nullInitialized).toBe(false);
     expect(result.customSDK).toBe("https://sdk.local/success.js");
     expect(result.unknownSDK).toBe("");
     expect(result.emptyScriptError).toBe("We couldn't start checkout.");
@@ -1505,6 +1654,11 @@ test.describe("Billing coverage", () => {
     expect(result.invalidLoadedClientError).toBe("We couldn't start checkout.");
     expect(result.failedScriptError).toBe("We couldn't start checkout.");
     expect(result.missingTokenError).toBe("We couldn't start checkout.");
+    expect(result.missingUpdateError).toBe("We couldn't start checkout.");
+    expect(result.stateOnlyInitializeCount).toBe(1);
+    expect(result.stateOnlyUpdateCount).toBe(1);
+    expect(result.stateOnlyUpdateHasEventCallback).toBe(true);
+    expect(result.unexpectedReinitialize).toBeUndefined();
     expect(result.noEnvironmentInitToken).toBe("plain_token");
     expect(result.topLevelTransactionID).toBe("txn_top_level");
     expect(result.fallbackClosedTransactionID).toBe("txn_callback_fallback");
