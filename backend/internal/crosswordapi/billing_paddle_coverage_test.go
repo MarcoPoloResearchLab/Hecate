@@ -798,6 +798,32 @@ func TestPaddleSharedCheckoutAndPortalCoverage(t *testing.T) {
 		}
 	})
 
+	t.Run("shared checkout rejects missing transaction id upstream", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
+			switch {
+			case request.Method == http.MethodGet && request.URL.Path == "/customers":
+				_, _ = io.WriteString(writer, `{"data":[{"id":"ctm_shared"}]}`)
+			case request.Method == http.MethodPost && request.URL.Path == "/transactions":
+				_, _ = io.WriteString(writer, `{"data":{"id":"   "}}`)
+			default:
+				t.Fatalf("unexpected request %s %s", request.Method, request.URL.String())
+			}
+		}))
+		defer server.Close()
+
+		cfg := validBillingConfig()
+		cfg.PaddleAPIBaseURL = server.URL
+		provider, err := newPaddleBillingProvider(cfg)
+		if err != nil {
+			t.Fatalf("newPaddleBillingProvider() error = %v", err)
+		}
+
+		_, err = provider.CreateCheckout(context.Background(), "user-1", "shared@example.com", cfg.BillingPacks[0])
+		if err == nil || !strings.Contains(err.Error(), "transaction") {
+			t.Fatalf("expected shared checkout to reject missing transaction id, got %v", err)
+		}
+	})
+
 	t.Run("configured provider portal success", func(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, request *http.Request) {
 			switch {
@@ -951,6 +977,26 @@ func TestPaddleProviderAndClientCheckoutCoverage(t *testing.T) {
 		}
 	})
 
+	t.Run("provider checkout rejects missing transaction id", func(t *testing.T) {
+		client := newTestPaddleAPIClient(func(request *http.Request) (*http.Response, error) {
+			switch {
+			case request.Method == http.MethodGet && request.URL.Path == "/customers":
+				return jsonHTTPResponse(http.StatusOK, `{"data":[{"id":"ctm_existing"}]}`), nil
+			case request.Method == http.MethodPost && request.URL.Path == "/transactions":
+				return jsonHTTPResponse(http.StatusOK, `{"data":{"id":"   "}}`), nil
+			default:
+				t.Fatalf("unexpected request %s %s", request.Method, request.URL.String())
+				return nil, nil
+			}
+		})
+		provider := newTestPaddleProvider(client)
+
+		_, err := provider.CreateCheckout(context.Background(), "user-123", "existing@example.com", provider.cfg.BillingPacks[0])
+		if !errors.Is(err, ErrPaddleTransactionIDMissing) {
+			t.Fatalf("expected missing transaction id error, got %v", err)
+		}
+	})
+
 	t.Run("provider portal returns client error", func(t *testing.T) {
 		client := newTestPaddleAPIClient(func(request *http.Request) (*http.Response, error) {
 			return jsonHTTPResponse(http.StatusInternalServerError, `{"error":{"detail":"portal failed"}}`), nil
@@ -1029,7 +1075,7 @@ func TestPaddleAPIClientDirectMethodCoverage(t *testing.T) {
 		}
 	})
 
-	t.Run("create transaction covers success and error", func(t *testing.T) {
+	t.Run("create transaction covers success, missing id, and error", func(t *testing.T) {
 		successClient := newTestPaddleAPIClient(func(request *http.Request) (*http.Response, error) {
 			return jsonHTTPResponse(http.StatusOK, `{"data":{"id":"txn_created"}}`), nil
 		})
@@ -1039,6 +1085,13 @@ func TestPaddleAPIClientDirectMethodCoverage(t *testing.T) {
 		}
 		if transactionID != "txn_created" {
 			t.Fatalf("unexpected transaction id %q", transactionID)
+		}
+
+		missingIDClient := newTestPaddleAPIClient(func(request *http.Request) (*http.Response, error) {
+			return jsonHTTPResponse(http.StatusOK, `{"data":{"id":"   "}}`), nil
+		})
+		if _, err := missingIDClient.CreateTransaction(context.Background(), "ctm_123", "pri_test_starter", nil); !errors.Is(err, ErrPaddleTransactionIDMissing) {
+			t.Fatalf("expected missing transaction id error, got %v", err)
 		}
 
 		errorClient := newTestPaddleAPIClient(func(request *http.Request) (*http.Response, error) {

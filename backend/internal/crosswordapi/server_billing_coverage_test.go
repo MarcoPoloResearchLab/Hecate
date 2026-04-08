@@ -136,6 +136,21 @@ func TestHandleBillingCheckoutCoverage(t *testing.T) {
 		t.Fatalf("expected 502 for generic checkout failure, got %d", response.Code)
 	}
 
+	handler.billingService = &billingService{
+		cfg:          validBillingConfig(),
+		ledgerClient: &mockLedgerClient{},
+		logger:       zap.NewNop(),
+		provider: &mockBillingProvider{
+			code:        billingProviderPaddle,
+			checkoutErr: ErrPaddleTransactionIDMissing,
+		},
+	}
+	router = testRouterWithClaims(handler, testClaims())
+	response = doRequest(router, http.MethodPost, "/api/billing/checkout", `{"pack_id":"starter"}`)
+	if response.Code != http.StatusBadGateway {
+		t.Fatalf("expected 502 for missing transaction id, got %d", response.Code)
+	}
+
 	checkoutProvider := &mockBillingProvider{
 		code: billingProviderPaddle,
 		checkoutSession: billingCheckoutSession{

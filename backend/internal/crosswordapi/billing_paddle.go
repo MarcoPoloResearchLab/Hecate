@@ -44,8 +44,9 @@ const (
 )
 
 var (
-	ErrPaddleCheckoutURLMissing = errors.New("billing.paddle.checkout_url.missing")
-	ErrPaddleWebhookSignature   = errors.New("billing.paddle.signature.invalid")
+	ErrPaddleCheckoutURLMissing   = errors.New("billing.paddle.checkout_url.missing")
+	ErrPaddleTransactionIDMissing = errors.New("billing.paddle.transaction_id.missing")
+	ErrPaddleWebhookSignature     = errors.New("billing.paddle.signature.invalid")
 
 	newSharedPaddleGrantResolver = func(provider *sharedbilling.PaddleProvider) (sharedbilling.WebhookGrantResolver, error) {
 		return provider.NewWebhookGrantResolver()
@@ -701,7 +702,11 @@ func (client *paddleAPIClient) CreateTransaction(ctx context.Context, customerID
 	if err := client.doJSONRequest(ctx, http.MethodPost, "/transactions", requestPayload, &responsePayload); err != nil {
 		return "", err
 	}
-	return strings.TrimSpace(responsePayload.Data.ID), nil
+	transactionID := strings.TrimSpace(responsePayload.Data.ID)
+	if transactionID == "" {
+		return "", ErrPaddleTransactionIDMissing
+	}
+	return transactionID, nil
 }
 
 func (client *paddleAPIClient) GetTransactionCheckoutURL(ctx context.Context, transactionID string) (string, error) {
