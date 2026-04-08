@@ -116,9 +116,11 @@
       (billingConfig.environment === "sandbox" || billingConfig.environment === "production");
     var currentURL = new URL(window.location.href);
     var returnTo = currentURL.searchParams.get("return_to") || (window.location.origin + "/");
+    var paymentLinkTransactionID = currentURL.searchParams.get("_ptxn") || "";
+    var legacyTransactionID = currentURL.searchParams.get("transaction_id") || "";
     var returnLink = document.getElementById("payReturnLink");
     var statusElement = document.getElementById("payStatus");
-    var transactionID = currentURL.searchParams.get("_ptxn") || currentURL.searchParams.get("transaction_id") || "";
+    var transactionID = paymentLinkTransactionID || legacyTransactionID;
     var hasCompletedCheckout = false;
 
     function setStatus(message) {
@@ -184,12 +186,6 @@
 
       window.Paddle.Checkout.open({
         transactionId: transactionID,
-        settings: {
-          displayMode: "overlay",
-          locale: "en",
-          successUrl: returnTo,
-          theme: "light",
-        },
       });
     } catch (error) {
       fail(error && error.message ? error.message : "Unable to open Paddle checkout.");

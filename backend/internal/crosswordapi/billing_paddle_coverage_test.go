@@ -767,7 +767,7 @@ func TestPaddleSharedCheckoutAndPortalCoverage(t *testing.T) {
 		if !strings.Contains(transactionBody, `"billing_user_email":"shared@example.com"`) || !strings.Contains(transactionBody, `"user_email":"shared@example.com"`) {
 			t.Fatalf("expected shared transaction metadata to include normalized email, got %s", transactionBody)
 		}
-		if !strings.Contains(session.CheckoutURL, "/pay.html?") || !strings.Contains(session.CheckoutURL, "transaction_id=txn_shared") {
+		if !strings.Contains(session.CheckoutURL, "/pay.html?") || !strings.Contains(session.CheckoutURL, "_ptxn=txn_shared") {
 			t.Fatalf("expected shared checkout url to target pay page, got %q", session.CheckoutURL)
 		}
 		if !strings.Contains(session.CheckoutURL, "return_to=https%3A%2F%2Fsite.example.com%2F%3Fbilling_transaction_id%3Dtxn_shared") {
@@ -864,7 +864,7 @@ func TestBuildPayPageCheckoutURLCoverage(t *testing.T) {
 	if !strings.HasPrefix(got, "/pay.html?") {
 		t.Fatalf("expected pay page path with query, got %q", got)
 	}
-	if !strings.Contains(got, "transaction_id=txn_123") {
+	if !strings.Contains(got, "_ptxn=txn_123") {
 		t.Fatalf("expected transaction id query parameter, got %q", got)
 	}
 	if !strings.Contains(got, "return_to=https%3A%2F%2Fsite.example.com%2F%3Fbilling_transaction_id%3Dtxn_123") {

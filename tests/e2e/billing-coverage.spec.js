@@ -7,6 +7,37 @@ async function loadScript(page, fileName) {
   await page.addScriptTag({ url: `/js/${fileName}` });
 }
 
+async function stubPaddleCheckout(page) {
+  await page.route("**/cdn.paddle.com/paddle/v2/paddle.js", (route) =>
+    route.fulfill({
+      contentType: "text/javascript",
+      body: `
+        window.__paddleCalls = {
+          environment: [],
+          initialize: null,
+          opens: [],
+        };
+        window.Paddle = {
+          Environment: {
+            set: function (value) {
+              window.__paddleCalls.environment.push(value);
+            }
+          },
+          Initialize: function (options) {
+            window.__paddleCalls.initialize = options;
+          },
+          Checkout: {
+            open: function (options) {
+              window.__paddleCalls.opens.push(options);
+            }
+          }
+        };
+      `,
+      status: 200,
+    })
+  );
+}
+
 function jsonResponse(status, body) {
   return {
     status,
@@ -910,6 +941,63 @@ test.describe("Billing coverage", () => {
     });
     expect(result.nullStartPolling).toBeUndefined();
     expect(result.testHookExists).toBe(true);
+  });
+
+  test("covers pay page transaction open paths", async ({ page }) => {
+    await stubPaddleCheckout(page);
+    await page.goto("/pay.html?_ptxn=txn_auto&return_to=https%3A%2F%2Fexample.com%2Freturn");
+
+    const autoResult = await page.evaluate(() => ({
+      initializeSettings: window.__paddleCalls.initialize.checkout.settings,
+      openCalls: window.__paddleCalls.opens.slice(),
+      returnHref: document.getElementById("payReturnLink").href,
+    }));
+
+    expect(autoResult.initializeSettings).toEqual({
+      displayMode: "overlay",
+      locale: "en",
+      theme: "light",
+    });
+    expect(autoResult.openCalls).toEqual([
+      {
+        transactionId: "txn_auto",
+      },
+    ]);
+    expect(autoResult.returnHref).toBe("https://example.com/return");
+
+    await page.goto("/pay.html?transaction_id=txn_legacy&return_to=https%3A%2F%2Fexample.com%2Freturn");
+
+    const legacyResult = await page.evaluate(() => ({
+      initializeSettings: window.__paddleCalls.initialize.checkout.settings,
+      openCalls: window.__paddleCalls.opens.slice(),
+      statusText: document.getElementById("payStatus").textContent,
+    }));
+
+    expect(legacyResult.initializeSettings).toEqual({
+      displayMode: "overlay",
+      locale: "en",
+      theme: "light",
+    });
+    expect(legacyResult.openCalls).toEqual([
+      {
+        transactionId: "txn_legacy",
+      },
+    ]);
+    expect(legacyResult.statusText).toBe("Preparing your Paddle checkout...");
+
+    await page.goto("/pay.html?return_to=https%3A%2F%2Fexample.com%2Freturn");
+
+    await expect(page.locator("#payStatus")).toHaveText(
+      "Missing Paddle transaction id. Return to LLM Crossword and start checkout again."
+    );
+
+    const missingResult = await page.evaluate(() => ({
+      initialize: window.__paddleCalls.initialize,
+      openCalls: window.__paddleCalls.opens.slice(),
+    }));
+
+    expect(missingResult.initialize).toBeNull();
+    expect(missingResult.openCalls).toEqual([]);
   });
 
   test("covers app billing hooks and summary fallbacks", async ({ page }) => {

@@ -686,7 +686,7 @@ func buildPayPageCheckoutURL(transactionID string, returnURL string) string {
 	query := url.Values{}
 	trimmedTransactionID := strings.TrimSpace(transactionID)
 	if trimmedTransactionID != "" {
-		query.Set("transaction_id", trimmedTransactionID)
+		query.Set("_ptxn", trimmedTransactionID)
 	}
 	resolvedReturnURL := replaceCheckoutTransactionPlaceholder(returnURL, trimmedTransactionID)
 	if strings.TrimSpace(resolvedReturnURL) != "" {
