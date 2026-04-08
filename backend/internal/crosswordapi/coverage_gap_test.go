@@ -40,7 +40,7 @@ func (minimalBillingProvider) ParseWebhookEvent([]byte) (billingProviderEvent, e
 	return billingProviderEvent{}, nil
 }
 
-func (minimalBillingProvider) CreateCheckout(context.Context, string, string, BillingPack, string) (billingCheckoutSession, error) {
+func (minimalBillingProvider) CreateCheckout(context.Context, string, string, BillingPack) (billingCheckoutSession, error) {
 	return billingCheckoutSession{}, nil
 }
 

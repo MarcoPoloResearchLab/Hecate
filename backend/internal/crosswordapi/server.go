@@ -345,6 +345,8 @@ func (handler *httpHandler) handleBillingSummary(ctx *gin.Context) {
 
 	ctx.JSON(http.StatusOK, gin.H{
 		"provider_code":    summary.ProviderCode,
+		"environment":      summary.Environment,
+		"client_token":     summary.ClientToken,
 		"balance":          balance,
 		"packs":            summary.Packs,
 		"activity":         summary.Activity,
@@ -400,13 +402,11 @@ func (handler *httpHandler) handleBillingCheckout(ctx *gin.Context) {
 		return
 	}
 
-	returnURL := buildAbsoluteRequestURL(ctx.Request, "/?billing_transaction_id={transaction_id}")
 	checkoutSession, err := handler.billingService.CreateCheckout(
 		ctx.Request.Context(),
 		claims.GetUserID(),
 		claims.GetUserEmail(),
 		req.PackID,
-		returnURL,
 	)
 	if err != nil {
 		switch {

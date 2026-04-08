@@ -31,6 +31,8 @@ var (
 
 type billingSummary struct {
 	ProviderCode    string                 `json:"provider_code,omitempty"`
+	Environment     string                 `json:"environment,omitempty"`
+	ClientToken     string                 `json:"client_token,omitempty"`
 	Packs           []BillingPack          `json:"packs"`
 	Activity        []BillingActivityEntry `json:"activity"`
 	PortalAvailable bool                   `json:"portal_available"`
@@ -87,6 +89,9 @@ func (service *billingService) Summary(ctx context.Context, userID string) (*bil
 		PortalAvailable: false,
 	}
 	summary.ProviderCode = service.provider.Code()
+	publicConfig := service.provider.PublicConfig()
+	summary.Environment = strings.ToLower(strings.TrimSpace(publicConfig.Environment))
+	summary.ClientToken = strings.TrimSpace(publicConfig.ClientToken)
 	summary.Packs = service.cfg.NormalizedBillingPacks()
 
 	if service.store != nil {
@@ -153,7 +158,7 @@ func billingActivitySummary(record BillingEventRecord) string {
 	}
 }
 
-func (service *billingService) CreateCheckout(ctx context.Context, userID string, userEmail string, packCode string, returnURL string) (billingCheckoutSession, error) {
+func (service *billingService) CreateCheckout(ctx context.Context, userID string, userEmail string, packCode string) (billingCheckoutSession, error) {
 	if err := service.requireProvider(); err != nil {
 		return billingCheckoutSession{}, err
 	}
@@ -161,7 +166,7 @@ func (service *billingService) CreateCheckout(ctx context.Context, userID string
 	if !ok {
 		return billingCheckoutSession{}, ErrBillingPackUnknown
 	}
-	return service.provider.CreateCheckout(ctx, userID, userEmail, pack, returnURL)
+	return service.provider.CreateCheckout(ctx, userID, userEmail, pack)
 }
 
 func (service *billingService) SyncUserBillingEvents(ctx context.Context, userID string, userEmail string) error {
