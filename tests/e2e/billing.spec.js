@@ -3,6 +3,46 @@
 const { test, expect } = require("./coverage-fixture");
 const { createBillingSummary, json, setupLoggedInRoutes, setupLoggedOutRoutes } = require("./route-helpers");
 
+async function stubPaddleCheckout(page) {
+  await page.route("**/cdn.paddle.com/paddle/v2/paddle.js", (route) =>
+    route.fulfill({
+      contentType: "text/javascript",
+      body: `
+        window.__paddleCalls = {
+          environment: [],
+          initialize: null,
+          opens: [],
+        };
+        window.__emitPaddleEvent = function (name, detail) {
+          var eventData = Object.assign({ name: name }, detail || {});
+          if (
+            window.__paddleCalls.initialize &&
+            typeof window.__paddleCalls.initialize.eventCallback === "function"
+          ) {
+            window.__paddleCalls.initialize.eventCallback(eventData);
+          }
+        };
+        window.Paddle = {
+          Environment: {
+            set: function (value) {
+              window.__paddleCalls.environment.push(value);
+            }
+          },
+          Initialize: function (options) {
+            window.__paddleCalls.initialize = options;
+          },
+          Checkout: {
+            open: function (options) {
+              window.__paddleCalls.opens.push(options);
+            }
+          }
+        };
+      `,
+      status: 200,
+    })
+  );
+}
+
 function buildEnabledBillingSummary(overrides = {}) {
   return createBillingSummary({
     provider_code: "paddle",
@@ -63,9 +103,8 @@ test.describe("Billing UI", () => {
     await expect(page.locator("#settingsManageBillingButton")).toBeVisible();
   });
 
-  test("checkout return restores the drawer and refreshes the balance after completion", async ({ page }) => {
-    var reconcileCallCount = 0;
-    var summaryCallCount = 0;
+  test("checkout overlay opens and refreshes the balance after completion", async ({ page }) => {
+    var checkoutCompleted = false;
     var pendingSummary = buildEnabledBillingSummary({
       activity: [
         {
@@ -86,7 +125,7 @@ test.describe("Billing UI", () => {
         {
           event_id: "evt_completed",
           event_type: "transaction.completed",
-          transaction_id: "txn_return",
+          transaction_id: "txn_overlay",
           pack_code: "starter",
           credits_delta: 20,
           status: "completed",
@@ -96,30 +135,55 @@ test.describe("Billing UI", () => {
       ],
     });
 
+    await stubPaddleCheckout(page);
     await setupLoggedInRoutes(page, {
       coins: 2,
       extra: {
         "**/api/billing/checkout/reconcile": (route) => {
-          reconcileCallCount += 1;
           route.fulfill(json(200, {
             provider_code: "paddle",
-            transaction_id: "txn_return",
-            status: reconcileCallCount < 2 ? "pending" : "succeeded",
+            transaction_id: "txn_overlay",
+            status: checkoutCompleted ? "succeeded" : "pending",
           }));
         },
+        "**/api/billing/checkout": (route) =>
+          route.fulfill(json(200, {
+            checkout_mode: "overlay",
+            provider_code: "paddle",
+            transaction_id: "txn_overlay",
+          })),
         "**/api/billing/summary": (route) => {
-          summaryCallCount += 1;
-          route.fulfill(json(200, summaryCallCount < 3 ? pendingSummary : completedSummary));
+          route.fulfill(json(200, checkoutCompleted ? completedSummary : pendingSummary));
         },
       },
     });
 
-    await page.goto("/?billing_transaction_id=txn_return");
+    await page.goto("/");
 
+    await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
+    await page.locator("#newCrosswordCard").click();
+    await expect(page.locator("#generateBuyCreditsButton")).toBeVisible({ timeout: 5000 });
+    await page.locator("#generateBuyCreditsButton").click();
     await expect(page.locator("#settingsDrawer")).toBeVisible({ timeout: 5000 });
+    await page.locator('[data-billing-pack-button="starter"]').click();
+
+    await expect.poll(async () => page.evaluate(() => (
+      window.__paddleCalls ? window.__paddleCalls.opens.slice() : null
+    ))).toEqual([
+      {
+        transactionId: "txn_overlay",
+      },
+    ]);
+
+    checkoutCompleted = true;
+    await page.evaluate(() => {
+      window.__emitPaddleEvent("checkout.completed", {
+        data: { transaction_id: "txn_overlay" },
+      });
+    });
+
     await expect(page.locator("#headerCreditBadge")).toContainText("22 credits", { timeout: 12000 });
     await expect(page.locator("#settingsBillingStatus")).toContainText("Payment confirmed", { timeout: 10000 });
-    await expect(page).not.toHaveURL(/billing_transaction_id=/);
   });
 
   test("anonymous users never see purchase entry points", async ({ page }) => {

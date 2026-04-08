@@ -58,6 +58,42 @@ async function loadAdminScript(page) {
 }
 
 test.describe("Admin billing coverage", () => {
+  test("covers startup drawer restore when billing checkout requested it", async ({ page }) => {
+    await page.goto("/blank.html");
+    await page.setContent(buildAdminBillingShell());
+    await page.evaluate(() => {
+      window.sessionStorage.setItem("llm-crossword-billing-restore-drawer", "1");
+      window.fetch = function (url) {
+        if (String(url).indexOf("/api/session") >= 0) {
+          return Promise.resolve({
+            json: function () {
+              return Promise.resolve({
+                display: "Admin User",
+                email: "admin@example.com",
+                is_admin: false,
+              });
+            },
+            ok: true,
+            status: 200,
+          });
+        }
+        return Promise.resolve({
+          json: function () {
+            return Promise.resolve({});
+          },
+          ok: true,
+          status: 200,
+        });
+      };
+    });
+    await loadAdminScript(page);
+
+    await expect(page.locator("#settingsDrawer")).toHaveAttribute("open", "");
+    await expect.poll(async () => page.evaluate(() =>
+      window.sessionStorage.getItem("llm-crossword-billing-restore-drawer")
+    )).toBeNull();
+  });
+
   test("covers admin billing helpers, events, and coordinator actions", async ({ page }) => {
     await page.goto("/blank.html");
     await page.setContent(buildAdminBillingShell());

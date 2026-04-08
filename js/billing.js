@@ -3,11 +3,28 @@
   "use strict";
 
   var services = window.LLMCrosswordServices || null;
+  var billingProviderPaddle = "paddle";
+  var billingCheckoutModeOverlay = "overlay";
   var completedTransactionEventType = "transaction.completed";
+  var defaultPaddleSDKUrl = "https://cdn.paddle.com/paddle/v2/paddle.js";
+  var paddleEventCheckoutClosed = "checkout.closed";
+  var paddleEventCheckoutCompleted = "checkout.completed";
   var returnTransactionQueryKey = "billing_transaction_id";
   var restoreDrawerStorageKey = "llm-crossword-billing-restore-drawer";
   var pollIntervalMs = 2500;
   var pollTimeoutMs = 90000;
+  var loadedScriptPromises = {};
+  var paddleInitializationState = {
+    environment: "",
+    token: "",
+  };
+  var paddleCheckoutEventState = {
+    closureNotified: false,
+    completionNotified: false,
+    onClosed: null,
+    onCompleted: null,
+    transactionID: "",
+  };
 
   function buildApiUrl(path) {
     if (services && typeof services.buildApiUrl === "function") {
@@ -34,6 +51,8 @@
 
   function createEmptySummary() {
     return {
+      client_token: "",
+      environment: "",
       provider_code: "",
       balance: null,
       packs: [],
@@ -67,10 +86,219 @@
     });
   }
 
+  function normalizeString(candidate) {
+    if (typeof candidate !== "string") {
+      return "";
+    }
+    return candidate.trim();
+  }
+
+  function normalizeCallback(callback) {
+    if (typeof callback !== "function") {
+      return null;
+    }
+    return callback;
+  }
+
+  function resolveProviderCode(summary) {
+    return normalizeString(summary && summary.provider_code).toLowerCase();
+  }
+
+  function resolveProviderSDKURL(providerCode) {
+    var configuredSDKURLs;
+    var configuredURL;
+
+    configuredSDKURLs = window.BILLING_PROVIDER_SDK_URLS;
+    if (configuredSDKURLs && typeof configuredSDKURLs === "object") {
+      configuredURL = normalizeString(configuredSDKURLs[providerCode]);
+      if (configuredURL) {
+        return configuredURL;
+      }
+    }
+    if (providerCode === billingProviderPaddle) {
+      return defaultPaddleSDKUrl;
+    }
+    return "";
+  }
+
+  function ensureScriptLoaded(scriptURL) {
+    var normalizedURL = normalizeString(scriptURL);
+
+    if (!normalizedURL) {
+      return Promise.reject(new Error("We couldn't start checkout."));
+    }
+    if (loadedScriptPromises[normalizedURL]) {
+      return loadedScriptPromises[normalizedURL];
+    }
+
+    loadedScriptPromises[normalizedURL] = new Promise(function (resolve, reject) {
+      var script = document.createElement("script");
+
+      script.async = true;
+      script.src = normalizedURL;
+      script.onload = function () {
+        resolve();
+      };
+      script.onerror = function () {
+        delete loadedScriptPromises[normalizedURL];
+        reject(new Error("We couldn't start checkout."));
+      };
+      document.head.appendChild(script);
+    });
+
+    return loadedScriptPromises[normalizedURL];
+  }
+
+  function hasValidPaddleClient(paddle) {
+    if (!paddle || typeof paddle !== "object") {
+      return false;
+    }
+    if (typeof paddle.Initialize !== "function") {
+      return false;
+    }
+    if (!paddle.Checkout || typeof paddle.Checkout.open !== "function") {
+      return false;
+    }
+    return true;
+  }
+
+  function resolvePaddleClient() {
+    if (hasValidPaddleClient(window.Paddle)) {
+      return Promise.resolve(window.Paddle);
+    }
+
+    return ensureScriptLoaded(resolveProviderSDKURL(billingProviderPaddle))
+      .then(function () {
+        if (!hasValidPaddleClient(window.Paddle)) {
+          throw new Error("We couldn't start checkout.");
+        }
+        return window.Paddle;
+      });
+  }
+
+  function clearPaddleCheckoutEventState() {
+    paddleCheckoutEventState.transactionID = "";
+    paddleCheckoutEventState.onCompleted = null;
+    paddleCheckoutEventState.onClosed = null;
+    paddleCheckoutEventState.completionNotified = false;
+    paddleCheckoutEventState.closureNotified = false;
+  }
+
+  function setPaddleCheckoutEventState(transactionID, onCompleted, onClosed) {
+    paddleCheckoutEventState.transactionID = normalizeString(transactionID);
+    paddleCheckoutEventState.onCompleted = normalizeCallback(onCompleted);
+    paddleCheckoutEventState.onClosed = normalizeCallback(onClosed);
+    paddleCheckoutEventState.completionNotified = false;
+    paddleCheckoutEventState.closureNotified = false;
+  }
+
+  function resolvePaddleCheckoutEventTransactionID(eventData) {
+    var fromData = normalizeString(
+      eventData && eventData.data && (eventData.data.transaction_id || eventData.data.transactionId)
+    );
+
+    if (fromData) {
+      return fromData;
+    }
+    return normalizeString(eventData && (eventData.transaction_id || eventData.transactionId));
+  }
+
+  function handlePaddleCheckoutEvent(eventData) {
+    var activeTransactionID;
+    var eventName;
+    var eventTransactionID;
+    var resolvedTransactionID;
+
+    eventName = normalizeString(eventData && eventData.name).toLowerCase();
+    if (eventName !== paddleEventCheckoutCompleted && eventName !== paddleEventCheckoutClosed) {
+      return;
+    }
+
+    activeTransactionID = paddleCheckoutEventState.transactionID;
+    eventTransactionID = resolvePaddleCheckoutEventTransactionID(eventData);
+    if (activeTransactionID && eventTransactionID && eventTransactionID !== activeTransactionID) {
+      return;
+    }
+    resolvedTransactionID = eventTransactionID || activeTransactionID;
+
+    if (eventName === paddleEventCheckoutCompleted) {
+      if (!paddleCheckoutEventState.completionNotified && paddleCheckoutEventState.onCompleted) {
+        paddleCheckoutEventState.onCompleted(resolvedTransactionID);
+      }
+      paddleCheckoutEventState.completionNotified = true;
+      return;
+    }
+
+    if (!paddleCheckoutEventState.closureNotified && paddleCheckoutEventState.onClosed) {
+      paddleCheckoutEventState.onClosed(resolvedTransactionID);
+    }
+    paddleCheckoutEventState.closureNotified = true;
+    clearPaddleCheckoutEventState();
+  }
+
+  function initializePaddleClient(summary) {
+    var clientToken = normalizeString(summary && summary.client_token);
+    var environment = normalizeString(summary && summary.environment).toLowerCase();
+
+    if (!clientToken) {
+      return Promise.reject(new Error("We couldn't start checkout."));
+    }
+
+    return resolvePaddleClient()
+      .then(function (paddle) {
+        if (paddle.Environment && typeof paddle.Environment.set === "function" && environment) {
+          paddle.Environment.set(environment);
+        }
+
+        if (
+          paddleInitializationState.token !== clientToken ||
+          paddleInitializationState.environment !== environment
+        ) {
+          paddle.Initialize({
+            eventCallback: handlePaddleCheckoutEvent,
+            token: clientToken,
+          });
+          paddleInitializationState.token = clientToken;
+          paddleInitializationState.environment = environment;
+        }
+
+        return paddle;
+      });
+  }
+
+  function openPaddleCheckout(summary, checkoutSession, options) {
+    var checkoutMode = normalizeString(checkoutSession && checkoutSession.checkout_mode).toLowerCase();
+    var transactionID = normalizeString(checkoutSession && checkoutSession.transaction_id);
+    var onClosed = normalizeCallback(options && options.onClosed);
+    var onCompleted = normalizeCallback(options && options.onCompleted);
+
+    if (checkoutMode && checkoutMode !== billingCheckoutModeOverlay) {
+      return Promise.reject(new Error("We couldn't start checkout."));
+    }
+    if (!transactionID) {
+      return Promise.reject(new Error("Checkout did not return a transaction."));
+    }
+
+    return initializePaddleClient(summary)
+      .then(function (paddle) {
+        setPaddleCheckoutEventState(transactionID, onCompleted, onClosed);
+        try {
+          paddle.Checkout.open({
+            transactionId: transactionID,
+          });
+        } catch (error) {
+          clearPaddleCheckoutEventState();
+          throw error;
+        }
+      });
+  }
+
   function normalizeSummary(rawSummary) {
     var summary = rawSummary && typeof rawSummary === "object" ? rawSummary : {};
 
     return {
+      client_token: normalizeString(summary.client_token),
+      environment: normalizeString(summary.environment).toLowerCase(),
       provider_code: typeof summary.provider_code === "string" ? summary.provider_code : "",
       balance: summary.balance || null,
       packs: Array.isArray(summary.packs) ? summary.packs : [],
@@ -299,6 +527,36 @@
     }, pollIntervalMs);
   }
 
+  function syncClosedCheckout(transactionID) {
+    var normalizedTransactionID = normalizeString(transactionID);
+
+    if (!normalizedTransactionID || !state.loggedIn) {
+      updateBillingStatus("Checkout closed before payment completed.", "", false);
+      return Promise.resolve();
+    }
+
+    return requestCheckoutReconcile(normalizedTransactionID)
+      .then(function () {
+        return loadSummary({ force: true, suppressErrors: true });
+      })
+      .then(function (summary) {
+        var activity = findTransactionActivity(summary, normalizedTransactionID);
+
+        if (activity && isCompletedTransactionActivity(activity)) {
+          updateBillingStatus("Payment confirmed. Your credits are ready to use.", "success", false);
+          dispatchBillingEvent("billing-transaction-complete", {
+            activity: activity,
+            transaction_id: normalizedTransactionID,
+          });
+          return;
+        }
+        updateBillingStatus("Checkout closed before payment completed.", "", false);
+      })
+      .catch(function () {
+        updateBillingStatus("Checkout closed before payment completed.", "", false);
+      });
+  }
+
   function pollForTransactionResult() {
     if (!state.activeTransactionId || !state.loggedIn) {
       stopTransactionPolling();
@@ -350,20 +608,25 @@
       });
   }
 
-  function startTransactionPolling(transactionID) {
+  function startTransactionPolling(transactionID, options) {
     var normalizedTransactionID = typeof transactionID === "string" ? transactionID.trim() : "";
+    var pollOptions = options || {};
 
     if (!normalizedTransactionID) return;
     if (state.activeTransactionId === normalizedTransactionID) return;
 
     state.activeTransactionId = normalizedTransactionID;
     state.pollDeadlineTimestamp = Date.now() + pollTimeoutMs;
-    setRestoreDrawerPending(true);
-    dispatchBillingEvent("billing-open-request", {
-      restore: true,
-      source: "checkout_return",
-      transaction_id: normalizedTransactionID,
-    });
+    if (pollOptions.restoreDrawer !== false) {
+      setRestoreDrawerPending(true);
+    }
+    if (pollOptions.dispatchOpenRequest !== false) {
+      dispatchBillingEvent("billing-open-request", {
+        restore: true,
+        source: pollOptions.source || "checkout_return",
+        transaction_id: normalizedTransactionID,
+      });
+    }
     updateBillingStatus("Waiting for payment confirmation...", "", true);
     return pollForTransactionResult();
   }
@@ -371,39 +634,73 @@
   function requestCheckout(packID) {
     var normalizedPackID = typeof packID === "string" ? packID.trim() : "";
     var fetcher = getFetcher();
+    var checkoutCompleted = false;
 
     if (!normalizedPackID) {
       updateBillingStatus("Choose a credit pack first.", "error", false);
       return Promise.reject(new Error("Choose a credit pack first."));
     }
 
-    updateBillingStatus("Redirecting to secure checkout...", "", true);
+    updateBillingStatus("Opening secure checkout...", "", true);
 
-    return fetcher(billingCheckoutPath, {
-      body: JSON.stringify({ pack_id: normalizedPackID }),
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      method: "POST",
-    })
-      .then(function (response) {
-        return parseJSONResponse(response).then(function (data) {
-          return {
-            data: data,
-            ok: response.ok,
-            status: response.status,
-          };
-        });
+    return loadSummary({ force: true, suppressErrors: true })
+      .then(function (summary) {
+        var checkoutSummary = normalizeSummary(summary);
+
+        if (resolveProviderCode(checkoutSummary) !== billingProviderPaddle || !checkoutSummary.client_token) {
+          throw new Error("We couldn't start checkout.");
+        }
+
+        return fetcher(billingCheckoutPath, {
+          body: JSON.stringify({ pack_id: normalizedPackID }),
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          method: "POST",
+        })
+          .then(function (response) {
+            return parseJSONResponse(response).then(function (data) {
+              return {
+                data: data,
+                ok: response.ok,
+                status: response.status,
+              };
+            });
+          })
+          .then(function (result) {
+            var transactionID;
+
+            if (!result.ok) {
+              throw new Error(describeBillingError(result, "We couldn't start checkout."));
+            }
+            transactionID = normalizeString(result.data && result.data.transaction_id);
+            if (!transactionID) {
+              throw new Error("Checkout did not return a transaction.");
+            }
+
+            return openPaddleCheckout(checkoutSummary, result.data, {
+              onClosed: function (closedTransactionID) {
+                if (checkoutCompleted) {
+                  return;
+                }
+                syncClosedCheckout(closedTransactionID);
+              },
+              onCompleted: function (completedTransactionID) {
+                checkoutCompleted = true;
+                updateBillingStatus("Payment completed. Syncing billing activity...", "", true);
+                startTransactionPolling(completedTransactionID, {
+                  dispatchOpenRequest: false,
+                  restoreDrawer: false,
+                  source: "checkout_overlay",
+                });
+              },
+            }).then(function () {
+              updateBillingStatus("Checkout opened. Complete payment in Paddle to continue.", "", false);
+              return result.data;
+            });
+          });
       })
-      .then(function (result) {
-        if (!result.ok) {
-          throw new Error(describeBillingError(result, "We couldn't start checkout."));
-        }
-        if (!result.data || typeof result.data.checkout_url !== "string" || result.data.checkout_url.trim() === "") {
-          throw new Error("Checkout did not return a URL.");
-        }
-
-        window.location.assign(result.data.checkout_url);
-        return result.data;
+      .then(function (response) {
+        return response;
       })
       .catch(function (error) {
         updateBillingStatus(error.message || "We couldn't start checkout.", "error", false);
@@ -516,24 +813,32 @@
     createEmptySummary: createEmptySummary,
     describeBillingError: describeBillingError,
     dispatchBillingEvent: dispatchBillingEvent,
+    ensureScriptLoaded: ensureScriptLoaded,
     findTransactionActivity: findTransactionActivity,
     getReturnTransactionID: getReturnTransactionID,
+    normalizeCallback: normalizeCallback,
     isCompletedTransactionActivity: isCompletedTransactionActivity,
     loadSummary: loadSummary,
     normalizeSummary: normalizeSummary,
     normalizeCheckoutReconcileResult: normalizeCheckoutReconcileResult,
+    openPaddleCheckout: openPaddleCheckout,
     openAccountBilling: openAccountBilling,
     pollForTransactionResult: pollForTransactionResult,
     requestBillingSync: requestBillingSync,
     requestCheckout: requestCheckout,
     requestCheckoutReconcile: requestCheckoutReconcile,
     requestPortalSession: requestPortalSession,
+    resolveProviderSDKURL: resolveProviderSDKURL,
+    resolvePaddleClient: resolvePaddleClient,
     setState: function (nextState) {
       Object.assign(state, nextState || {});
     },
+    syncClosedCheckout: syncClosedCheckout,
     setLoggedIn: setLoggedIn,
     setRestoreDrawerPending: setRestoreDrawerPending,
     startTransactionPolling: startTransactionPolling,
     updateBillingStatus: updateBillingStatus,
+    handlePaddleCheckoutEvent: handlePaddleCheckoutEvent,
+    initializePaddleClient: initializePaddleClient,
   };
 })();
