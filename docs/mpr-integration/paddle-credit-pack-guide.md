@@ -15,13 +15,11 @@
     - `/api/billing/checkout`
     - `/api/billing/portal`
     - `/api/billing/paddle/webhook`
-    - `/pay.html`
   - cookie name: `app_session`
   - webhook events:
     - `transaction.created`
     - `transaction.updated`
     - `transaction.completed`
-  - browser return query key: `billing_transaction_id`
 - Required config keys:
   - repo config: `billing.packs[]`
   - env vars:
@@ -46,14 +44,13 @@
   - [js/billing.js](/Users/tyemirov/Development/llm_crossword/js/billing.js)
   - [js/app.js](/Users/tyemirov/Development/llm_crossword/js/app.js)
   - [js/admin.js](/Users/tyemirov/Development/llm_crossword/js/admin.js)
-  - [pay.html](/Users/tyemirov/Development/llm_crossword/pay.html)
   - [tests/e2e/billing.spec.js](/Users/tyemirov/Development/llm_crossword/tests/e2e/billing.spec.js)
 
 | Input | Consumed by | Type | Required locally | Required when hosted | Notes |
 | --- | --- | --- | --- | --- | --- |
 | `billing.packs[]` | backend + UI | repo config | yes | yes | One source of truth for pack labels, credits, and display prices. |
 | `CROSSWORDAPI_PADDLE_*` | backend | internal | yes | yes | Secrets stay server-side except the client token exposed by runtime config. |
-| `/pay.html` | browser + Paddle | browser-facing | yes | yes | Must be the Paddle default payment-link page. |
+| Paddle default payment link URL | Paddle checkout settings | dashboard config | yes | yes | Required by Paddle for transaction creation, but the app opens checkout directly by transaction id. |
 | `/api/billing/paddle/webhook` | Paddle | public HTTPS | yes | yes | Sandbox can point at a tunnel; production must point at the hosted origin. |
 | Ledger grant idempotency key `billing:paddle:<event_id>` | backend + Ledger | internal | yes | yes | Prevents double-crediting duplicate webhook deliveries. |
 
@@ -67,7 +64,6 @@
 - [backend/internal/crosswordapi/billing_paddle.go](/Users/tyemirov/Development/llm_crossword/backend/internal/crosswordapi/billing_paddle.go)
 - [backend/internal/crosswordapi/server.go](/Users/tyemirov/Development/llm_crossword/backend/internal/crosswordapi/server.go)
 - [js/billing.js](/Users/tyemirov/Development/llm_crossword/js/billing.js)
-- [pay.html](/Users/tyemirov/Development/llm_crossword/pay.html)
 - [tests/e2e/billing.spec.js](/Users/tyemirov/Development/llm_crossword/tests/e2e/billing.spec.js)
 
 ## Decision Procedure
@@ -79,21 +75,21 @@
 5. Wire the backend billing service so Paddle webhook parsing yields exactly one canonical `BillingGrantEvent` before Ledger settlement.
 6. Persist customer links and billing events before rendering UI activity. Use event uniqueness and Ledger idempotency together; do not grant credits from browser success handlers.
 7. Render browser-safe Paddle config only through [scripts/render-runtime-auth-config.sh](/Users/tyemirov/Development/llm_crossword/scripts/render-runtime-auth-config.sh). Expose the client token and environment only.
-8. Use [pay.html](/Users/tyemirov/Development/llm_crossword/pay.html) as the app-owned default payment-link page. Read `_ptxn`, initialize Paddle.js, open checkout for that transaction, and redirect back to `/?billing_transaction_id=<txn_id>` when checkout closes or completes.
+8. Require a default payment link URL in Paddle Checkout settings on an approved crossword domain. The backend creates transactions, and the browser opens `Paddle.Checkout.open({ transactionId })` directly from [js/billing.js](/Users/tyemirov/Development/llm_crossword/js/billing.js). Do not route normal checkout through an app-owned payment page.
 9. Wire the frontend entry points in [index.html](/Users/tyemirov/Development/llm_crossword/index.html), [js/app.js](/Users/tyemirov/Development/llm_crossword/js/app.js), [js/admin.js](/Users/tyemirov/Development/llm_crossword/js/admin.js), and [js/billing.js](/Users/tyemirov/Development/llm_crossword/js/billing.js):
    - clickable header credit badge
    - insufficient-credits `Buy credits` CTA
    - Settings -> Account pack list, balance, activity, and portal entry
-   - checkout-return drawer restore plus summary polling
+   - direct overlay completion/close handling plus reconcile polling
 10. Run the backend and browser verification commands. If any command fails, classify the failure using `guide defect`, `agent defect`, or `environment defect` from the shared quality rubric.
 
 ## Expected Result
 
-- `GET /api/billing/summary` returns the current balance, pack catalog, recent activity, and portal availability for the signed-in user.
-- `POST /api/billing/checkout` returns a transaction id plus a checkout URL that lands on `/pay.html`.
+- `GET /api/billing/summary` returns the current balance, pack catalog, recent activity, portal availability, and the browser-safe Paddle `environment` plus `client_token`.
+- `POST /api/billing/checkout` returns a transaction id plus `checkout_mode=overlay`.
 - `POST /api/billing/paddle/webhook` verifies signatures and settles successful purchases into Ledger exactly once.
 - Settings -> Account renders the pack cards and billing activity.
-- Returning from checkout refreshes the badge and shows payment confirmation once the webhook has been processed.
+- Completing checkout refreshes the badge and shows payment confirmation once the webhook has been processed.
 
 ## Verification
 
@@ -111,17 +107,17 @@ npx playwright test tests/e2e/app-auth.spec.js --reporter=line
 
 rg -n 'billing:' /Users/tyemirov/Development/llm_crossword/configs/config.yml
 rg -n '/api/billing/(summary|checkout|portal|paddle/webhook)' /Users/tyemirov/Development/llm_crossword/backend/internal/crosswordapi/server.go
-rg -n 'billing_transaction_id|Buy credits|Manage billing' /Users/tyemirov/Development/llm_crossword/index.html /Users/tyemirov/Development/llm_crossword/js
+rg -n 'client_token|environment|Checkout.open|Buy credits|Manage billing' /Users/tyemirov/Development/llm_crossword/js
 ```
 
 ## Failure Map
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| Checkout returns `billing_checkout_missing` | Paddle default payment link is not set to `/pay.html` | Update Paddle Checkout settings and retry. |
+| Checkout returns `billing_checkout_missing` | Paddle default payment link is not configured in Paddle | Configure any approved crossword URL as the default payment link and retry. |
 | Webhook returns `401 invalid webhook signature` | wrong webhook secret or wrong environment pairing | Match the sandbox/production secret to `CROSSWORDAPI_PADDLE_ENVIRONMENT`. |
 | Credits are granted twice | idempotency is missing before or during settlement | Enforce unique `event_id` storage and keep Ledger idempotency key `billing:paddle:<event_id>`. |
-| UI shows packs but badge never updates after payment | webhook did not land or poll never observed `transaction.completed` | Fix webhook reachability first, then verify checkout-return polling. |
+| UI shows packs but badge never updates after payment | webhook did not land or post-checkout reconcile/poll never observed `transaction.completed` | Fix webhook reachability first, then verify the overlay completion path and reconcile polling. |
 | Browser checkout loads with no overlay | missing client token or broken runtime config generation | Re-run `./scripts/render-runtime-auth-config.sh` and inspect `LLMCrosswordRuntimeConfig.billing`. |
 
 ## Stop Rules
@@ -129,7 +125,7 @@ rg -n 'billing_transaction_id|Buy credits|Manage billing' /Users/tyemirov/Develo
 - Stop if the deployment cannot select one active billing provider.
 - Stop if a required Paddle secret, client token, or price id is missing.
 - Stop if the fix would grant credits directly from browser code without waiting for a verified webhook.
-- Stop if the default payment link cannot be pointed at `/pay.html` on a public HTTPS origin.
+- Stop if Paddle cannot be configured with an approved default payment link URL on a public HTTPS origin.
 
 ## Change Checklist
 
@@ -138,6 +134,6 @@ rg -n 'billing_transaction_id|Buy credits|Manage billing' /Users/tyemirov/Develo
 - [ ] Backend routes, adapter, storage, and settlement are wired.
 - [ ] Browser runtime config exposes only the safe Paddle values.
 - [ ] Settings -> Account renders balance, packs, activity, and portal access.
-- [ ] Checkout return restores the drawer and refreshes credit state.
+- [ ] Checkout opens Paddle overlay directly and refreshes credit state after completion.
 - [ ] Backend Go tests pass.
 - [ ] Browser billing tests pass.
