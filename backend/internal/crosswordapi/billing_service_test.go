@@ -37,7 +37,6 @@ type mockBillingProvider struct {
 	signatureErr    error
 	syncErr         error
 	syncEvents      []sharedbilling.WebhookEvent
-	receivedReturn  string
 }
 
 func (provider *mockBillingProvider) Code() string {
@@ -70,8 +69,7 @@ func (provider *mockBillingProvider) ParseWebhookEvent(payload []byte) (billingP
 	}, nil
 }
 
-func (provider *mockBillingProvider) CreateCheckout(ctx context.Context, userID string, userEmail string, pack BillingPack, returnURL string) (billingCheckoutSession, error) {
-	provider.receivedReturn = returnURL
+func (provider *mockBillingProvider) CreateCheckout(ctx context.Context, userID string, userEmail string, pack BillingPack) (billingCheckoutSession, error) {
 	return provider.checkoutSession, provider.checkoutErr
 }
 
@@ -272,7 +270,7 @@ func TestHandleBillingSummaryAndCheckout(t *testing.T) {
 			checkoutSession: billingCheckoutSession{
 				ProviderCode:  billingProviderPaddle,
 				TransactionID: "txn_123",
-				CheckoutURL:   "https://example.com/pay?return_to=https%3A%2F%2Fsite.example.com%2F%3Fbilling_transaction_id%3Dtxn_123",
+				CheckoutMode:  billingCheckoutModeOverlay,
 			},
 		},
 		store: handler.store,
@@ -298,7 +296,7 @@ func TestHandleBillingSummaryAndCheckout(t *testing.T) {
 	if checkoutPayload["transaction_id"] != "txn_123" {
 		t.Fatalf("unexpected checkout payload: %#v", checkoutPayload)
 	}
-	if checkoutPayload["checkout_url"] != "https://example.com/pay?return_to=https%3A%2F%2Fsite.example.com%2F%3Fbilling_transaction_id%3Dtxn_123" {
+	if checkoutPayload["checkout_mode"] != billingCheckoutModeOverlay {
 		t.Fatalf("unexpected checkout payload: %#v", checkoutPayload)
 	}
 

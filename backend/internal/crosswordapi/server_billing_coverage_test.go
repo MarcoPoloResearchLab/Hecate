@@ -141,7 +141,7 @@ func TestHandleBillingCheckoutCoverage(t *testing.T) {
 		checkoutSession: billingCheckoutSession{
 			ProviderCode:  billingProviderPaddle,
 			TransactionID: "txn_123",
-			CheckoutURL:   "https://example.com/pay",
+			CheckoutMode:  billingCheckoutModeOverlay,
 		},
 	}
 	handler.billingService = &billingService{
@@ -159,8 +159,9 @@ func TestHandleBillingCheckoutCoverage(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("expected 200 for checkout with origin, got %d", recorder.Code)
 	}
-	if checkoutProvider.receivedReturn != "https://llm-crossword.mprlab.com/?billing_transaction_id={transaction_id}" {
-		t.Fatalf("unexpected checkout return url %q", checkoutProvider.receivedReturn)
+	payload := decodeJSONMap(t, recorder.Body.String())
+	if payload["checkout_mode"] != billingCheckoutModeOverlay {
+		t.Fatalf("unexpected checkout response %#v", payload)
 	}
 }
 

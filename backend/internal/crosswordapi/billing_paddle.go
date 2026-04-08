@@ -36,9 +36,8 @@ const (
 	paddleMetadataPackCodeKey       = "pack_code"
 	paddleMetadataCreditsKey        = "credits"
 
-	paddleCollectionModeAutomatic    = "automatic"
-	paddleCheckoutURLMissingCode     = "transaction_default_checkout_url_not_set"
-	checkoutTransactionIDPlaceholder = "{transaction_id}"
+	paddleCollectionModeAutomatic = "automatic"
+	paddleCheckoutURLMissingCode  = "transaction_default_checkout_url_not_set"
 
 	paddleSignatureTimestampKey = "ts"
 	paddleSignatureHashKey      = "h1"
@@ -598,7 +597,7 @@ func resolvePaddlePriceID(items []paddleTransactionLineItem) string {
 	return ""
 }
 
-func (provider *paddleBillingProvider) CreateCheckout(ctx context.Context, userID string, userEmail string, pack BillingPack, returnURL string) (billingCheckoutSession, error) {
+func (provider *paddleBillingProvider) CreateCheckout(ctx context.Context, userID string, userEmail string, pack BillingPack) (billingCheckoutSession, error) {
 	if provider != nil && provider.sharedProvider != nil {
 		checkoutSession, err := provider.sharedProvider.CreateTopUpCheckout(ctx, sharedbilling.CustomerContext{
 			Email:     strings.TrimSpace(userEmail),
@@ -610,7 +609,7 @@ func (provider *paddleBillingProvider) CreateCheckout(ctx context.Context, userI
 		return billingCheckoutSession{
 			ProviderCode:  checkoutSession.ProviderCode,
 			TransactionID: checkoutSession.TransactionID,
-			CheckoutURL:   buildPayPageCheckoutURL(checkoutSession.TransactionID, returnURL),
+			CheckoutMode:  strings.ToLower(strings.TrimSpace(checkoutSession.CheckoutMode)),
 		}, nil
 	}
 
@@ -630,18 +629,10 @@ func (provider *paddleBillingProvider) CreateCheckout(ctx context.Context, userI
 		return billingCheckoutSession{}, err
 	}
 
-	checkoutURL, err := provider.apiClient.GetTransactionCheckoutURL(ctx, transactionID)
-	if err != nil {
-		return billingCheckoutSession{}, err
-	}
-
-	resolvedCheckoutURL := appendCheckoutReturnURL(checkoutURL, returnURL)
-	resolvedCheckoutURL = replaceCheckoutTransactionPlaceholder(resolvedCheckoutURL, transactionID)
-
 	return billingCheckoutSession{
 		ProviderCode:  provider.Code(),
 		TransactionID: transactionID,
-		CheckoutURL:   resolvedCheckoutURL,
+		CheckoutMode:  billingCheckoutModeOverlay,
 	}, nil
 }
 
@@ -680,54 +671,6 @@ func buildSharedBillingPackCatalog(cfg Config) []sharedbilling.PackCatalogItem {
 		})
 	}
 	return items
-}
-
-func buildPayPageCheckoutURL(transactionID string, returnURL string) string {
-	query := url.Values{}
-	trimmedTransactionID := strings.TrimSpace(transactionID)
-	if trimmedTransactionID != "" {
-		query.Set("_ptxn", trimmedTransactionID)
-	}
-	resolvedReturnURL := replaceCheckoutTransactionPlaceholder(returnURL, trimmedTransactionID)
-	if strings.TrimSpace(resolvedReturnURL) != "" {
-		query.Set("return_to", resolvedReturnURL)
-	}
-	if encodedQuery := query.Encode(); encodedQuery != "" {
-		return "/pay.html?" + encodedQuery
-	}
-	return "/pay.html"
-}
-
-func appendCheckoutReturnURL(checkoutURL string, returnURL string) string {
-	if strings.TrimSpace(checkoutURL) == "" {
-		return checkoutURL
-	}
-	if strings.TrimSpace(returnURL) == "" {
-		return checkoutURL
-	}
-
-	parsedURL, err := url.Parse(checkoutURL)
-	if err != nil {
-		return checkoutURL
-	}
-	query := parsedURL.Query()
-	query.Set("return_to", returnURL)
-	parsedURL.RawQuery = query.Encode()
-	return parsedURL.String()
-}
-
-func replaceCheckoutTransactionPlaceholder(returnURL string, transactionID string) string {
-	trimmedTransactionID := strings.TrimSpace(transactionID)
-	if strings.TrimSpace(returnURL) == "" || trimmedTransactionID == "" {
-		return returnURL
-	}
-	encodedPlaceholder := url.QueryEscape(checkoutTransactionIDPlaceholder)
-	encodedTransactionID := url.QueryEscape(trimmedTransactionID)
-	placeholderReplacer := strings.NewReplacer(
-		checkoutTransactionIDPlaceholder, trimmedTransactionID,
-		encodedPlaceholder, encodedTransactionID,
-	)
-	return placeholderReplacer.Replace(returnURL)
 }
 
 func (client *paddleAPIClient) ResolveCustomerID(ctx context.Context, userEmail string) (string, error) {

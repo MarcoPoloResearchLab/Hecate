@@ -184,7 +184,7 @@ func TestBillingActivityHelpersCoverage(t *testing.T) {
 }
 
 func TestBillingServiceCreateCheckoutCoverage(t *testing.T) {
-	if _, err := (*billingService)(nil).CreateCheckout(context.Background(), "user-1", "user@example.com", "starter", "https://site.example.com"); !errors.Is(err, errBillingServiceUnavailable) {
+	if _, err := (*billingService)(nil).CreateCheckout(context.Background(), "user-1", "user@example.com", "starter"); !errors.Is(err, errBillingServiceUnavailable) {
 		t.Fatalf("expected unavailable checkout error, got %v", err)
 	}
 
@@ -194,20 +194,20 @@ func TestBillingServiceCreateCheckoutCoverage(t *testing.T) {
 		logger:       zap.NewNop(),
 		provider:     &mockBillingProvider{code: billingProviderPaddle},
 	}
-	if _, err := service.CreateCheckout(context.Background(), "user-1", "user@example.com", "missing", "https://site.example.com"); !errors.Is(err, ErrBillingPackUnknown) {
+	if _, err := service.CreateCheckout(context.Background(), "user-1", "user@example.com", "missing"); !errors.Is(err, ErrBillingPackUnknown) {
 		t.Fatalf("expected unknown pack error, got %v", err)
 	}
 
 	expectedSession := billingCheckoutSession{
 		ProviderCode:  billingProviderPaddle,
 		TransactionID: "txn_123",
-		CheckoutURL:   "https://checkout.example.com",
+		CheckoutMode:  billingCheckoutModeOverlay,
 	}
 	service.provider = &mockBillingProvider{
 		code:            billingProviderPaddle,
 		checkoutSession: expectedSession,
 	}
-	session, err := service.CreateCheckout(context.Background(), "user-1", "user@example.com", "starter", "https://site.example.com")
+	session, err := service.CreateCheckout(context.Background(), "user-1", "user@example.com", "starter")
 	if err != nil {
 		t.Fatalf("CreateCheckout(success) error = %v", err)
 	}
