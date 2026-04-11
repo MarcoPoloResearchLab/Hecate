@@ -672,8 +672,21 @@ test.describe("App 100 coverage", () => {
       app.showGenerateForm();
       app.setLoggedIn(true);
       app.syncAuthStateFromMprUi();
+      window.CrosswordBilling = null;
+      app.openBillingDrawer("test_guard");
+      window.__billingOpenCalls = [];
+      window.CrosswordBilling = {
+        openAccountBilling: function (detail) {
+          window.__billingOpenCalls.push(detail);
+        },
+      };
+      app.openBillingDrawer();
+      document.getElementById("shareBtn").disabled = false;
+      document.getElementById("shareBtn").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      window.dispatchEvent(new CustomEvent("llm-crossword:billing-summary"));
 
       return {
+        billingOpenCalls: window.__billingOpenCalls.slice(),
         hasPendingAttribute: document.documentElement.hasAttribute("data-auth-pending"),
         missingChildMessage: missingChildMessage,
         missingElementMessage: missingElementMessage,
@@ -682,9 +695,109 @@ test.describe("App 100 coverage", () => {
     });
 
     expect(result.hasPendingAttribute).toBe(false);
+    expect(result.billingOpenCalls).toEqual([
+      {
+        force: true,
+        message: "",
+        source: "app",
+      },
+    ]);
     expect(result.missingElementMessage).toBe("Missing required app element #missingElement");
     expect(result.missingChildMessage).toBe("Missing required app element body .missing");
     expect(result.state.loggedIn).toBe(false);
+  });
+
+  test("covers credit badge billing fallback when the popover is unavailable", async ({ page }) => {
+    await page.goto("/blank.html");
+    await page.setContent(appShellHtml);
+    await page.evaluate(() => {
+      var creditDetailsPopover = document.getElementById("creditDetailsPopover");
+      if (creditDetailsPopover) {
+        creditDetailsPopover.remove();
+      }
+      window.__billingOpenCalls = [];
+      window.fetch = function () {
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          json: function () {
+            return Promise.resolve({});
+          },
+        });
+      };
+      window.CrosswordApp = {};
+      window.CrosswordBilling = {
+        openAccountBilling: function (detail) {
+          window.__billingOpenCalls.push(detail);
+        },
+      };
+    });
+
+    await loadScript(page, "app.js");
+
+    var result = await page.evaluate(() => {
+      var app = window.__LLM_CROSSWORD_TEST__.app;
+      document.getElementById("headerCreditBadge").disabled = false;
+      document.getElementById("headerCreditBadge").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      return Promise.resolve(app.setLoggedIn(true)).then(function () {
+        document.getElementById("headerCreditBadge").disabled = false;
+        document.getElementById("headerCreditBadge").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        return {
+          callCount: window.__billingOpenCalls.length,
+          calls: window.__billingOpenCalls.slice(),
+        };
+      });
+    });
+
+    expect(result.callCount).toBe(1);
+    expect(result.calls[0].source).toBe("header_credit_badge");
+  });
+
+  test("covers onLogin when billing sync rejects", async ({ page }) => {
+    await mountAppShell(page);
+    await page.evaluate(() => {
+      window.fetch = function (url) {
+        if (String(url).indexOf("/api/bootstrap") >= 0) {
+          return Promise.resolve({
+            ok: true,
+            json: function () {
+              return Promise.resolve({
+                balance: {
+                  available_cents: 400,
+                  currency: "USD",
+                },
+              });
+            },
+          });
+        }
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          json: function () {
+            return Promise.resolve({});
+          },
+        });
+      };
+      window.CrosswordApp = {};
+      window.CrosswordBilling = {
+        setLoggedIn: function () {
+          return Promise.reject(new Error("billing sync failed"));
+        },
+      };
+    });
+
+    await loadScript(page, "app.js");
+
+    var result = await page.evaluate(() => {
+      document.dispatchEvent(new Event("mpr-ui:auth:authenticated"));
+      return new Promise((resolve) => {
+        setTimeout(function () {
+          resolve(window.__LLM_CROSSWORD_TEST__.app.getState());
+        }, 0);
+      });
+    });
+
+    expect(result.loggedIn).toBe(true);
   });
 
   test("covers stale verification callbacks after auth version changes", async ({ page }) => {
