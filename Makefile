@@ -215,6 +215,57 @@ up:
 		fi; \
 		printf '%s\n' "$$requested"; \
 	}; \
+	trim_quotes() { \
+		value="$$1"; \
+		value="$${value%\"}"; \
+		value="$${value#\"}"; \
+		value="$${value%\'}"; \
+		value="$${value#\'}"; \
+		printf '%s' "$$value"; \
+	}; \
+	read_env_value() { \
+		awk -F '=' -v target_key="$$2" '$$1 == target_key { sub($$1 "=", ""); print; exit }' "$$1"; \
+	}; \
+	start_billing_ngrok_tunnel() { \
+		local_target_url="$$1"; \
+		ngrok_pid_file="$(RUNTIME_DIR)/billing-ngrok.pid"; \
+		ngrok_log_file="$(RUNTIME_DIR)/billing-ngrok.log"; \
+		ngrok_api_url="$${BILLING_NGROK_API_URL:-http://127.0.0.1:4040/api/tunnels}"; \
+		tunnel_url=""; \
+		attempts=0; \
+		if ! command -v ngrok >/dev/null 2>&1; then \
+			echo "Paddle sandbox localhost requires a public HTTPS billing callback. Install ngrok or set BILLING_CALLBACK_PUBLIC_URL." >&2; \
+			exit 1; \
+		fi; \
+		if [ -f "$$ngrok_pid_file" ]; then \
+			existing_pid="$$(cat "$$ngrok_pid_file" 2>/dev/null || true)"; \
+			if [ -n "$$existing_pid" ] && kill -0 "$$existing_pid" >/dev/null 2>&1; then \
+				kill "$$existing_pid" >/dev/null 2>&1 || true; \
+			fi; \
+			rm -f "$$ngrok_pid_file"; \
+		fi; \
+		rm -f "$$ngrok_log_file"; \
+		if [ -n "$${NGROK_AUTHTOKEN:-}" ]; then \
+			nohup ngrok http --authtoken "$${NGROK_AUTHTOKEN}" "$$local_target_url" >"$$ngrok_log_file" 2>&1 & \
+		else \
+			nohup ngrok http "$$local_target_url" >"$$ngrok_log_file" 2>&1 & \
+		fi; \
+		ngrok_pid="$$!"; \
+		printf '%s\n' "$$ngrok_pid" > "$$ngrok_pid_file"; \
+		while [ "$$attempts" -lt 60 ]; do \
+			tunnel_url="$$(curl -sS "$$ngrok_api_url" 2>/dev/null | rg -o '"public_url":"https://[^"]+"' -m1 | cut -d '"' -f4 || true)"; \
+			if [ -n "$$tunnel_url" ]; then \
+				printf '%s\n' "$$tunnel_url"; \
+				return 0; \
+			fi; \
+			attempts=$$((attempts + 1)); \
+			sleep 0.25; \
+		done; \
+		kill "$$ngrok_pid" >/dev/null 2>&1 || true; \
+		rm -f "$$ngrok_pid_file"; \
+		echo "Failed to resolve ngrok public URL from $$ngrok_api_url; see $$ngrok_log_file." >&2; \
+		exit 1; \
+	}; \
 	mkdir -p "$(RUNTIME_DIR)"; \
 	ledger_requested_port="$${LEDGER_HOST_PORT:-50051}"; \
 	ledger_explicit_port="$${LEDGER_HOST_PORT:-}"; \
@@ -236,11 +287,25 @@ up:
 	export CROSSWORDAPI_ENV_FILE="./$(LOCAL_CROSSWORDAPI_ENV_FILE)"; \
 	export TAUTH_ENV_FILE="./$(LOCAL_TAUTH_ENV_FILE)"; \
 	export TAUTH_CONFIG_TEMPLATE="./$(LOCAL_TAUTH_CONFIG_TEMPLATE)"; \
+	billing_provider="$$(trim_quotes "$$(read_env_value "$$CROSSWORDAPI_ENV_FILE" "CROSSWORDAPI_BILLING_PROVIDER")")"; \
+	paddle_environment="$$(trim_quotes "$$(read_env_value "$$CROSSWORDAPI_ENV_FILE" "CROSSWORDAPI_PADDLE_ENVIRONMENT")")"; \
+	billing_callback_public_url="$${BILLING_CALLBACK_PUBLIC_URL:-$$SITE_ORIGIN}"; \
+	billing_ngrok_target_url="$${BILLING_NGROK_TARGET_URL:-http://127.0.0.1:$$site_resolved_port}"; \
+	if [ "$$billing_provider" = "paddle" ] && [ "$$paddle_environment" = "sandbox" ]; then \
+		if [ "$$billing_callback_public_url" = "$$SITE_ORIGIN" ] && printf '%s' "$$SITE_ORIGIN" | rg -q '^http://localhost(:[0-9]+)?$$'; then \
+			billing_callback_public_url="$$(start_billing_ngrok_tunnel "$$billing_ngrok_target_url")"; \
+			echo "Started ngrok tunnel for local Paddle sandbox callbacks: $$billing_callback_public_url" >&2; \
+		fi; \
+		if ! printf '%s' "$$billing_callback_public_url" | rg -q '^https://'; then \
+			echo "Paddle sandbox localhost requires a public HTTPS billing callback URL. Set BILLING_CALLBACK_PUBLIC_URL or install ngrok." >&2; \
+			exit 1; \
+		fi; \
+	fi; \
+	export BILLING_CALLBACK_PUBLIC_URL="$$billing_callback_public_url"; \
 	export APP_CONFIG_SOURCE="./$(RUNTIME_DIR)/config.yml"; \
 	export PUBLIC_CONFIGS_SOURCE="./$(RUNTIME_DIR)/public-configs"; \
 	export TAUTH_CONFIG_SOURCE="./$(RUNTIME_DIR)/tauth.config.yaml"; \
 	export LEDGER_CONFIG_SOURCE="./$(RUNTIME_DIR)/ledger.config.yml"; \
-	export RUNTIME_AUTH_CONFIG_PATH="js/runtime-auth-config.override.js"; \
 	bash ./scripts/render-runtime-auth-config.sh; \
 	bash ./scripts/render-runtime-compose-configs.sh; \
 	if ! $(DOCKER_COMPOSE) up -d --build --remove-orphans --wait --wait-timeout 60 $(COMPOSE_UP_ARGS); then \
@@ -252,9 +317,21 @@ up:
 	fi; \
 	echo "llm_crossword is starting on $$SITE_ORIGIN"; \
 	echo "Host sidecars: TAuth=http://localhost:$$TAUTH_HOST_PORT API=http://localhost:$$CROSSWORD_API_HOST_PORT Ledger=localhost:$$LEDGER_HOST_PORT"; \
+	if [ "$$billing_provider" = "paddle" ] && [ "$$paddle_environment" = "sandbox" ]; then \
+		echo "Paddle sandbox callback origin: $$BILLING_CALLBACK_PUBLIC_URL"; \
+		echo "Paddle sandbox webhook path: $$BILLING_CALLBACK_PUBLIC_URL/api/billing/paddle/webhook"; \
+		echo "Paddle default payment link URL: $$BILLING_CALLBACK_PUBLIC_URL/"; \
+	fi; \
 	echo "Resolved ports written to $(RUNTIME_DIR)/ports.env"
 
 down:
+	@if [ -f "$(RUNTIME_DIR)/billing-ngrok.pid" ]; then \
+		ngrok_pid="$$(cat "$(RUNTIME_DIR)/billing-ngrok.pid" 2>/dev/null || true)"; \
+		if [ -n "$$ngrok_pid" ] && kill -0 "$$ngrok_pid" >/dev/null 2>&1; then \
+			kill "$$ngrok_pid" >/dev/null 2>&1 || true; \
+		fi; \
+		rm -f "$(RUNTIME_DIR)/billing-ngrok.pid" "$(RUNTIME_DIR)/billing-ngrok.log"; \
+	fi
 	$(DOCKER_COMPOSE) down --remove-orphans $(COMPOSE_DOWN_ARGS)
 	rm -rf $(RUNTIME_DIR)
 

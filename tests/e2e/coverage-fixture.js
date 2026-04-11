@@ -6,6 +6,25 @@ const NYC_OUTPUT = path.join(__dirname, "../../.nyc_output");
 
 const test = base.extend({
   page: async ({ page }, use, testInfo) => {
+    const originalGoto = page.goto.bind(page);
+    const originalReload = page.reload.bind(page);
+
+    function withDefaultWaitUntil(options) {
+      if (options && Object.prototype.hasOwnProperty.call(options, "waitUntil")) {
+        return options;
+      }
+
+      return {
+        ...(options || {}),
+        waitUntil: "domcontentloaded",
+      };
+    }
+
+    page.goto = (url, options) => {
+      return originalGoto(url, withDefaultWaitUntil(options));
+    };
+    page.reload = (options) => originalReload(withDefaultWaitUntil(options));
+
     await use(page);
     // Collect coverage after test
     try {

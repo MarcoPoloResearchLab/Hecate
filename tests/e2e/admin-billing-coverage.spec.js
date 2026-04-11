@@ -58,11 +58,10 @@ async function loadAdminScript(page) {
 }
 
 test.describe("Admin billing coverage", () => {
-  test("covers startup drawer restore when billing checkout requested it", async ({ page }) => {
+  test("does not auto-open the billing drawer on startup", async ({ page }) => {
     await page.goto("/blank.html");
     await page.setContent(buildAdminBillingShell());
     await page.evaluate(() => {
-      window.sessionStorage.setItem("llm-crossword-billing-restore-drawer", "1");
       window.fetch = function (url) {
         if (String(url).indexOf("/api/session") >= 0) {
           return Promise.resolve({
@@ -88,10 +87,7 @@ test.describe("Admin billing coverage", () => {
     });
     await loadAdminScript(page);
 
-    await expect(page.locator("#settingsDrawer")).toHaveAttribute("open", "");
-    await expect.poll(async () => page.evaluate(() =>
-      window.sessionStorage.getItem("llm-crossword-billing-restore-drawer")
-    )).toBeNull();
+    await expect(page.locator("#settingsDrawer")).not.toHaveAttribute("open", "");
   });
 
   test("covers admin billing helpers, events, and coordinator actions", async ({ page }) => {
@@ -129,8 +125,6 @@ test.describe("Admin billing coverage", () => {
     const result = await page.evaluate(async () => {
       var admin = window.__LLM_CROSSWORD_TEST__.admin;
       var manageButton = document.getElementById("settingsManageBillingButton");
-      var originalGetItem = window.sessionStorage.getItem;
-      var originalURL = window.URL;
       var outcomes = {};
 
       async function flushPromises() {
@@ -144,18 +138,6 @@ test.describe("Admin billing coverage", () => {
       outcomes.generationCostMissing = admin.getGenerationCostCredits({});
       outcomes.balanceInvalid = admin.getBalanceCredits({ available_cents: "nope" });
       outcomes.emptyPackLabel = admin.getBillingPackLabel("");
-
-      window.URL = function () {
-        throw new Error("bad url");
-      };
-      outcomes.pendingReturnError = admin.hasPendingBillingReturn();
-      window.URL = originalURL;
-
-      window.sessionStorage.getItem = function () {
-        throw new Error("blocked");
-      };
-      outcomes.restoreDrawerError = admin.shouldRestoreBillingDrawer();
-      window.sessionStorage.getItem = originalGetItem;
 
       admin.setBillingSummary(null);
       outcomes.emptySummary = {
@@ -275,8 +257,6 @@ test.describe("Admin billing coverage", () => {
     expect(result.generationCostMissing).toBeNull();
     expect(result.balanceInvalid).toBeNull();
     expect(result.emptyPackLabel).toBe("");
-    expect(result.pendingReturnError).toBe(false);
-    expect(result.restoreDrawerError).toBe(false);
     expect(result.emptySummary).toEqual({
       balance: "—",
       manageDisplay: "none",
@@ -351,10 +331,6 @@ test.describe("Admin billing coverage", () => {
       outcomes.balanceNull = admin.getBalanceCredits(null);
       outcomes.blankTimestamp = admin.formatBillingTimestamp("");
 
-      window.history.replaceState({}, "", "/blank.html?billing_transaction_id=txn_restore");
-      outcomes.restoreDrawerWithReturn = admin.shouldRestoreBillingDrawer();
-      window.history.replaceState({}, "", "/blank.html");
-
       admin.renderBillingActivity(null);
       admin.renderBillingPacks(null);
       admin.setBillingSummary(null);
@@ -377,7 +353,6 @@ test.describe("Admin billing coverage", () => {
 
     expect(result.balanceNull).toBeNull();
     expect(result.blankTimestamp).toBe("—");
-    expect(result.restoreDrawerWithReturn).toBe(true);
     expect(result.balanceValue).toBe("—");
     expect(result.metaValue).toBe("Purchases are granted after Paddle confirms payment.");
     expect(result.drawerOpen).toBe("");

@@ -64,8 +64,9 @@ cd /Users/tyemirov/Development/llm_crossword
 ./scripts/render-runtime-auth-config.sh
 ```
 
-The generated runtime config only exposes:
+The generated runtime config only exposes browser-safe values:
 
+- public service URLs
 - Paddle environment
 - Paddle client token
 
@@ -74,12 +75,15 @@ It must never expose:
 - API keys
 - webhook secrets
 
+The generated file contains localhost and hosted profiles, and the browser selects the matching one from the current serving host.
+
 ## Local Sandbox
 
 1. Start the crossword stack with sandbox billing env vars.
-2. Expose the app through a public HTTPS tunnel.
-3. Point Paddle sandbox webhook delivery at the tunnel URL.
-4. Point the Paddle default payment link at the tunneled app origin.
+2. If `BILLING_CALLBACK_PUBLIC_URL` is unset, `make up` will start an `ngrok` tunnel for the local site and write the resolved public callback origin to `.runtime/ports.env`.
+3. If you do not want automatic tunneling, set `BILLING_CALLBACK_PUBLIC_URL=https://<your-public-host>` yourself before `make up`.
+4. Point Paddle sandbox webhook delivery at `<callback-origin>/api/billing/paddle/webhook`.
+5. Point the Paddle default payment link at `<callback-origin>/`.
 
 ## Smoke Test
 
@@ -98,5 +102,5 @@ It must never expose:
 | Webhook returns `401` | wrong webhook secret or wrong environment | Match `CROSSWORDAPI_PADDLE_ENVIRONMENT` and the environment-specific webhook secret. |
 | Credits never arrive after payment | webhook destination is not public HTTPS or not subscribed to `transaction.completed` | Fix the destination URL and enabled events. |
 | API fails during startup with a catalog validation error | Paddle price IDs or amounts do not match the configured packs | Fix the Paddle catalog or the configured `CROSSWORDAPI_PADDLE_PRICE_ID_PACK_*` values, then restart. |
-| The app shows packs but no Paddle modal opens | missing client token or wrong sandbox/production runtime config | Re-run `./scripts/render-runtime-auth-config.sh` with the correct env vars and confirm `GET /api/billing/summary` returns `client_token` plus `environment`. |
+| The app shows packs but no Paddle modal opens | missing client token, wrong sandbox/production runtime config, or unsupported local callback/payment-link setup | Re-run `./scripts/render-runtime-auth-config.sh` with the correct env vars, confirm `GET /api/billing/summary` returns `client_token` plus `environment`, and confirm local sandbox has a public HTTPS callback/default-link origin. |
 | Paddle overlay opens and immediately shows an error | the transaction was rejected upstream or the environment/token pair does not match | Confirm the live runtime config, the transaction environment, and the Paddle account settings match. |

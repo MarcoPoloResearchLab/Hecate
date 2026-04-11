@@ -36,7 +36,6 @@
 
   <!-- App runtime config for API and billing -->
   <script src="./js/runtime-auth-config.js"></script>
-  <script src="./js/runtime-auth-config.override.js"></script>
   <script src="./js/service-config.js"></script>
   <script defer src="https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -44,7 +43,10 @@
   <script src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui-config.js"></script>
   <script>
     (function () {
-      var configUrl = "/configs/frontend-config.yml";
+      var configUrl = window.LLMCrosswordServices &&
+        typeof window.LLMCrosswordServices.getConfigUrl === "function"
+        ? window.LLMCrosswordServices.getConfigUrl()
+        : "/configs/frontend-config.yml";
       var mprUiBundleUrl = "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js";
 
       function loadMprUiBundle() {
