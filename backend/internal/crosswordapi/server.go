@@ -133,10 +133,13 @@ func Run(ctx context.Context, cfg Config, opts ...RunOption) error {
 		llmHTTPClient: &http.Client{Timeout: cfg.LLMProxyTimeout},
 		store:         store,
 	}
+	billingEvents := newBillingEventHub()
+	handler.billingEvents = billingEvents
 	billingService, billingErr := newBillingService(cfg, ledgerClient, store, logger)
 	if billingErr != nil {
 		return fmt.Errorf("billing init: %w", billingErr)
 	}
+	billingService.notifier = billingEvents
 	if catalogValidationProvider, ok := billingService.provider.(billingCatalogValidationProvider); ok {
 		logger.Info("validating billing catalog with provider on startup", zap.String("provider", billingService.provider.Code()))
 		catalogValidationCtx, cancelCatalogValidation := context.WithTimeout(ctx, billingCatalogValidationTimeout)
@@ -212,9 +215,9 @@ func setupRouter(cfg Config, handler *httpHandler, validator *sessionvalidator.V
 	api.POST("/bootstrap", handler.handleBootstrap)
 	api.GET("/balance", handler.handleBalance)
 	api.GET("/billing/summary", handler.handleBillingSummary)
+	api.GET("/billing/events", handler.handleBillingEvents)
 	api.POST("/billing/sync", handler.handleBillingSync)
 	api.POST("/billing/checkout", handler.handleBillingCheckout)
-	api.POST("/billing/checkout/reconcile", handler.handleBillingCheckoutReconcile)
 	api.POST("/billing/portal", handler.handleBillingPortal)
 	api.POST("/generate", handler.handleGenerate)
 	api.GET("/puzzles", handler.handleListPuzzles)
@@ -254,6 +257,7 @@ type httpHandler struct {
 	llmHTTPClient  *http.Client
 	store          Store
 	billingService *billingService
+	billingEvents  *billingEventHub
 	sharedSolveMu  sync.Mutex
 }
 
@@ -354,6 +358,41 @@ func (handler *httpHandler) handleBillingSummary(ctx *gin.Context) {
 	})
 }
 
+func (handler *httpHandler) handleBillingEvents(ctx *gin.Context) {
+	claims := getClaims(ctx)
+	if claims == nil {
+		ctx.JSON(http.StatusUnauthorized, errorResponse("unauthorized", "missing session"))
+		return
+	}
+	if handler.billingEvents == nil {
+		ctx.JSON(http.StatusInternalServerError, errorResponse("server_error", "billing events unavailable"))
+		return
+	}
+
+	eventStream, unsubscribe := handler.billingEvents.Subscribe(claims.GetUserID())
+	defer unsubscribe()
+
+	ctx.Writer.Header().Set("Cache-Control", "no-cache")
+	ctx.Writer.Header().Set("Connection", "keep-alive")
+	ctx.Writer.Header().Set("Content-Type", "text/event-stream")
+	ctx.Writer.Header().Set("X-Accel-Buffering", "no")
+	ctx.Writer.Flush()
+
+	for {
+		select {
+		case <-ctx.Request.Context().Done():
+			return
+		case event, ok := <-eventStream:
+			if !ok {
+				return
+			}
+			payload, _ := json.Marshal(event)
+			_, _ = fmt.Fprintf(ctx.Writer, "event: billing\ndata: %s\n\n", payload)
+			ctx.Writer.Flush()
+		}
+	}
+}
+
 func (handler *httpHandler) handleBillingSync(ctx *gin.Context) {
 	claims := getClaims(ctx)
 	if claims == nil {
@@ -398,15 +437,19 @@ func (handler *httpHandler) handleBillingCheckout(ctx *gin.Context) {
 
 	var req billingCheckoutRequest
 	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, errorResponse("invalid_payload", "expected JSON body with pack_id"))
+		ctx.JSON(http.StatusBadRequest, errorResponse("invalid_payload", "expected JSON body with pack_code"))
 		return
+	}
+	packCode := normalizeBillingPackCode(req.PackCode)
+	if packCode == "" {
+		packCode = normalizeBillingPackCode(req.PackID)
 	}
 
 	checkoutSession, err := handler.billingService.CreateCheckout(
 		ctx.Request.Context(),
 		claims.GetUserID(),
 		claims.GetUserEmail(),
-		req.PackID,
+		packCode,
 	)
 	if err != nil {
 		switch {
@@ -424,53 +467,6 @@ func (handler *httpHandler) handleBillingCheckout(ctx *gin.Context) {
 	}
 
 	ctx.JSON(http.StatusOK, checkoutSession)
-}
-
-func (handler *httpHandler) handleBillingCheckoutReconcile(ctx *gin.Context) {
-	claims := getClaims(ctx)
-	if claims == nil {
-		ctx.JSON(http.StatusUnauthorized, errorResponse("unauthorized", "missing session"))
-		return
-	}
-	if handler.billingService == nil {
-		ctx.JSON(http.StatusInternalServerError, errorResponse("server_error", billingServiceUnavailableMessage))
-		return
-	}
-
-	var req billingCheckoutReconcileRequest
-	if err := ctx.ShouldBindJSON(&req); err != nil {
-		ctx.JSON(http.StatusBadRequest, errorResponse("invalid_payload", "expected JSON body with transaction_id"))
-		return
-	}
-
-	reconcileResult, err := handler.billingService.ReconcileCheckout(
-		ctx.Request.Context(),
-		claims.GetUserID(),
-		claims.GetUserEmail(),
-		req.TransactionID,
-	)
-	if err != nil {
-		switch {
-		case errors.Is(err, errBillingServiceUnavailable):
-			ctx.JSON(http.StatusInternalServerError, errorResponse("server_error", billingServiceUnavailableMessage))
-		case errors.Is(err, sharedbilling.ErrBillingUserEmailInvalid):
-			ctx.JSON(http.StatusBadRequest, errorResponse("billing_checkout_invalid", "billing reconcile requires an account email"))
-		case errors.Is(err, sharedbilling.ErrPaddleAPITransactionNotFound):
-			ctx.JSON(http.StatusBadRequest, errorResponse("billing_checkout_invalid", "billing transaction not found"))
-		case errors.Is(err, ErrBillingCheckoutNotApplicable):
-			ctx.JSON(http.StatusBadRequest, errorResponse("billing_checkout_invalid", "billing transaction is not a crossword checkout"))
-		case errors.Is(err, sharedbilling.ErrBillingCheckoutOwnershipMismatch):
-			ctx.JSON(http.StatusForbidden, errorResponse("billing_checkout_forbidden", "billing transaction does not belong to the current user"))
-		case errors.Is(err, sharedbilling.ErrBillingCheckoutReconciliationUnsupported):
-			ctx.JSON(http.StatusServiceUnavailable, errorResponse("billing_checkout_unavailable", "billing checkout reconciliation is unavailable"))
-		default:
-			handler.logger.Error("billing checkout reconcile failed", zap.Error(err), zap.String("user_id", claims.GetUserID()))
-			ctx.JSON(http.StatusBadGateway, errorResponse("billing_checkout_failed", "unable to reconcile checkout"))
-		}
-		return
-	}
-
-	ctx.JSON(http.StatusOK, reconcileResult)
 }
 
 func (handler *httpHandler) handleBillingPortal(ctx *gin.Context) {

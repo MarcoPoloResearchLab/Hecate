@@ -222,16 +222,6 @@ func (provider *paddleBillingProvider) BuildUserSyncEvents(
 	return provider.sharedProvider.BuildUserSyncEvents(ctx, userEmail)
 }
 
-func (provider *paddleBillingProvider) BuildCheckoutReconcileEvent(
-	ctx context.Context,
-	transactionID string,
-) (sharedbilling.WebhookEvent, string, error) {
-	if provider == nil || provider.sharedProvider == nil {
-		return sharedbilling.WebhookEvent{}, "", sharedbilling.ErrPaddleProviderClientUnavailable
-	}
-	return provider.sharedProvider.BuildCheckoutReconcileEvent(ctx, transactionID)
-}
-
 func (provider *paddleBillingProvider) ResolveCheckoutEventStatus(eventType string) sharedbilling.CheckoutEventStatus {
 	if provider == nil || provider.sharedProvider == nil {
 		return sharedbilling.CheckoutEventStatusUnknown
@@ -601,8 +591,7 @@ func resolvePaddlePriceID(items []paddleTransactionLineItem) string {
 func (provider *paddleBillingProvider) CreateCheckout(ctx context.Context, userID string, userEmail string, pack BillingPack) (billingCheckoutSession, error) {
 	if provider != nil && provider.sharedProvider != nil {
 		checkoutSession, err := provider.sharedProvider.CreateTopUpCheckout(ctx, sharedbilling.CustomerContext{
-			Email:     strings.TrimSpace(userEmail),
-			SubjectID: strings.TrimSpace(userID),
+			Email: strings.TrimSpace(userEmail),
 		}, pack.Code)
 		if err != nil {
 			return billingCheckoutSession{}, err
