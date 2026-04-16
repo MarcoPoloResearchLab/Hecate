@@ -74,13 +74,13 @@
 4. For every configured pack code, require one `CROSSWORDAPI_PADDLE_PRICE_ID_PACK_<PACK_CODE>` env var. These are Paddle price IDs, not product IDs. If any pack is missing a price ID, stop and report.
 5. Wire the backend billing service so Paddle webhook parsing yields exactly one canonical `BillingGrantEvent` before Ledger settlement.
 6. Persist customer links and billing events before rendering UI activity. Use event uniqueness and Ledger idempotency together; do not grant credits from browser success handlers.
-7. Render browser-safe Paddle config only through [scripts/render-runtime-auth-config.sh](/Users/tyemirov/Development/llm_crossword/scripts/render-runtime-auth-config.sh). Expose the client token and environment only.
+7. Render browser-safe runtime billing config only through [scripts/render-runtime-auth-config.sh](/Users/tyemirov/Development/llm_crossword/scripts/render-runtime-auth-config.sh). Expose only browser-safe service URLs plus the Paddle client token and environment, and let the browser select the matching localhost or hosted profile from its serving host.
 8. Require a default payment link URL in Paddle Checkout settings on an approved crossword domain. The backend creates transactions, and the browser opens `Paddle.Checkout.open({ transactionId })` directly from [js/billing.js](/Users/tyemirov/Development/llm_crossword/js/billing.js). Do not route normal checkout through an app-owned payment page.
 9. Wire the frontend entry points in [index.html](/Users/tyemirov/Development/llm_crossword/index.html), [js/app.js](/Users/tyemirov/Development/llm_crossword/js/app.js), [js/admin.js](/Users/tyemirov/Development/llm_crossword/js/admin.js), and [js/billing.js](/Users/tyemirov/Development/llm_crossword/js/billing.js):
    - clickable header credit badge
    - insufficient-credits `Buy credits` CTA
    - Settings -> Account pack list, balance, activity, and portal entry
-   - direct overlay completion/close handling plus reconcile polling
+   - direct overlay open plus backend-driven billing updates after webhook settlement
 10. Run the backend and browser verification commands. If any command fails, classify the failure using `guide defect`, `agent defect`, or `environment defect` from the shared quality rubric.
 
 ## Expected Result
@@ -117,7 +117,7 @@ rg -n 'client_token|environment|Checkout.open|Buy credits|Manage billing' /Users
 | Checkout returns `billing_checkout_missing` | Paddle default payment link is not configured in Paddle | Configure any approved crossword URL as the default payment link and retry. |
 | Webhook returns `401 invalid webhook signature` | wrong webhook secret or wrong environment pairing | Match the sandbox/production secret to `CROSSWORDAPI_PADDLE_ENVIRONMENT`. |
 | Credits are granted twice | idempotency is missing before or during settlement | Enforce unique `event_id` storage and keep Ledger idempotency key `billing:paddle:<event_id>`. |
-| UI shows packs but badge never updates after payment | webhook did not land or post-checkout reconcile/poll never observed `transaction.completed` | Fix webhook reachability first, then verify the overlay completion path and reconcile polling. |
+| UI shows packs but badge never updates after payment | webhook did not land or the backend billing event stream never observed the settled transaction | Fix webhook reachability first, then verify the backend billing event stream and summary refresh path. |
 | Browser checkout loads with no overlay | missing client token or broken runtime config generation | Re-run `./scripts/render-runtime-auth-config.sh` and inspect `LLMCrosswordRuntimeConfig.billing`. |
 
 ## Stop Rules

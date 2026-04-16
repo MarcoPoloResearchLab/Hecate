@@ -211,7 +211,24 @@ async function setupBaseRoutes(page) {
   await page.route("**/js-yaml*.js", (route) =>
     route.fulfill(text(200, "window.__jsYamlLoads = (window.__jsYamlLoads || 0) + 1;"))
   );
-  // /tauth.js is loaded via <script src="/tauth.js"> — stub it empty.
+  await page.route("**/bootstrap-icons.min.css", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/css",
+      body: "/* bootstrap-icons stub */",
+    })
+  );
+  await page.route("**/mpr-ui.css", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/css",
+      body: "/* mpr-ui css stub */",
+    })
+  );
+  await page.route("**/gsi/client", (route) =>
+    route.fulfill(text(200, "window.google = window.google || {};"))
+  );
+  // tauth.js is loaded from the pinned CDN in index.html during tests.
   await page.route("**/tauth.js", (route) =>
     route.fulfill(text(200, "/* tauth stub */"))
   );
@@ -237,9 +254,6 @@ async function setupBaseRoutes(page) {
   );
   await page.route("**/api/billing/checkout", (route) =>
     route.fulfill(json(503, { message: "billing unavailable" }))
-  );
-  await page.route("**/api/billing/checkout/reconcile", (route) =>
-    route.fulfill(json(200, { status: "pending" }))
   );
   await page.route("**/api/billing/portal", (route) =>
     route.fulfill(json(503, { message: "billing unavailable" }))
