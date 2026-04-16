@@ -15,9 +15,9 @@ Billing is a business-critical path in this product. The billing flow is intenti
 
 ## Auth config
 
-Set `GOOGLE_CLIENT_ID` in `configs/.env.tauth.local` for local work and in `configs/.env.tauth.production` for production deployment so TAuth and related tooling use the expected client. Keep backend settings in `configs/config.yml` and browser-facing auth settings in `configs/frontend-config.yml`. The committed `js/runtime-auth-config.js` is the production-safe browser default. Local Docker and Playwright entry points render overrides into `js/runtime-auth-config.override.js` before startup.
+Set `GOOGLE_CLIENT_ID` in `configs/.env.tauth.local` for local work and in `configs/.env.tauth.production` for production deployment so TAuth and related tooling use the expected client. Keep backend settings in `configs/config.yml` and browser-facing auth settings in `configs/frontend-config.yml`. The generated `js/runtime-auth-config.js` is the single browser runtime config. It contains browser-safe localhost and hosted profiles, and the browser selects the matching profile from the serving host before the rest of the app bootstraps.
 
-Direct GitHub Pages publishing uses the committed `js/runtime-auth-config.js`. If you intentionally need to regenerate that tracked file, run `bash scripts/render-runtime-auth-config.sh` without `RUNTIME_AUTH_CONFIG_PATH`; that committed output now defaults to `configs/.env.crosswordapi.production`, while automated local and test flows still render the override file from the local profile by default.
+Direct GitHub Pages publishing uses the committed `js/runtime-auth-config.js`. If you intentionally need to regenerate that tracked file, run `bash scripts/render-runtime-auth-config.sh`. The script renders both the localhost profile from `configs/.env.crosswordapi.local` and the hosted profile from `configs/.env.crosswordapi.production` unless you override the hosted env file with `CROSSWORDAPI_ENV_FILE`.
 
 For split-origin deployments, the browser runtime config also supports explicit service URLs:
 
@@ -26,7 +26,7 @@ For split-origin deployments, the browser runtime config also supports explicit 
 - `LLM_CROSSWORD_CONFIG_URL` — frontend YAML config URL used by the browser
 - `LLM_CROSSWORD_TAUTH_SCRIPT_URL` — explicit CDN or alternate `tauth.js` URL override
 
-If these are unset, local startup keeps the existing same-origin behaviour by defaulting service URLs to `SITE_ORIGIN` when rendering `js/runtime-auth-config.override.js`. The committed `js/runtime-auth-config.js` instead falls back to the hosted split-origin defaults for the current production topology. When `LLM_CROSSWORD_CONFIG_URL` is not set, the frontend defaults to `<site-origin>/configs/frontend-config.yml`. When `LLM_CROSSWORD_TAUTH_SCRIPT_URL` is unset, the frontend defaults `tauth.js` to the pinned CDN helper.
+If these are unset, the localhost runtime profile keeps same-origin browser calls by defaulting API and auth base URLs to `""`, while the hosted runtime profile falls back to the current split-origin production topology. When `LLM_CROSSWORD_CONFIG_URL` is not set, the hosted profile defaults to `/configs/frontend-config.yml`. When `LLM_CROSSWORD_TAUTH_SCRIPT_URL` is unset, runtime config defaults `tauth.js` to the pinned CDN helper.
 
 ## GitHub Pages
 
@@ -35,6 +35,17 @@ The repository includes `.nojekyll` so branch-based GitHub Pages publishing can 
 ## Local Docker
 
 Use `make up` to start the stack and `make down` to stop it. If the default site port `8000` or one of the other exposed host ports is already occupied, `make up` automatically picks the next available port and writes the resolved values to `.runtime/ports.env`.
+
+Local Paddle sandbox needs a public HTTPS billing callback even when the app itself runs on `http://localhost`. `make up` now keeps the browser on localhost and resolves the callback origin separately:
+
+- if `BILLING_CALLBACK_PUBLIC_URL` is set, `make up` uses it directly
+- otherwise, `make up` will start an `ngrok` tunnel for the local site and record the public callback origin in `.runtime/ports.env`
+- if `ngrok` is unavailable, set `BILLING_CALLBACK_PUBLIC_URL=https://<your-public-host>` before starting the stack
+
+Use that callback origin for both:
+
+- Paddle sandbox webhook destination: `<callback-origin>/api/billing/paddle/webhook`
+- Paddle default payment link URL: `<callback-origin>/`
 
 The local stack builds only the local `crossword-api` image. Ledger is pulled from `ghcr.io/tyemirov/ledger:latest` and configured locally through `.runtime/ledger.config.yml`; it is not rebuilt from `tools/ledger`.
 
@@ -48,8 +59,8 @@ Keep localhost and production settings separate.
 
 - `configs/.env.crosswordapi.local`, `configs/.env.tauth.local`, and `tauth.config.local.yaml` are the local Docker inputs used by `make up`.
 - `configs/.env.crosswordapi.production`, `configs/.env.tauth.production`, and `tauth.config.production.yaml` are the production profile files.
-- `.runtime/config.yml`, `.runtime/public-configs/frontend-config.yml`, `.runtime/tauth.config.yaml`, `.runtime/ledger.config.yml`, and `js/runtime-auth-config.override.js` are generated local-only artifacts.
-- `js/runtime-auth-config.js` is the committed browser default for deployed/static environments.
+- `.runtime/config.yml`, `.runtime/public-configs/frontend-config.yml`, `.runtime/tauth.config.yaml`, and `.runtime/ledger.config.yml` are generated local-only artifacts.
+- `js/runtime-auth-config.js` is the generated browser runtime config checked into the repo. It contains browser-safe localhost and hosted profiles selected by the current serving host.
 - Local and production secret files stay untracked.
 
 For the current production topology:

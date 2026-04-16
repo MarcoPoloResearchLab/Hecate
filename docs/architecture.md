@@ -20,8 +20,9 @@ If any step fails, startup fails and the process exits. There is no supported st
 - `configs/config.yml` defines the canonical billing packs and credit economy.
 - Paddle is the single supported billing provider for this product shape.
 - The browser receives only public Paddle runtime config.
-- Checkout creates a provider-backed transaction and returns the hosted checkout URL.
+- Checkout creates a provider-backed transaction id and opens Paddle’s overlay directly from the browser via the Paddle CDN.
 - Credits are granted only after webhook-confirmed settlement or reconciliation.
+- Billing UI refreshes from backend-owned billing events rather than frontend checkout return state.
 - Portal access depends on the persisted billing customer link for the authenticated user.
 
 ## UI Contract

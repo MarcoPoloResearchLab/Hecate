@@ -30,9 +30,6 @@ type mockBillingProvider struct {
 	portalErr       error
 	publicConfig    billingPublicConfig
 	receivedPortal  BillingCustomerLink
-	reconcileErr    error
-	reconcileEvent  sharedbilling.WebhookEvent
-	reconcileEmail  string
 	resolveStatus   sharedbilling.CheckoutEventStatus
 	signatureErr    error
 	syncErr         error
@@ -75,10 +72,6 @@ func (provider *mockBillingProvider) CreateCheckout(ctx context.Context, userID 
 
 func (provider *mockBillingProvider) BuildUserSyncEvents(ctx context.Context, userEmail string) ([]sharedbilling.WebhookEvent, error) {
 	return provider.syncEvents, provider.syncErr
-}
-
-func (provider *mockBillingProvider) BuildCheckoutReconcileEvent(ctx context.Context, transactionID string) (sharedbilling.WebhookEvent, string, error) {
-	return provider.reconcileEvent, provider.reconcileEmail, provider.reconcileErr
 }
 
 func (provider *mockBillingProvider) ResolveCheckoutEventStatus(eventType string) sharedbilling.CheckoutEventStatus {
@@ -233,6 +226,73 @@ func TestBillingServiceHandleWebhook_GrantsCreditsAndPersistsEvent(t *testing.T)
 	}
 	if upsertedLink == nil || upsertedLink.PaddleCustomerID != "ctm_123" {
 		t.Fatalf("expected customer link to be upserted, got %#v", upsertedLink)
+	}
+}
+
+func TestBillingServiceHandleWebhook_PublishesBillingUpdate(t *testing.T) {
+	eventHub := newBillingEventHub()
+	events, unsubscribe := eventHub.Subscribe("user-123")
+	defer unsubscribe()
+
+	service := &billingService{
+		cfg: validBillingConfig(),
+		ledgerClient: &mockLedgerClient{
+			grantFunc: func(ctx context.Context, in *creditv1.GrantRequest, opts ...grpc.CallOption) (*creditv1.Empty, error) {
+				return &creditv1.Empty{}, nil
+			},
+		},
+		logger:   zap.NewNop(),
+		notifier: eventHub,
+		provider: &mockBillingProvider{
+			code: billingProviderPaddle,
+			customerLink: &BillingCustomerLink{
+				UserID:           "user-123",
+				Provider:         billingProviderPaddle,
+				PaddleCustomerID: "ctm_123",
+				Email:            "user@example.com",
+			},
+			eventRecord: BillingEventRecord{
+				EventID:       "evt_stream",
+				EventType:     paddleEventTypeTransactionCompleted,
+				Provider:      billingProviderPaddle,
+				TransactionID: "txn_stream",
+				PackCode:      "starter",
+				CreditsDelta:  20,
+				Status:        "completed",
+				UserID:        "user-123",
+				OccurredAt:    time.Date(2026, time.March, 28, 18, 35, 0, 0, time.UTC),
+			},
+			grantEvent: &BillingGrantEvent{
+				User:     "user-123",
+				Credits:  20,
+				Provider: billingProviderPaddle,
+				EventID:  "evt_stream",
+			},
+		},
+		store: &mockStore{
+			createBillingEventRecordFunc: func(record *BillingEventRecord) error {
+				return nil
+			},
+			upsertBillingCustomerLinkFunc: func(link *BillingCustomerLink) error {
+				return nil
+			},
+		},
+	}
+
+	if err := service.HandleWebhook(context.Background(), "ts=1;h1=hash", []byte(`{}`)); err != nil {
+		t.Fatalf("HandleWebhook() error = %v", err)
+	}
+
+	select {
+	case event := <-events:
+		if event.EventType != paddleEventTypeTransactionCompleted {
+			t.Fatalf("expected %s event type, got %s", paddleEventTypeTransactionCompleted, event.EventType)
+		}
+		if event.Status != "completed" {
+			t.Fatalf("expected completed status, got %s", event.Status)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("expected billing update event")
 	}
 }
 

@@ -4,7 +4,6 @@
 
   var services = window.LLMCrosswordServices || null;
   var _fetch = window.authFetch || window.fetch.bind(window);
-  var billingRestoreDrawerStorageKey = "llm-crossword-billing-restore-drawer";
   var billingUnavailableMessage = "Billing details are unavailable right now.";
   var defaultCoinValueCents = 100;
   var placeholderValue = "—";
@@ -278,29 +277,6 @@
       portal_available: summary.portal_available === true,
       provider_code: hasDisplayValue(summary.provider_code) ? String(summary.provider_code) : "",
     };
-  }
-
-  function hasPendingBillingReturn() {
-    try {
-      return new URL(window.location.href).searchParams.has("billing_transaction_id");
-    } catch {
-      return false;
-    }
-  }
-
-  function shouldRestoreBillingDrawer() {
-    if (hasPendingBillingReturn()) return true;
-    try {
-      return window.sessionStorage.getItem(billingRestoreDrawerStorageKey) === "1";
-    } catch {
-      return false;
-    }
-  }
-
-  function clearPendingBillingRestore() {
-    try {
-      window.sessionStorage.removeItem(billingRestoreDrawerStorageKey);
-    } catch {}
   }
 
   function getBillingPackLabel(packCode) {
@@ -679,7 +655,6 @@
     selectedUser = null;
     allUsers = [];
     setAdminState(false);
-    clearPendingBillingRestore();
     setStatus(settingsBillingStatus, "");
     renderBillingSummary();
     closeDrawer();
@@ -687,12 +662,6 @@
 
   checkAdminStatus();
   renderBillingSummary();
-  if (shouldRestoreBillingDrawer()) {
-    openDrawer();
-    switchTab("account");
-    clearPendingBillingRestore();
-    syncBillingStatusFromCoordinator();
-  }
 
   window.addEventListener("llm-crossword:billing-summary", function (event) {
     billingSummary = normalizeBillingSummary(event && event.detail);
@@ -710,11 +679,14 @@
   window.addEventListener("llm-crossword:billing-open-request", function () {
     openDrawer();
     switchTab("account");
-    clearPendingBillingRestore();
     syncBillingStatusFromCoordinator();
     if (settingsBillingPanel && typeof settingsBillingPanel.scrollIntoView === "function") {
       settingsBillingPanel.scrollIntoView({ behavior: "smooth", block: "start" });
     }
+  });
+
+  window.addEventListener("llm-crossword:billing-checkout-opening", function () {
+    closeDrawer();
   });
 
   if (settingsManageBillingButton) {
@@ -996,7 +968,6 @@
 
   (window.__LLM_CROSSWORD_TEST__ || (window.__LLM_CROSSWORD_TEST__ = {})).admin = {
     checkAdminStatus: checkAdminStatus,
-    clearPendingBillingRestore: clearPendingBillingRestore,
     formatExpiresValue: formatExpiresValue,
     formatBillingTimestamp: formatBillingTimestamp,
     formatRolesValue: formatRolesValue,
@@ -1007,7 +978,6 @@
     getUserPrimaryLabel: getUserPrimaryLabel,
     getUserSearchText: getUserSearchText,
     getUserSecondaryLabel: getUserSecondaryLabel,
-    hasPendingBillingReturn: hasPendingBillingReturn,
     hasDisplayValue: hasDisplayValue,
     hasAdminRole: hasAdminRole,
     isSameUser: isSameUser,
@@ -1033,7 +1003,6 @@
       renderBillingSummary();
     },
     setMenuItems: setMenuItems,
-    shouldRestoreBillingDrawer: shouldRestoreBillingDrawer,
     setStatus: setStatus,
     setSessionData: function (data) {
       sessionData = data;

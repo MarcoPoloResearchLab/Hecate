@@ -82,23 +82,14 @@ type billingPublicConfig struct {
 }
 
 type billingCheckoutRequest struct {
-	PackID string `json:"pack_id"`
-}
-
-type billingCheckoutReconcileRequest struct {
-	TransactionID string `json:"transaction_id"`
+	PackCode string `json:"pack_code"`
+	PackID   string `json:"pack_id,omitempty"`
 }
 
 type billingCheckoutSession struct {
 	ProviderCode  string `json:"provider_code"`
 	TransactionID string `json:"transaction_id"`
 	CheckoutMode  string `json:"checkout_mode"`
-}
-
-type billingCheckoutReconcileResult struct {
-	ProviderCode  string `json:"provider_code"`
-	TransactionID string `json:"transaction_id"`
-	Status        string `json:"status"`
 }
 
 type billingPortalSession struct {
@@ -128,10 +119,6 @@ type billingCatalogValidationProvider interface {
 
 type billingUserSyncProvider interface {
 	BuildUserSyncEvents(ctx context.Context, userEmail string) ([]sharedbilling.WebhookEvent, error)
-}
-
-type billingCheckoutReconcileProvider interface {
-	BuildCheckoutReconcileEvent(ctx context.Context, transactionID string) (sharedbilling.WebhookEvent, string, error)
 }
 
 type billingCheckoutEventStatusProvider interface {
