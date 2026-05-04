@@ -13,6 +13,12 @@ GHCR_VERSION_TAG ?= $(shell git describe --tags --exact-match HEAD 2>/dev/null |
 GHCR_HECATE_API_REPO ?= $(GHCR_REGISTRY)/$(GHCR_OWNER)/llm-crossword-api
 GHCR_HECATE_API_LATEST_IMAGE ?= $(GHCR_HECATE_API_REPO):latest
 GHCR_HECATE_API_VERSION_IMAGE ?= $(if $(GHCR_VERSION_TAG),$(GHCR_HECATE_API_REPO):$(GHCR_VERSION_TAG))
+RELEASE_ARGS ?=
+RELEASE_HELPER ?=
+PUBLISH_REMOTE ?= origin
+DEPLOY_ARGS ?=
+GATEWAY_DIR ?=
+PAGES_URL ?= https://llm-crossword.mprlab.com/
 COMPOSE_UP_ARGS ?=
 COMPOSE_DOWN_ARGS ?=
 LOCAL_HECATEAPI_ENV_FILE ?= configs/.env.hecateapi.local
@@ -32,7 +38,7 @@ endif
 
 .PHONY: format check-format lint test test-unit test-backend test-web test-web-coverage test-integration \
 	playwright-install build clean ci \
-	docker-buildx-bootstrap docker-build-ghcr-image docker-push-ghcr-image publish publish-ghcr \
+	docker-buildx-bootstrap docker-build-ghcr-image docker-push-ghcr-image release publish publish-validate publish-ghcr deploy \
 	up down logs ps docker-up docker-down docker-logs docker-ps
 
 # ---------- Formatting ----------
@@ -111,10 +117,19 @@ docker-push-ghcr-image:
 	$(DOCKER) push "$(GHCR_HECATE_API_LATEST_IMAGE)"
 	$(if $(GHCR_VERSION_TAG),$(DOCKER) push "$(GHCR_HECATE_API_VERSION_IMAGE)")
 
-publish publish-ghcr: docker-buildx-bootstrap
+release:
+	RELEASE_HELPER="$(RELEASE_HELPER)" bash scripts/release.sh $(RELEASE_ARGS)
+
+publish publish-ghcr: publish-validate docker-buildx-bootstrap
 	@echo "Publishing $(GHCR_HECATE_API_LATEST_IMAGE) for platforms $(DOCKER_BUILD_PLATFORMS)"
 	@if [ -n "$(GHCR_VERSION_TAG)" ]; then echo "Also publishing $(GHCR_HECATE_API_VERSION_IMAGE)"; else echo "No exact git tag on HEAD; publishing latest only."; fi
 	$(DOCKER_BUILDX) build --platform "$(DOCKER_BUILD_PLATFORMS)" -t "$(GHCR_HECATE_API_LATEST_IMAGE)" $(if $(GHCR_VERSION_TAG),-t "$(GHCR_HECATE_API_VERSION_IMAGE)") -f backend/Dockerfile --push backend
+
+publish-validate:
+	PUBLISH_REMOTE="$(PUBLISH_REMOTE)" ./scripts/validate_publish.sh
+
+deploy: publish-validate
+	GATEWAY_DIR="$(GATEWAY_DIR)" GHCR_HECATE_API_REPO="$(GHCR_HECATE_API_REPO)" PAGES_URL="$(PAGES_URL)" bash scripts/deploy.sh $(DEPLOY_ARGS)
 
 clean:
 	rm -rf $(BIN_DIR) .nyc_output coverage test-results playwright-report $(BACKEND_DIR)/coverage.out
