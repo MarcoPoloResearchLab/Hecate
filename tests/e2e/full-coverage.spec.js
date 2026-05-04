@@ -28,6 +28,15 @@ async function loadScript(page, fileName) {
   await page.addScriptTag({ url: `/js/${fileName}` });
 }
 
+async function waitForMprUiOrchestration(page) {
+  await page.evaluate(() => {
+    if (!window.MPRUI || typeof window.MPRUI.whenAutoOrchestrationReady !== "function") {
+      return Promise.resolve();
+    }
+    return window.MPRUI.whenAutoOrchestrationReady();
+  });
+}
+
 async function openSettingsDrawer(page) {
   await page.waitForFunction(() => {
     var el = document.getElementById("userMenu");
@@ -303,6 +312,7 @@ test.describe("Admin coverage", () => {
     });
 
     await page.goto("/");
+    await waitForMprUiOrchestration(page);
     await page.evaluate(() => {
       document.dispatchEvent(new Event("mpr-ui:auth:authenticated"));
       document.dispatchEvent(new CustomEvent("mpr-user:menu-item", {
@@ -1180,6 +1190,7 @@ test.describe("App coverage", () => {
     });
 
     await page.goto("/");
+    await waitForMprUiOrchestration(page);
     await page.evaluate(() => {
       document.dispatchEvent(new Event("mpr-ui:auth:unauthenticated"));
       window.__HECATE_TEST__.app.setLoggedIn(false);
