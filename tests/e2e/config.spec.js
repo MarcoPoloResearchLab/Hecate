@@ -18,7 +18,7 @@ test.describe("Config — default behavior", () => {
         auth: {
           tauthUrl: "https://tauth.example.test",
           googleClientId: "test-google-client-id",
-          tenantId: "hecate",
+          tenantId: "crossword",
           loginPath: "/auth/google",
           logoutPath: "/auth/logout",
           noncePath: "/auth/nonce",
@@ -29,7 +29,7 @@ test.describe("Config — default behavior", () => {
 
     await expect(page.locator("#app-header")).toHaveAttribute("tauth-url", "https://tauth.example.test");
     await expect(page.locator("#app-header")).toHaveAttribute("google-site-id", "test-google-client-id");
-    await expect(page.locator("#app-header")).toHaveAttribute("tauth-tenant-id", "hecate");
+    await expect(page.locator("#app-header")).toHaveAttribute("tauth-tenant-id", "crossword");
   });
 
   test("mpr-ui bootstrap loads the parser, config loader, and bundle once", async ({ page }) => {
@@ -91,7 +91,7 @@ test.describe("Config — default behavior", () => {
             "    auth:",
             '      tauthUrl: "https://override-auth.example.test"',
             '      googleClientId: "override-google-client-id"',
-            '      tenantId: "hecate"',
+            '      tenantId: "crossword"',
             '      loginPath: "/auth/google"',
             '      logoutPath: "/auth/logout"',
             '      noncePath: "/auth/nonce"',
@@ -219,7 +219,9 @@ test.describe("Config — default behavior", () => {
     );
 
     expect(configText).toContain('tauthUrl: "https://tauth-api.mprlab.com"');
+    expect(configText).toContain('tenantId: "crossword"');
     expect(configText).not.toContain('tauthUrl: "https://tauth.mprlab.com"');
+    expect(configText).not.toContain('tenantId: "hecate"');
   });
 });
 

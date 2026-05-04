@@ -11,7 +11,7 @@ const path = require("path");
 const defaultPuzzles = [
   {
     title: "Moon Signals",
-    subtitle: "A compact lunar crossword to start Hecate.",
+    subtitle: "A compact lunar crossword to start LLM Crossword.",
     puzzle_type: "crossword",
     layout_seed: "route-helper-practice-moon-signals",
     layout_version: 1,
@@ -163,7 +163,7 @@ function createFrontendConfig(overrides = {}) {
     auth: {
       tauthUrl: "http://localhost:8111",
       googleClientId: "test-google-client-id",
-      tenantId: "hecate",
+      tenantId: "crossword",
       loginPath: "/auth/google",
       logoutPath: "/auth/logout",
       noncePath: "/auth/nonce",

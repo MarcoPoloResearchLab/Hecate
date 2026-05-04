@@ -1574,7 +1574,7 @@ test.describe("Isolated script coverage", () => {
 
     await page.goto("/?puzzle=shared-ok");
     await expect(page.locator(".landing__title")).toHaveText("Shared Space");
-    await expect(page.locator(".landing__subtitle")).toContainText("Someone shared a Hecate puzzle with you");
+    await expect(page.locator(".landing__subtitle")).toContainText("Someone shared an LLM Crossword puzzle with you");
     expect(await page.locator("#landingSamplePuzzle .cell").count()).toBeGreaterThan(0);
   });
 

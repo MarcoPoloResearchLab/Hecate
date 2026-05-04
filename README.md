@@ -1,4 +1,4 @@
-# Hecate
+# LLM Crossword
 
 An AI word-puzzle builder for crosswords and word searches.
 
@@ -21,7 +21,7 @@ Direct GitHub Pages publishing uses the committed `js/runtime-auth-config.js`. I
 
 For split-origin deployments, the browser runtime config also supports explicit service URLs:
 
-- `HECATE_API_BASE_URL` — browser origin for the Hecate API
+- `HECATE_API_BASE_URL` — browser origin for the LLM Crossword API
 - `HECATE_AUTH_BASE_URL` — browser origin for TAuth auth endpoints
 - `HECATE_CONFIG_URL` — frontend YAML config URL used by the browser
 - `HECATE_TAUTH_SCRIPT_URL` — explicit CDN or alternate `tauth.js` URL override
@@ -68,12 +68,13 @@ For the current production topology:
 - frontend origin: `https://llm-crossword.mprlab.com`
 - API origin: `https://llm-crossword-api.mprlab.com`
 - TAuth auth origin: `https://tauth-api.mprlab.com`
+- TAuth tenant id: `crossword` (LLM Crossword tenant slug)
 - TAuth script URL: `https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js`
 
 Production deployments should align all three places:
 
 1. browser runtime service URLs
-2. Hecate API CORS and TAuth base URL
+2. LLM Crossword API CORS and TAuth base URL
 3. TAuth CORS, tenant origins, and cookie domain
 
 Typical production inputs are:
@@ -82,7 +83,7 @@ Typical production inputs are:
   `HECATE_API_BASE_URL=https://llm-crossword-api.mprlab.com`
   `HECATE_AUTH_BASE_URL=https://tauth-api.mprlab.com`
   `HECATE_TAUTH_SCRIPT_URL=https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js`
-- Hecate API:
+- LLM Crossword API:
   `HECATEAPI_ALLOWED_ORIGINS=https://llm-crossword.mprlab.com`
   `HECATEAPI_TAUTH_BASE_URL=http://tauth-api:8080`
 - TAuth:
@@ -122,7 +123,7 @@ This is the image name expected by the `mprlab-gateway` deployment contract.
 
 - [Word Illustration Feature Plan](./docs/word-illustrations-plan.md)
 
-## Using Hecate
+## Using LLM Crossword
 
 1. Choose `Crossword` or `Word Search` on the landing page, or open any saved puzzle from the sidebar.
 2. Crosswords use the grid plus clue rail; word searches use the grid plus the `Find these words` panel.

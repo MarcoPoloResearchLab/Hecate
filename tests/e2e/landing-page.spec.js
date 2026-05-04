@@ -19,7 +19,7 @@ test.describe("Landing page", () => {
   });
 
   test("shows the landing page brand logo", async ({ page }) => {
-    await expect(page.getByAltText("Hecate logo")).toBeVisible();
+    await expect(page.getByAltText("LLM Crossword logo")).toBeVisible();
   });
 
   test("shows the hero subtitle describing the product", async ({ page }) => {
@@ -78,7 +78,7 @@ test.describe("Landing page", () => {
   });
 
   test("page title is set", async ({ page }) => {
-    await expect(page).toHaveTitle(/Hecate/);
+    await expect(page).toHaveTitle(/LLM Crossword/);
   });
 
   test("shows a sample crossword puzzle below the feature cards", async ({ page }) => {

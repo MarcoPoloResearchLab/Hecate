@@ -24,7 +24,7 @@ test.describe("Header and footer", () => {
   test("header has brand on the left", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
     await page.waitForTimeout(3000);
-    await expect(page.getByRole("link", { name: "Hecate" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "LLM Crossword" })).toBeVisible();
     await expect(page).toHaveScreenshot("header-footer.png", { maxDiffPixelRatio: 0.05 });
   });
 });

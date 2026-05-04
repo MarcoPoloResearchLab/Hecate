@@ -7,7 +7,7 @@ environments:
     auth:
       tauthUrl: "http://localhost:8000"
       googleClientId: "7962005714-9g4tnvhr0ciml0dt2i5e9pagpcdatpde.apps.googleusercontent.com"
-      tenantId: "hecate"
+      tenantId: "crossword"
       loginPath: "/auth/google"
       logoutPath: "/auth/logout"
       noncePath: "/auth/nonce"
@@ -23,7 +23,7 @@ environments:
     auth:
       tauthUrl: "https://tauth-api.mprlab.com"
       googleClientId: "7962005714-9g4tnvhr0ciml0dt2i5e9pagpcdatpde.apps.googleusercontent.com"
-      tenantId: "hecate"
+      tenantId: "crossword"
       loginPath: "/auth/google"
       logoutPath: "/auth/logout"
       noncePath: "/auth/nonce"
