@@ -4,6 +4,25 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.3.1] - 2026-05-04
+
+### Features ✨
+- Add release, publish validation, and deploy scripts for streamlined release management
+- Integrate new Makefile commands for release, publish validation, and deployment processes
+
+### Improvements ⚙️
+- Automated backend deployment and frontend verification with configurable options
+- Release script supports SemVer and CalVer versioning schemes with dry-run and verification steps
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Continuous Integration run enforced during release to ensure build and test integrity
+
+### Docs 📚
+- _No changes._
+
 ## [v0.3.0] - 2026-05-03
 
 ### Features ✨
