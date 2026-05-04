@@ -32,14 +32,8 @@ func (hub *billingEventHub) Publish(userID string, event billingUpdateEvent) {
 	}
 
 	hub.mu.Lock()
-	userSubscribers := hub.subscribers[normalizedUserID]
-	channels := make([]chan billingUpdateEvent, 0, len(userSubscribers))
-	for subscriber := range userSubscribers {
-		channels = append(channels, subscriber)
-	}
-	hub.mu.Unlock()
-
-	for _, subscriber := range channels {
+	defer hub.mu.Unlock()
+	for subscriber := range hub.subscribers[normalizedUserID] {
 		select {
 		case subscriber <- event:
 		default:

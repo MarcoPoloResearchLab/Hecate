@@ -51,6 +51,27 @@ func TestBillingEventHubPublish_DropsWhenSubscriberBufferIsFull(t *testing.T) {
 	}
 }
 
+func TestBillingEventHubPublish_DoesNotPanicWhenUnsubscribeRaces(t *testing.T) {
+	hub := newBillingEventHub()
+
+	for attempt := 0; attempt < 1000; attempt++ {
+		_, unsubscribe := hub.Subscribe("user-123")
+		panicValues := make(chan any, 1)
+
+		go func() {
+			defer func() {
+				panicValues <- recover()
+			}()
+			hub.Publish("user-123", billingUpdateEvent{Status: "completed"})
+		}()
+
+		unsubscribe()
+		if panicValue := <-panicValues; panicValue != nil {
+			t.Fatalf("Publish() panic = %v", panicValue)
+		}
+	}
+}
+
 func TestHandleBillingEvents_Unauthorized(t *testing.T) {
 	handler := testHandler(&mockLedgerClient{}, nil)
 	router := testRouterWithClaims(handler, nil)
