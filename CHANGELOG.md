@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.3.0] - 2026-05-03
+
+### Features ✨
+- Switch billing checkout to in-app overlay with updated runtime configuration.
+- Add billing event stream and remove reconciliation process.
+- Rename all occurrences of "LLM Crossword API" to "Hecate API" throughout the project.
+
+### Improvements ⚙️
+- Replace local Paddle sandbox webhook with a public HTTPS callback supported by ngrok tunnel on localhost.
+- Update frontend and backend configs, scripts, and environment files to reflect the new "Hecate" branding and improved billing integration.
+- Refactor and enhance package structure, runtime auth config rendering, and Docker setup for smoother local development and deployment.
+
+### Bug Fixes 🐛
+- Fix billing event unsubscribe race condition to improve reliability.
+
+### Testing 🧪
+- Add extensive test coverage and refactor existing coverage tests related to billing, puzzle types, and API services.
+- Replace deprecated billing E2E tests with improved billing helper coverage tests.
+
+### Docs 📚
+- Update README and docs to reflect rebranding to “Hecate” and billing changes, including Paddle sandbox instructions and environment variable configurations.
+- Add legal ops and Paddle credit pack guides for improved operational clarity.
+
 ## [v0.2.3] - 2026-04-08
 
 ### Features ✨
