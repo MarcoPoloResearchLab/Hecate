@@ -4,6 +4,24 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.3.2] - 2026-05-04
+
+### Features ✨
+- _No changes._
+
+### Improvements ⚙️
+- Updated end-to-end full-coverage test spec for better accuracy and completeness.
+- Added orchestration readiness wait in e2e tests to enhance reliability.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Enhanced e2e tests with orchestration state synchronization.
+
+### Docs 📚
+- _No changes._
+
 ## [v0.3.1] - 2026-05-04
 
 ### Features ✨
