@@ -16,8 +16,8 @@ test.describe("Header — rendered content", () => {
     await expect(rendered).toBeVisible();
   });
 
-  test("header contains the brand text 'Hecate' as a clickable link", async ({ page }) => {
-    var brandLink = page.locator("header.mpr-header a").filter({ hasText: "Hecate" });
+  test("header contains the brand text 'LLM Crossword' as a clickable link", async ({ page }) => {
+    var brandLink = page.locator("header.mpr-header a").filter({ hasText: "LLM Crossword" });
     await expect(brandLink).toBeVisible();
   });
 
@@ -100,13 +100,13 @@ test.describe("Legal pages", () => {
 
   test("privacy policy page loads and identifies the LLC operator", async ({ page }) => {
     await page.goto("/privacy.html", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "Privacy Policy — Hecate" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Privacy Policy — LLM Crossword" })).toBeVisible();
     await expect(page.locator("main")).toContainText("Marco Polo Research Lab LLC");
   });
 
   test("terms page loads refund policy and LLC operator text", async ({ page }) => {
     await page.goto("/tos.html", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "Terms of Service — Hecate" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Terms of Service — LLM Crossword" })).toBeVisible();
     await expect(page.locator("#refund-policy")).toBeVisible();
     await expect(page.locator("main")).toContainText("Marco Polo Research Lab LLC");
   });

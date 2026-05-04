@@ -51,7 +51,7 @@
         );
 
         brandLink.href = this.getAttribute("brand-href") || "/";
-        brandLink.textContent = this.getAttribute("brand-label") || "Hecate";
+        brandLink.textContent = this.getAttribute("brand-label") || "LLM Crossword";
         applyStyles(
           brandLink,
           "color:inherit;text-decoration:none;font-size:1rem;font-weight:700;line-height:1.2;"

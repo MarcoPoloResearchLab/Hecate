@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Use this runbook when configuring Paddle for one-time Hecate credit packs.
+Use this runbook when configuring Paddle for one-time LLM Crossword credit packs.
 
 The app expects:
 
 - one active billing provider: `paddle`
-- one approved Paddle default payment link URL on the Hecate domain
+- one approved Paddle default payment link URL on the LLM Crossword domain
 - browser checkout opened directly from the app by transaction id
 - webhook-driven credit settlement only
 
@@ -32,7 +32,7 @@ The app expects:
 
 ## Required Env Vars
 
-Set these in the Hecate API profile file you are using, typically [configs/.env.hecateapi.local](/Users/tyemirov/Development/llm_crossword/configs/.env.hecateapi.local) for local work or [configs/.env.hecateapi.production](/Users/tyemirov/Development/llm_crossword/configs/.env.hecateapi.production) for production:
+Set these in the LLM Crossword API profile file you are using, typically [configs/.env.hecateapi.local](/Users/tyemirov/Development/llm_crossword/configs/.env.hecateapi.local) for local work or [configs/.env.hecateapi.production](/Users/tyemirov/Development/llm_crossword/configs/.env.hecateapi.production) for production:
 
 - `HECATEAPI_BILLING_PROVIDER=paddle`
 - `HECATEAPI_PADDLE_ENVIRONMENT=sandbox|production`
@@ -79,7 +79,7 @@ The generated file contains localhost and hosted profiles, and the browser selec
 
 ## Local Sandbox
 
-1. Start the Hecate stack with sandbox billing env vars.
+1. Start the LLM Crossword stack with sandbox billing env vars.
 2. If `BILLING_CALLBACK_PUBLIC_URL` is unset, `make up` will start an `ngrok` tunnel for the local site and write the resolved public callback origin to `.runtime/ports.env`.
 3. If you do not want automatic tunneling, set `BILLING_CALLBACK_PUBLIC_URL=https://<your-public-host>` yourself before `make up`.
 4. Point Paddle sandbox webhook delivery at `<callback-origin>/api/billing/paddle/webhook`.
@@ -90,7 +90,7 @@ The generated file contains localhost and hosted profiles, and the browser selec
 1. Sign in and open the generator.
 2. Click the header credit badge or exhaust credits and click `Buy credits`.
 3. Confirm Settings -> Account shows pack cards and billing activity.
-4. Start checkout and verify the app stays on the Hecate page while the Paddle overlay opens.
+4. Start checkout and verify the app stays on the LLM Crossword page while the Paddle overlay opens.
 5. Complete a sandbox payment.
 6. Verify the header badge and Settings activity update after the webhook lands.
 

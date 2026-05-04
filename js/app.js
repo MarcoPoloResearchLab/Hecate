@@ -1,6 +1,6 @@
 // @ts-check
 
-/* app.js — auth-aware orchestration for Hecate puzzle generation */
+/* app.js — auth-aware orchestration for LLM Crossword puzzle generation */
 (function () {
   "use strict";
 

@@ -1,6 +1,6 @@
 // @ts-check
 
-/* landing-puzzle.js — renders the landing-page sample puzzle for the selected Hecate puzzle type */
+/* landing-puzzle.js — renders the landing-page sample puzzle for the selected LLM Crossword puzzle type */
 (function () {
   "use strict";
 
@@ -93,7 +93,7 @@
       {
         puzzle_type: "crossword",
         title: "Moon Signals",
-        subtitle: "A compact crossword for a quick Hecate preview.",
+        subtitle: "A compact crossword for a quick LLM Crossword preview.",
         items: [
           { word: "orbit", definition: "Path around Earth", hint: "route" },
           { word: "mare", definition: "Lunar sea", hint: "horse" },
@@ -105,7 +105,7 @@
       {
         puzzle_type: "word_search",
         title: "Forest Finds",
-        subtitle: "A fast word search preview of the second Hecate format.",
+        subtitle: "A fast word search preview of the second LLM Crossword format.",
         items: [
           { word: "moss", definition: "Soft green carpet", hint: "clings to damp stone" },
           { word: "fern", definition: "Feathery woodland plant", hint: "uncurls from a fiddlehead" },
@@ -160,7 +160,7 @@
     if (!landingTitle || !landingSubtitle) return;
     if (normalizePuzzleType(puzzleType) === puzzleTypeWordSearch) {
       landingTitle.textContent = "Create crosswords and word searches with AI";
-      landingSubtitle.textContent = "Switch formats instantly, generate from any topic, and solve inside one Hecate workspace.";
+      landingSubtitle.textContent = "Switch formats instantly, generate from any topic, and solve inside one LLM Crossword workspace.";
       return;
     }
     landingTitle.textContent = "Create crosswords and word searches with AI";
@@ -223,7 +223,7 @@
   function applySharedPuzzleCopy(sharedPuzzle) {
     if (!landingTitle || !landingSubtitle) return;
     landingTitle.textContent = (sharedPuzzle && sharedPuzzle.title) || "Shared Puzzle";
-    landingSubtitle.textContent = "Someone shared a Hecate puzzle with you. Preview it here or open the full workspace.";
+    landingSubtitle.textContent = "Someone shared an LLM Crossword puzzle with you. Preview it here or open the full workspace.";
   }
 
   function renderSharedPuzzle(sharedToken) {

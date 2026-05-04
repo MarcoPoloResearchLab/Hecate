@@ -1,4 +1,4 @@
-# Hecate Paddle Credit-Pack Guide
+# LLM Crossword Paddle Credit-Pack Guide
 
 ## Purpose
 
@@ -69,13 +69,13 @@
 ## Decision Procedure
 
 1. Read [configs/config.yml](/Users/tyemirov/Development/llm_crossword/configs/config.yml) and fail if `billing.packs[]` is missing or any pack has a blank `code`, blank `label`, non-positive `credits`, or non-positive `price_cents`.
-2. Read the environment-specific Hecate API file and fail if the deployment cannot choose one explicit provider with `HECATEAPI_BILLING_PROVIDER=paddle`.
+2. Read the environment-specific LLM Crossword API file and fail if the deployment cannot choose one explicit provider with `HECATEAPI_BILLING_PROVIDER=paddle`.
 3. If `HECATEAPI_PADDLE_ENVIRONMENT` is not `sandbox` or `production`, stop and report instead of guessing.
 4. For every configured pack code, require one `HECATEAPI_PADDLE_PRICE_ID_PACK_<PACK_CODE>` env var. These are Paddle price IDs, not product IDs. If any pack is missing a price ID, stop and report.
 5. Wire the backend billing service so Paddle webhook parsing yields exactly one canonical `BillingGrantEvent` before Ledger settlement.
 6. Persist customer links and billing events before rendering UI activity. Use event uniqueness and Ledger idempotency together; do not grant credits from browser success handlers.
 7. Render browser-safe runtime billing config only through [scripts/render-runtime-auth-config.sh](/Users/tyemirov/Development/llm_crossword/scripts/render-runtime-auth-config.sh). Expose only browser-safe service URLs plus the Paddle client token and environment, and let the browser select the matching localhost or hosted profile from its serving host.
-8. Require a default payment link URL in Paddle Checkout settings on an approved Hecate domain. The backend creates transactions, and the browser opens `Paddle.Checkout.open({ transactionId })` directly from [js/billing.js](/Users/tyemirov/Development/llm_crossword/js/billing.js). Do not route normal checkout through an app-owned payment page.
+8. Require a default payment link URL in Paddle Checkout settings on an approved LLM Crossword domain. The backend creates transactions, and the browser opens `Paddle.Checkout.open({ transactionId })` directly from [js/billing.js](/Users/tyemirov/Development/llm_crossword/js/billing.js). Do not route normal checkout through an app-owned payment page.
 9. Wire the frontend entry points in [index.html](/Users/tyemirov/Development/llm_crossword/index.html), [js/app.js](/Users/tyemirov/Development/llm_crossword/js/app.js), [js/admin.js](/Users/tyemirov/Development/llm_crossword/js/admin.js), and [js/billing.js](/Users/tyemirov/Development/llm_crossword/js/billing.js):
    - clickable header credit badge
    - insufficient-credits `Buy credits` CTA
@@ -114,7 +114,7 @@ rg -n 'client_token|environment|Checkout.open|Buy credits|Manage billing' /Users
 
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
-| Checkout returns `billing_checkout_missing` | Paddle default payment link is not configured in Paddle | Configure any approved Hecate URL as the default payment link and retry. |
+| Checkout returns `billing_checkout_missing` | Paddle default payment link is not configured in Paddle | Configure any approved LLM Crossword URL as the default payment link and retry. |
 | Webhook returns `401 invalid webhook signature` | wrong webhook secret or wrong environment pairing | Match the sandbox/production secret to `HECATEAPI_PADDLE_ENVIRONMENT`. |
 | Credits are granted twice | idempotency is missing before or during settlement | Enforce unique `event_id` storage and keep Ledger idempotency key `billing:paddle:<event_id>`. |
 | UI shows packs but badge never updates after payment | webhook did not land or the backend billing event stream never observed the settled transaction | Fix webhook reachability first, then verify the backend billing event stream and summary refresh path. |

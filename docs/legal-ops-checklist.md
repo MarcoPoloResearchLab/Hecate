@@ -1,6 +1,6 @@
-# Hecate Legal And Ops Checklist
+# LLM Crossword Legal And Ops Checklist
 
-This is an operational checklist for reducing founder-personal exposure while running Hecate through Marco Polo Research Lab LLC.
+This is an operational checklist for reducing founder-personal exposure while running LLM Crossword through Marco Polo Research Lab LLC.
 
 ## Public Product Surface
 
@@ -13,7 +13,7 @@ This is an operational checklist for reducing founder-personal exposure while ru
 ## OAuth And Google Identity
 
 - In the Google Cloud OAuth consent screen, use the LLC-controlled product identity:
-  - App name: `Hecate`
+  - App name: `LLM Crossword`
   - Support email: LLC-controlled mailbox
   - Homepage: `https://llm-crossword.mprlab.com/`
   - Privacy Policy: `https://llm-crossword.mprlab.com/privacy.html`
