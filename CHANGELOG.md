@@ -4,6 +4,29 @@ All notable changes to this project will be documented in this file.
 
 ## Unreleased
 
+## [v0.3.3] - 2026-05-04
+
+### Features ✨
+- Maintain consistent LLM Crossword branding and tenant identification across the entire application.
+
+### Improvements ⚙️
+- Rename all app references from "Hecate" to "LLM Crossword" in UI, documentation, config files, and legal texts.
+- Update OAuth and Paddle billing configurations to use the LLM Crossword tenant.
+- Refresh frontend metadata including titles, descriptions, and favicon to reflect LLM Crossword branding.
+- Enhance landing page UI and sample puzzle descriptions to reference LLM Crossword.
+- Align deployment and environment configs with LLM Crossword branding and tenant ID for authentication and billing.
+
+### Bug Fixes 🐛
+- _No changes._
+
+### Testing 🧪
+- Update end-to-end test specs to align with the new branding and tenant identifiers.
+
+### Docs 📚
+- Rename and update all documentation files and references from Hecate to LLM Crossword.
+- Revise legal, architecture, billing guide, and runbook documents to reflect the new product name.
+- Update branding references in README.md and all related Markdown docs for clarity.
+
 ## [v0.3.2] - 2026-05-04
 
 ### Features ✨
