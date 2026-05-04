@@ -1,3 +1,5 @@
+// @ts-check
+
 /* generator.js — builds a crossword payload from [{word, definition}]
    Guarantees: returns a payload only if *all* words are placed with
    - ≥1 intersection per word
@@ -8,6 +10,8 @@ function generateCrossword(items, opts = {}) {
   var _random = (opts && opts.random) || Math.random;
   const BOUNDING_BOX_IMBALANCE_WEIGHT = 4;
   const CANDIDATE_CROSSING_WEIGHT = 100;
+  const COMBINING_MARKS_PATTERN = /[\u0300-\u036f]/g;
+  const GENERATED_WORD_PATTERN = /^[A-Z]{3,12}$/;
 
   const o = {
     title: opts.title ?? "Mini Crossword — Generated",
@@ -18,16 +22,31 @@ function generateCrossword(items, opts = {}) {
   };
 
   // ---------- sanitize input ----------
-  let baseWords = items.map((item, itemIndex) => ({
+  function normalizePuzzleAnswer(rawWord) {
+    const normalizedWord = String(rawWord || "")
+      .trim()
+      .normalize("NFD")
+      .replace(COMBINING_MARKS_PATTERN, "")
+      .toUpperCase();
+
+    return GENERATED_WORD_PATTERN.test(normalizedWord) ? normalizedWord : "";
+  }
+
+  let normalizedWords = items.map((item, itemIndex) => ({
     id: `W${itemIndex}`,
-    answer: String(item.word || "").toUpperCase().replace(/[^A-Z]/g, ""),
+    answer: normalizePuzzleAnswer(item.word),
     clue: String(item.definition || "").trim(),
     hint: String(item.hint || "").trim(),
-  })).filter(word => word.answer.length > 1);
-
-  if (baseWords.length === 0) {
-    throw new Error("No valid words (need length ≥ 2, A–Z).");
+  }));
+  let invalidWords = normalizedWords.filter(word => word.answer.length === 0);
+  if (normalizedWords.length === 0 || invalidWords.length === normalizedWords.length) {
+    throw new Error("No valid words (need length 3-12, A-Z).");
   }
+  if (invalidWords.length > 0) {
+    throw new Error("Invalid word (need length 3-12, A-Z).");
+  }
+
+  let baseWords = normalizedWords;
 
   // deterministic sort by length (desc), then alpha to stabilize
   baseWords.sort((a, b) =>

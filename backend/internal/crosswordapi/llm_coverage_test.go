@@ -17,7 +17,7 @@ func TestCallPuzzleMetadataLLMProxy_ErrorPaths(t *testing.T) {
 		defer server.Close()
 
 		handler := newTestHandler(server)
-		_, err := handler.callPuzzleMetadataLLMProxy(context.Background(), "Roman city", []WordItem{
+		_, err := handler.callPuzzleMetadataLLMProxy(context.Background(), "Roman city", string(puzzleTypeCrossword), []WordItem{
 			{Word: "FORUM", Definition: "Public square", Hint: "civic center"},
 		})
 		if err == nil {
@@ -36,7 +36,7 @@ func TestCallPuzzleMetadataLLMProxy_ErrorPaths(t *testing.T) {
 		defer server.Close()
 
 		handler := newTestHandler(server)
-		_, err := handler.callPuzzleMetadataLLMProxy(context.Background(), "Roman city", []WordItem{
+		_, err := handler.callPuzzleMetadataLLMProxy(context.Background(), "Roman city", string(puzzleTypeCrossword), []WordItem{
 			{Word: "FORUM", Definition: "Public square", Hint: "civic center"},
 		})
 		if err == nil {
@@ -147,4 +147,19 @@ func TestNormalizeMetadataTitle_Fallbacks(t *testing.T) {
 			t.Fatalf("expected untitled fallback, got %q", got)
 		}
 	})
+}
+
+func TestPuzzlePromptHelpers(t *testing.T) {
+	if got := wordSystemPromptForPuzzleType(string(puzzleTypeCrossword)); got != crosswordWordSystemPrompt {
+		t.Fatal("expected crossword prompt for crossword puzzle type")
+	}
+	if got := wordSystemPromptForPuzzleType(string(puzzleTypeWordSearch)); got != wordSearchWordSystemPrompt {
+		t.Fatal("expected word-search prompt for word_search puzzle type")
+	}
+	if got := puzzleLabelForPrompt(string(puzzleTypeCrossword)); got != "crossword" {
+		t.Fatalf("expected crossword label, got %q", got)
+	}
+	if got := puzzleLabelForPrompt(string(puzzleTypeWordSearch)); got != "word search" {
+		t.Fatalf("expected word search label, got %q", got)
+	}
 }

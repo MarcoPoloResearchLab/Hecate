@@ -5,9 +5,10 @@ cd "$(dirname "$0")/.."
 
 readonly runtime_directory=".runtime"
 readonly site_origin="${SITE_ORIGIN:-http://localhost:8000}"
-readonly site_port="${CROSSWORD_PORT:-8000}"
+readonly billing_callback_public_url="${BILLING_CALLBACK_PUBLIC_URL:-$site_origin}"
+readonly site_port="${HECATE_PORT:-8000}"
 readonly tauth_host_port="${TAUTH_HOST_PORT:-8081}"
-readonly api_host_port="${CROSSWORD_API_HOST_PORT:-9090}"
+readonly api_host_port="${HECATE_API_HOST_PORT:-9090}"
 readonly ledger_host_port="${LEDGER_HOST_PORT:-50051}"
 readonly tauth_config_template="${TAUTH_CONFIG_TEMPLATE:-tauth.config.local.yaml}"
 readonly public_configs_directory="${runtime_directory}/public-configs"
@@ -40,10 +41,11 @@ render_ports_file() {
 
   temporary_path="$(mktemp "${destination_path}.XXXXXX")"
   cat > "$temporary_path" <<EOF
+BILLING_CALLBACK_PUBLIC_URL=$billing_callback_public_url
 SITE_ORIGIN=$site_origin
-CROSSWORD_PORT=$site_port
+HECATE_PORT=$site_port
 TAUTH_HOST_PORT=$tauth_host_port
-CROSSWORD_API_HOST_PORT=$api_host_port
+HECATE_API_HOST_PORT=$api_host_port
 LEDGER_HOST_PORT=$ledger_host_port
 INTEGRATION_URL=$site_origin
 INTEGRATION_TAUTH_URL=http://localhost:$tauth_host_port
@@ -66,8 +68,8 @@ service:
   listen_addr: "${GRPC_LISTEN_ADDR:-:50051}"
 
 tenants:
-  - id: "crossword"
-    name: "Crossword"
+  - id: "hecate"
+    name: "Hecate"
     secret_key: "${DEFAULT_TENANT_SECRET}"
 EOF
   mv "$temporary_path" "$ledger_config_path"

@@ -457,7 +457,7 @@ func TestSharedEndpoint_Integration_NoAuthRequired(t *testing.T) {
 	puzzle := &Puzzle{
 		UserID: "user-1",
 		Title:  "Shared via integration",
-		Words:  []PuzzleWord{{Word: "SHARE", Clue: "Give to others", Hint: "distribute"}},
+		Items:  []PuzzleItem{{Word: "SHARE", Clue: "Give to others", Hint: "distribute"}},
 	}
 	if err := store.CreatePuzzle(puzzle); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
@@ -474,11 +474,11 @@ func TestSharedEndpoint_Integration_NoAuthRequired(t *testing.T) {
 	if resp.Title != "Shared via integration" {
 		t.Errorf("expected title 'Shared via integration', got %q", resp.Title)
 	}
-	if len(resp.Words) != 1 {
-		t.Errorf("expected 1 word, got %d", len(resp.Words))
+	if len(resp.Items) != 1 {
+		t.Errorf("expected 1 item, got %d", len(resp.Items))
 	}
-	if resp.Words[0].Word != "SHARE" {
-		t.Errorf("expected word 'SHARE', got %q", resp.Words[0].Word)
+	if resp.Items[0].Word != "SHARE" {
+		t.Errorf("expected word 'SHARE', got %q", resp.Items[0].Word)
 	}
 }
 
@@ -518,7 +518,7 @@ func TestSharedEndpoint_Integration_DeletedPuzzleReturns404(t *testing.T) {
 	puzzle := &Puzzle{
 		UserID: "user-1",
 		Title:  "Will Be Deleted",
-		Words:  []PuzzleWord{{Word: "GONE", Clue: "Vanished", Hint: "disappeared"}},
+		Items:  []PuzzleItem{{Word: "GONE", Clue: "Vanished", Hint: "disappeared"}},
 	}
 	if err := store.CreatePuzzle(puzzle); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
@@ -595,7 +595,7 @@ func TestSharedEndpoint_Integration_ResponseIncludesShareToken(t *testing.T) {
 	puzzle := &Puzzle{
 		UserID: "user-1",
 		Title:  "Token Echo",
-		Words:  []PuzzleWord{{Word: "ECHO", Clue: "Repeat", Hint: "sound bounce"}},
+		Items:  []PuzzleItem{{Word: "ECHO", Clue: "Repeat", Hint: "sound bounce"}},
 	}
 	store.CreatePuzzle(puzzle)
 
@@ -627,7 +627,7 @@ func TestSharedEndpoint_Integration_BackfillsExistingPuzzles(t *testing.T) {
 	puzzle := &Puzzle{
 		UserID: "user-1",
 		Title:  "Backfill Test",
-		Words:  []PuzzleWord{{Word: "OLD", Clue: "Not new", Hint: "ancient"}},
+		Items:  []PuzzleItem{{Word: "OLD", Clue: "Not new", Hint: "ancient"}},
 	}
 	if err := db.CreatePuzzle(puzzle); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)

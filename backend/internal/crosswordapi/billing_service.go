@@ -19,12 +19,11 @@ import (
 )
 
 var (
-	ErrBillingPackUnknown           = errors.New("billing.pack.unknown")
-	ErrBillingCheckoutNotApplicable = errors.New("billing.checkout.not_applicable")
-	ErrBillingEventIgnored          = errors.New("billing.event.ignored")
-	ErrBillingPortalUnavailable     = errors.New("billing.portal.unavailable")
-	ErrBillingUnauthorized          = errors.New("billing.webhook.unauthorized")
-	ErrBillingWebhookInvalid        = errors.New("billing.webhook.invalid")
+	ErrBillingPackUnknown       = errors.New("billing.pack.unknown")
+	ErrBillingEventIgnored      = errors.New("billing.event.ignored")
+	ErrBillingPortalUnavailable = errors.New("billing.portal.unavailable")
+	ErrBillingUnauthorized      = errors.New("billing.webhook.unauthorized")
+	ErrBillingWebhookInvalid    = errors.New("billing.webhook.invalid")
 
 	errBillingServiceUnavailable = errors.New("billing.service.unavailable")
 )
@@ -42,6 +41,7 @@ type billingService struct {
 	cfg          Config
 	ledgerClient creditv1.CreditServiceClient
 	logger       *zap.Logger
+	notifier     billingEventNotifier
 	provider     billingProvider
 	store        Store
 }
@@ -203,61 +203,6 @@ func (service *billingService) SyncUserBillingEvents(ctx context.Context, userID
 	}
 
 	return nil
-}
-
-func (service *billingService) ReconcileCheckout(
-	ctx context.Context,
-	userID string,
-	userEmail string,
-	transactionID string,
-) (billingCheckoutReconcileResult, error) {
-	result := billingCheckoutReconcileResult{
-		ProviderCode: service.providerCode(),
-		Status:       string(sharedbilling.CheckoutEventStatusUnknown),
-	}
-	if err := service.requireProvider(); err != nil {
-		return result, err
-	}
-
-	reconcileProvider, ok := service.provider.(billingCheckoutReconcileProvider)
-	if !ok {
-		return result, sharedbilling.ErrBillingCheckoutReconciliationUnsupported
-	}
-
-	normalizedUserEmail := strings.ToLower(strings.TrimSpace(userEmail))
-	if normalizedUserEmail == "" {
-		return result, sharedbilling.ErrBillingUserEmailInvalid
-	}
-
-	normalizedTransactionID := strings.TrimSpace(transactionID)
-	if normalizedTransactionID == "" {
-		return result, sharedbilling.ErrPaddleAPITransactionNotFound
-	}
-	result.TransactionID = normalizedTransactionID
-
-	webhookEvent, checkoutUserEmail, err := reconcileProvider.BuildCheckoutReconcileEvent(ctx, normalizedTransactionID)
-	if err != nil {
-		return result, err
-	}
-
-	result.Status = string(resolveBillingCheckoutEventStatus(service.provider, webhookEvent.EventType))
-
-	normalizedCheckoutUserEmail := strings.ToLower(strings.TrimSpace(checkoutUserEmail))
-	if normalizedCheckoutUserEmail != normalizedUserEmail {
-		return result, fmt.Errorf("%w: %s", sharedbilling.ErrBillingCheckoutOwnershipMismatch, normalizedTransactionID)
-	}
-	if result.Status == string(sharedbilling.CheckoutEventStatusPending) {
-		return result, nil
-	}
-
-	if err := service.processSharedProviderEvent(ctx, webhookEvent, strings.TrimSpace(userID)); err != nil {
-		if errors.Is(err, ErrBillingEventIgnored) {
-			return result, ErrBillingCheckoutNotApplicable
-		}
-		return result, err
-	}
-
-	return result, nil
 }
 
 func (service *billingService) CreatePortalSession(ctx context.Context, userID string) (billingPortalSession, error) {
@@ -432,6 +377,7 @@ func (service *billingService) processProviderEvent(ctx context.Context, provide
 	}
 
 	if skipEventRecord {
+		service.publishBillingUpdate(providerEvent.EventRecord)
 		return nil
 	}
 
@@ -439,11 +385,24 @@ func (service *billingService) processProviderEvent(ctx context.Context, provide
 	providerEvent.EventRecord.ProcessedAt = &processedAt
 	if err := service.store.CreateBillingEventRecord(&providerEvent.EventRecord); err != nil {
 		if isUniqueConstraintError(err) {
+			service.publishBillingUpdate(providerEvent.EventRecord)
 			return nil
 		}
 		return err
 	}
+	service.publishBillingUpdate(providerEvent.EventRecord)
 	return nil
+}
+
+func (service *billingService) publishBillingUpdate(record BillingEventRecord) {
+	if service == nil || service.notifier == nil {
+		return
+	}
+
+	service.notifier.Publish(strings.TrimSpace(record.UserID), billingUpdateEvent{
+		EventType: strings.TrimSpace(record.EventType),
+		Status:    strings.TrimSpace(record.Status),
+	})
 }
 
 func (service *billingService) hasCreditedTransaction(record BillingEventRecord) (bool, error) {

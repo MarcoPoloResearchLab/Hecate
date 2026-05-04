@@ -46,7 +46,7 @@ async function openAdminTab(page) {
 
 async function openGenerateForm(page) {
   await expect(page.locator("#puzzleView")).toBeVisible();
-  await page.locator("#newCrosswordCard").click();
+  await page.locator("#newPuzzleCard").click();
   await expect(page.locator("#generatePanel")).toBeVisible();
 }
 
@@ -590,7 +590,7 @@ test.describe("App coverage", () => {
     await page.goto("/");
 
     var result = await page.evaluate(() => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       app.updateBalance(null);
       return app.getState();
     });
@@ -604,7 +604,7 @@ test.describe("App coverage", () => {
     await page.goto("/");
 
     var result = await page.evaluate(() => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
 
       app.updateBalance({
         coins: 9,
@@ -648,7 +648,7 @@ test.describe("App coverage", () => {
     await setupLoggedInRoutes(page);
     await page.goto("/");
     await page.evaluate(() => {
-      window.__LLM_CROSSWORD_TEST__.app.setLoggedIn(true);
+      window.__HECATE_TEST__.app.setLoggedIn(true);
       document.getElementById("landingPage").style.display = "";
       document.getElementById("puzzleView").style.display = "none";
     });
@@ -733,12 +733,12 @@ test.describe("App coverage", () => {
           json: function () { return Promise.resolve({}); },
         });
       };
-      window.CrosswordApp = {};
+      window.HecateApp = {};
     });
     await loadScript(page, "app.js");
 
     var result = await page.evaluate(() => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       app.setLoggedIn(true);
       app.showPuzzle();
       app.showGenerateForm();
@@ -785,8 +785,8 @@ test.describe("App coverage", () => {
     await page.goto("/");
     await openGenerateForm(page);
     await page.evaluate(() => {
-      delete window.CrosswordApp.addGeneratedPuzzle;
-      window.CrosswordApp.render = function (payload) {
+      delete window.HecateApp.addGeneratedPuzzle;
+      window.HecateApp.render = function (payload) {
         window.__fallbackRenderedTitle = payload.title;
       };
     });
@@ -821,7 +821,7 @@ test.describe("App coverage", () => {
     await page.goto("/");
 
     var result = await page.evaluate(async () => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       var shareBtn = document.getElementById("shareBtn");
       window.__shareCalls = [];
 
@@ -900,7 +900,7 @@ test.describe("App coverage", () => {
     await expect(page.locator("#puzzleInfoButton")).toBeVisible({ timeout: 5000 });
     await page.evaluate(() => {
       window.__billingOpenCalls = [];
-      window.CrosswordBilling = {
+      window.HecateBilling = {
         openAccountBilling: function (options) {
           window.__billingOpenCalls.push(options);
         },
@@ -913,7 +913,7 @@ test.describe("App coverage", () => {
     await page.evaluate(() => {
       document.getElementById("headerCreditBadge").click();
     });
-    await expect(page.locator("#creditPopoverSections")).toContainText("Generate new crosswords");
+    await expect(page.locator("#creditPopoverSections")).toContainText("Generate new puzzles");
     await page.evaluate(() => {
       document.getElementById("headerCreditBadge").click();
     });
@@ -1023,7 +1023,7 @@ test.describe("App coverage", () => {
     ]);
 
     await page.evaluate(() => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       var creditBadge = document.getElementById("headerCreditBadge");
       var infoButton = document.getElementById("puzzleInfoButton");
 
@@ -1063,6 +1063,7 @@ test.describe("App coverage", () => {
   test("covers repeated unauthenticated events after mpr-ui clears the header state", async ({ page }) => {
     await setupLoggedInRoutes(page);
     await page.goto("/");
+    await page.waitForFunction(() => window.__HECATE_TEST__ && window.__HECATE_TEST__.app);
     await page.evaluate(() => {
       var header = document.getElementById("app-header");
       if (header) {
@@ -1122,7 +1123,7 @@ test.describe("App coverage", () => {
         });
       };
       window.__clearOwnedPuzzlesCalls = 0;
-      window.CrosswordApp = {
+      window.HecateApp = {
         clearOwnedPuzzles: function () {
           window.__clearOwnedPuzzlesCalls += 1;
         },
@@ -1131,7 +1132,7 @@ test.describe("App coverage", () => {
     await loadScript(page, "app.js");
 
     var result = await page.evaluate(() => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
 
       app.showPuzzle();
       app.setState({
@@ -1144,7 +1145,7 @@ test.describe("App coverage", () => {
         puzzleVisible: document.getElementById("puzzleView").style.display !== "none",
       };
       var clearOwnedPuzzlesCallsAfterSync = window.__clearOwnedPuzzlesCalls;
-      window.CrosswordApp = {};
+      window.HecateApp = {};
       app.syncAuthStateFromMprUi();
 
       return {
@@ -1181,7 +1182,7 @@ test.describe("App coverage", () => {
     await page.goto("/");
     await page.evaluate(() => {
       document.dispatchEvent(new Event("mpr-ui:auth:unauthenticated"));
-      window.__LLM_CROSSWORD_TEST__.app.setLoggedIn(false);
+      window.__HECATE_TEST__.app.setLoggedIn(false);
     });
     await page.waitForTimeout(150);
     await expect(page.locator("#landingSignIn")).toContainText("Sign in to generate");
@@ -1204,7 +1205,7 @@ test.describe("App coverage", () => {
 
     await page.evaluate(() => {
       document.dispatchEvent(new Event("mpr-ui:auth:authenticated"));
-      window.dispatchEvent(new CustomEvent("crossword:share-token", {
+      window.dispatchEvent(new CustomEvent("hecate:puzzle:share-token", {
         detail: "event-share-token",
       }));
       document.getElementById("topicInput").dispatchEvent(new KeyboardEvent("keydown", {
@@ -1271,7 +1272,7 @@ test.describe("App coverage", () => {
           json: function () { return Promise.resolve({ balance: { coins: 12 } }); },
         });
       };
-      window.CrosswordApp = {};
+      window.HecateApp = {};
     });
     await loadScript(page, "app.js");
 
@@ -1282,7 +1283,7 @@ test.describe("App coverage", () => {
       return {
         landingHidden: document.getElementById("landingPage").style.display === "none",
         puzzleVisible: document.getElementById("puzzleView").style.display !== "none",
-        state: window.__LLM_CROSSWORD_TEST__.app.getState(),
+        state: window.__HECATE_TEST__.app.getState(),
       };
     });
 
@@ -1301,7 +1302,7 @@ test.describe("App coverage", () => {
           json: function () { return Promise.resolve({}); },
         });
       };
-      window.CrosswordApp = {};
+      window.HecateApp = {};
     });
     await loadScript(page, "app.js");
 
@@ -1311,7 +1312,7 @@ test.describe("App coverage", () => {
       await Promise.resolve();
       return {
         landingVisible: document.getElementById("landingPage").style.display !== "none",
-        state: window.__LLM_CROSSWORD_TEST__.app.getState(),
+        state: window.__HECATE_TEST__.app.getState(),
       };
     });
 
@@ -1332,18 +1333,18 @@ test.describe("App coverage", () => {
           json: function () { return Promise.resolve({}); },
         });
       };
-      window.CrosswordApp = {};
+      window.HecateApp = {};
     });
     await loadScript(page, "app.js");
 
     var state = await page.evaluate(() => new Promise((resolve) => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       app.showPuzzle();
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           app.showGenerateForm();
           app.setShareToken("shared");
-          window.dispatchEvent(new CustomEvent("crossword:share-token", { detail: "shared" }));
+          window.dispatchEvent(new CustomEvent("hecate:puzzle:share-token", { detail: "shared" }));
           document.getElementById("landingTryPrebuilt").click();
           document.getElementById("landingSignIn").click();
           resolve(app.getState());
@@ -1364,7 +1365,7 @@ test.describe("App coverage", () => {
           json: function () { return Promise.resolve({}); },
         });
       };
-      window.CrosswordApp = {
+      window.HecateApp = {
         getActivePuzzle: function () {
           return { shareToken: "active-share-token" };
         },
@@ -1372,7 +1373,7 @@ test.describe("App coverage", () => {
     });
     await loadScript(page, "app.js");
 
-    var state = await page.evaluate(() => window.__LLM_CROSSWORD_TEST__.app.getState());
+    var state = await page.evaluate(() => window.__HECATE_TEST__.app.getState());
 
     expect(state.currentShareToken).toBe("active-share-token");
   });
@@ -1410,7 +1411,7 @@ test.describe("App coverage", () => {
           items: generatedItems,
         };
       };
-      window.CrosswordApp = {
+      window.HecateApp = {
         addGeneratedPuzzle: function (payload) {
           window.__isolatedGeneratedPayload = payload;
         },
@@ -1419,7 +1420,7 @@ test.describe("App coverage", () => {
     await loadScript(page, "app.js");
 
     await page.evaluate(() => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       app.setLoggedIn(true);
       app.updateBalance({ coins: 12, generation_cost_coins: 4 });
       document.getElementById("topicInput").value = "isolated";
@@ -1451,13 +1452,13 @@ test.describe("App coverage", () => {
           json: function () { return Promise.resolve({}); },
         });
       };
-      window.CrosswordApp = {};
+      window.HecateApp = {};
     });
     await loadScript(page, "app.js");
 
     await page.evaluate(() => {
       document.dispatchEvent(new Event("mpr-ui:auth:authenticated"));
-      window.__LLM_CROSSWORD_TEST__.app.showGenerateForm();
+      window.__HECATE_TEST__.app.showGenerateForm();
     });
 
     await page.evaluate(() => {
@@ -1484,13 +1485,13 @@ test.describe("App coverage", () => {
           json: function () { return Promise.resolve({}); },
         });
       };
-      window.CrosswordApp = {};
+      window.HecateApp = {};
     });
     await loadScript(page, "app.js");
 
     await page.evaluate(() => {
       document.dispatchEvent(new Event("mpr-ui:auth:authenticated"));
-      window.__LLM_CROSSWORD_TEST__.app.showGenerateForm();
+      window.__HECATE_TEST__.app.showGenerateForm();
     });
 
     await expect(page.locator("#generatePanel")).toBeVisible();
@@ -1503,12 +1504,12 @@ test.describe("Isolated script coverage", () => {
     await page.goto("/blank.html");
     await page.setContent("<!doctype html><html><body></body></html>");
     await page.evaluate(() => {
-      delete window.LLMCrosswordRuntimeConfig;
+      delete window.HecateRuntimeConfig;
     });
     await loadScript(page, "service-config.js");
 
     var result = await page.evaluate(() => {
-      var services = window.LLMCrosswordServices;
+      var services = window.HecateServices;
       return {
         absoluteFalse: services.isAbsoluteUrl("/api/example"),
         absoluteTrue: services.isAbsoluteUrl("https://api.example.test/path"),
@@ -1562,7 +1563,7 @@ test.describe("Isolated script coverage", () => {
 
     await page.goto("/?puzzle=shared-ok");
     await expect(page.locator(".landing__title")).toHaveText("Shared Space");
-    await expect(page.locator(".landing__subtitle")).toContainText("Someone shared this crossword with you");
+    await expect(page.locator(".landing__subtitle")).toContainText("Someone shared a Hecate puzzle with you");
     expect(await page.locator("#landingSamplePuzzle .cell").count()).toBeGreaterThan(0);
   });
 
@@ -1600,10 +1601,19 @@ test.describe("Isolated script coverage", () => {
           },
         });
       };
+      window.generateWordSearch = function () {
+        return {
+          title: "Unused Word Search",
+          subtitle: "",
+          grid: [],
+          words: [],
+        };
+      };
       window.generateCrossword = function (items, options) {
         window.__landingOptions = options;
         return { title: options.title, subtitle: options.subtitle, entries: [], overlaps: [] };
       };
+      window.WordSearchWidget = function () {};
       window.CrosswordWidget = function (container, options) {
         window.__landingWidgetTitle = options.puzzle.title;
         container.textContent = options.puzzle.title;
@@ -1611,8 +1621,8 @@ test.describe("Isolated script coverage", () => {
     });
     await loadScript(page, "landing-puzzle.js");
 
-    expect(await page.evaluate(() => window.__landingOptions.title)).toBe("Shared Crossword");
-    expect(await page.evaluate(() => window.__landingWidgetTitle)).toBe("Shared Crossword");
+    expect(await page.evaluate(() => window.__landingOptions.title)).toBe("Shared Puzzle");
+    expect(await page.evaluate(() => window.__landingWidgetTitle)).toBe("Shared Puzzle");
   });
 
   test("covers landing-puzzle heading fallback when the shared puzzle has no title", async ({ page }) => {
@@ -1637,14 +1647,23 @@ test.describe("Isolated script coverage", () => {
           },
         });
       };
+      window.generateWordSearch = function () {
+        return {
+          title: "Unused Word Search",
+          subtitle: "",
+          grid: [],
+          words: [],
+        };
+      };
       window.generateCrossword = function (items, options) {
         return { title: options.title, subtitle: options.subtitle, entries: [], overlaps: [], items: items };
       };
+      window.WordSearchWidget = function () {};
       window.CrosswordWidget = function () {};
     });
     await loadScript(page, "landing-puzzle.js");
 
-    await expect(page.locator(".landing__title")).toHaveText("Shared Crossword");
+    await expect(page.locator(".landing__title")).toHaveText("Shared Puzzle");
   });
 
   test("covers crossword.js guard clauses before bootstrapping", async ({ page }) => {
@@ -1653,22 +1672,23 @@ test.describe("Isolated script coverage", () => {
     {
       var pageErrorPromise = page.waitForEvent("pageerror");
       await loadScript(page, "crossword.js");
-      await expect(pageErrorPromise.then((error) => error.message)).resolves.toMatch(/CrosswordWidget is required/);
+      await expect(pageErrorPromise.then((error) => error.message)).resolves.toMatch(/Puzzle widgets are required/);
     }
 
     await page.setContent("<!doctype html><html><body></body></html>");
     await page.evaluate(() => {
-      window.__LLM_CROSSWORD_MAIN_PAGE_BOOTED__ = true;
+      window.__HECATE_MAIN_PAGE_BOOTED__ = true;
       window.CrosswordWidget = function () {};
+      window.WordSearchWidget = function () {};
     });
     await loadScript(page, "crossword.js");
-    expect(await page.evaluate(() => typeof window.CrosswordApp)).toBe("undefined");
+    expect(await page.evaluate(() => typeof window.HecateApp)).toBe("undefined");
 
     await page.evaluate(() => {
-      delete window.__LLM_CROSSWORD_MAIN_PAGE_BOOTED__;
+      delete window.__HECATE_MAIN_PAGE_BOOTED__;
     });
     await loadScript(page, "crossword.js");
-    expect(await page.evaluate(() => typeof window.CrosswordApp)).toBe("undefined");
+    expect(await page.evaluate(() => typeof window.HecateApp)).toBe("undefined");
   });
 
   test("covers crossword.js addGeneratedPuzzle without a card list", async ({ page }) => {
@@ -1699,6 +1719,7 @@ test.describe("Isolated script coverage", () => {
     });
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
 
     var title = await page.evaluate((items) => {
@@ -1706,7 +1727,7 @@ test.describe("Isolated script coverage", () => {
         title: "No Sidebar",
         subtitle: "fallback",
       });
-      window.CrosswordApp.addGeneratedPuzzle(payload);
+      window.HecateApp.addGeneratedPuzzle(payload);
       return document.getElementById("title").textContent;
     }, defaultPuzzles[0].items);
 
@@ -1743,6 +1764,7 @@ test.describe("Isolated script coverage", () => {
     }, clonePuzzleSpec("Loaded Without Sidebar"));
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
     await page.waitForFunction(() => document.getElementById("title").textContent === "Loaded Without Sidebar");
 
@@ -1752,7 +1774,7 @@ test.describe("Isolated script coverage", () => {
         subtitle: "share",
       });
       payload.shareToken = "share-token";
-      window.CrosswordApp.addGeneratedPuzzle(payload);
+      window.HecateApp.addGeneratedPuzzle(payload);
       return document.getElementById("shareBtn").style.display;
     }, defaultPuzzles[0].items);
 
@@ -1812,16 +1834,17 @@ test.describe("Isolated script coverage", () => {
     }, clonePuzzleSpec("Sidebar Fixture"));
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
     await page.waitForFunction(() => document.getElementById("title").textContent === "Shared Sidebar Puzzle");
 
     await expect(page.locator("#shareBtn")).toBeVisible();
     expect(await page.locator("#puzzleSidebarToggle").textContent()).toBe("‹");
-    expect(await page.evaluate(() => window.CrosswordApp.isSidebarCollapsed())).toBe(false);
+    expect(await page.evaluate(() => window.HecateApp.isSidebarCollapsed())).toBe(false);
 
     await page.locator("#puzzleSidebarToggle").click();
 
-    expect(await page.evaluate(() => window.CrosswordApp.isSidebarCollapsed())).toBe(true);
+    expect(await page.evaluate(() => window.HecateApp.isSidebarCollapsed())).toBe(true);
     expect(await page.locator("#puzzleSidebarToggle").textContent()).toBe("›");
   });
 
@@ -1853,7 +1876,7 @@ test.describe("Isolated script coverage", () => {
         return child;
       };
       window.__shareEvents = [];
-      window.addEventListener("crossword:share-token", function (event) {
+      window.addEventListener("hecate:puzzle:share-token", function (event) {
         window.__shareEvents.push(event.detail);
       });
       window.fetch = function () {
@@ -1865,6 +1888,7 @@ test.describe("Isolated script coverage", () => {
     }, clonePuzzleSpec("Branchy Sidebar"));
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
     await page.waitForFunction(() => document.getElementById("title").textContent === "Branchy Sidebar");
 
@@ -1874,7 +1898,7 @@ test.describe("Isolated script coverage", () => {
         subtitle: "missing share button",
       });
       payload.shareToken = "no-share-button-token";
-      window.CrosswordApp.addGeneratedPuzzle(payload);
+      window.HecateApp.addGeneratedPuzzle(payload);
       return new Promise((resolve) => {
         requestAnimationFrame(() => {
           requestAnimationFrame(() => {
@@ -1920,12 +1944,13 @@ test.describe("Isolated script coverage", () => {
     }, clonePuzzleSpec("Isolated Card"));
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
     await page.waitForFunction(() => document.querySelectorAll("#puzzleCardList .puzzle-card").length > 0);
 
     var result = await page.evaluate(() => {
-      window.CrosswordApp.setActiveCard(null);
-      var emptyMiniGrid = window.CrosswordApp.renderMiniGrid([]);
+      window.HecateApp.setActiveCard(null);
+      var emptyMiniGrid = window.HecateApp.renderMiniGrid([]);
       var cardList = document.getElementById("puzzleCardList");
       cardList.dispatchEvent(new MouseEvent("click", { bubbles: true }));
       var fakeCard = document.createElement("div");
@@ -1994,9 +2019,10 @@ test.describe("Isolated script coverage", () => {
     }, clonePuzzleSpec("Broken Shared Fixture"));
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
 
-    await expect(page.locator("#errorBox")).toContainText("Shared crossword specification invalid");
+    await expect(page.locator("#errorBox")).toContainText("Shared puzzle specification invalid");
   });
 
   test("covers crossword.js empty puzzle lists without optional UI", async ({ page }) => {
@@ -2024,6 +2050,7 @@ test.describe("Isolated script coverage", () => {
     });
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
     await page.waitForTimeout(50);
     expect(await page.locator("#puzzleCardList .puzzle-card").count()).toBe(0);
@@ -2050,6 +2077,7 @@ test.describe("Isolated script coverage", () => {
     });
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
     await page.waitForTimeout(50);
   });
@@ -2074,6 +2102,11 @@ test.describe("Crossword widget coverage", () => {
       return {
         sanitizeClue: helpers.sanitizeClue("12. Trim me"),
         emptyGridSize: helpers.computeGridSize([]),
+        boundedCellSizes: [
+          helpers.computeBoundedCellSize(1000, 10, 4),
+          helpers.computeBoundedCellSize(420, 10, 4),
+          helpers.computeBoundedCellSize(200, 10, 4),
+        ],
         payloadErrors: helpers.validatePayload(null),
         invalidSpec: helpers.validatePuzzleSpecification({ title: 1 }),
         overlayRemoved: !container.lastElementChild,
@@ -2082,6 +2115,7 @@ test.describe("Crossword widget coverage", () => {
 
     expect(result.sanitizeClue).toBe("Trim me");
     expect(result.emptyGridSize).toEqual({ rows: 1, cols: 1, offsetRow: 0, offsetCol: 0 });
+    expect(result.boundedCellSizes).toEqual([44, 38, 36]);
     expect(result.payloadErrors).toContain("Payload missing.");
     expect(result.invalidSpec).toBe(false);
     expect(result.overlayRemoved).toBe(true);

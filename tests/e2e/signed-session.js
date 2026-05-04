@@ -7,7 +7,7 @@ const path = require("path");
 
 const ROOT = path.join(__dirname, "../..");
 const RUNTIME_ROOT = path.join(ROOT, ".runtime");
-const DEFAULT_CROSSWORD_API_ENV_FILE = "configs/.env.crosswordapi.local";
+const DEFAULT_CROSSWORD_API_ENV_FILE = "configs/.env.hecateapi.local";
 const DEFAULT_TAUTH_CONFIG_FILE = "tauth.config.local.yaml";
 const DEFAULT_INTEGRATION_USER_ID = "integration-user";
 const DEFAULT_INTEGRATION_USER_EMAIL = "integration-user@example.com";
@@ -81,23 +81,23 @@ function assertMatchingValue(actualValue, expectedValue, description) {
 }
 
 function getSignedSessionConfig() {
-  const crosswordApiEnvPath = resolveEnvPath("CROSSWORDAPI_ENV_FILE", DEFAULT_CROSSWORD_API_ENV_FILE);
+  const crosswordApiEnvPath = resolveEnvPath("HECATEAPI_ENV_FILE", DEFAULT_CROSSWORD_API_ENV_FILE);
   const tauthConfigPath = resolveConfigPath("tauth.config.yaml", DEFAULT_TAUTH_CONFIG_FILE);
   const crosswordApiEnv = parseEnvFile(crosswordApiEnvPath);
 
   const signingKey = readRequiredValue(
     crosswordApiEnv,
-    "CROSSWORDAPI_JWT_SIGNING_KEY",
+    "HECATEAPI_JWT_SIGNING_KEY",
     path.basename(crosswordApiEnvPath),
   );
   const issuer = readRequiredValue(
     crosswordApiEnv,
-    "CROSSWORDAPI_JWT_ISSUER",
+    "HECATEAPI_JWT_ISSUER",
     path.basename(crosswordApiEnvPath),
   );
   const cookieName = readRequiredValue(
     crosswordApiEnv,
-    "CROSSWORDAPI_JWT_COOKIE_NAME",
+    "HECATEAPI_JWT_COOKIE_NAME",
     path.basename(crosswordApiEnvPath),
   );
 

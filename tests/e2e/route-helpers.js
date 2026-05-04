@@ -10,8 +10,11 @@ const path = require("path");
 
 const defaultPuzzles = [
   {
-    title: "Test Puzzle",
-    subtitle: "A test puzzle.",
+    title: "Moon Signals",
+    subtitle: "A compact lunar crossword to start Hecate.",
+    puzzle_type: "crossword",
+    layout_seed: "route-helper-practice-moon-signals",
+    layout_version: 1,
     items: [
       { word: "orbit", definition: "Path around Earth", hint: "elliptical route" },
       { word: "mare", definition: "A lunar sea", hint: "shares name with horse" },
@@ -36,12 +39,18 @@ const appShellHtml = `<!doctype html>
 <html>
   <body>
     <section id="landingPage">
-      <button id="landingTryPrebuilt" type="button">Try a pre-built puzzle</button>
+      <button id="landingTypeCrossword" type="button" data-landing-puzzle-type data-puzzle-type="crossword" aria-pressed="true">Crossword</button>
+      <button id="landingTypeWordSearch" type="button" data-landing-puzzle-type data-puzzle-type="word_search" aria-pressed="false">Word Search</button>
+      <button id="landingTryPrebuilt" type="button">Try a sample puzzle</button>
       <button id="landingSignIn" type="button">Sign in to generate</button>
     </section>
     <span id="headerCreditBadge" style="display:none;"></span>
     <div id="puzzleView" style="display:none;">
-      <div id="newCrosswordCard" role="button" tabindex="0">New Crossword</div>
+      <div id="puzzleSidebar">
+        <div id="newPuzzleCard" role="button" tabindex="0">New Puzzle</div>
+        <div id="puzzleCardList"></div>
+      </div>
+      <button id="puzzleSidebarToggle" type="button"><span class="puzzle-sidebar__toggle-icon"></span></button>
       <div class="hdr">
         <div class="hdr__copy">
           <h1 id="title">Crossword Puzzle</h1>
@@ -49,6 +58,8 @@ const appShellHtml = `<!doctype html>
         </div>
       </div>
       <div id="generatePanel" style="display:none;">
+        <button id="generateTypeCrossword" type="button" data-generate-puzzle-type data-puzzle-type="crossword" aria-pressed="true">Crossword</button>
+        <button id="generateTypeWordSearch" type="button" data-generate-puzzle-type data-puzzle-type="word_search" aria-pressed="false">Word Search</button>
         <input id="topicInput" type="text">
         <select id="wordCount">
           <option value="5">5</option>
@@ -58,13 +69,29 @@ const appShellHtml = `<!doctype html>
         <div id="generateStatus"></div>
       </div>
       <div class="pane">
+        <div id="gridViewport"><div id="grid"></div></div>
         <div class="clues">
+          <div id="puzzleToolbar">
+            <button id="check" type="button">Check</button>
+            <button id="reveal" type="button">Reveal</button>
+          </div>
           <div id="descriptionPanel" hidden>
             <p id="descriptionContent" hidden></p>
+          </div>
+          <div id="crosswordCluePanel">
+            <ol id="across"></ol>
+            <ol id="down"></ol>
+          </div>
+          <div id="wordSearchPanel" hidden>
+            <div id="wordSearchProgress"></div>
+            <div id="wordSearchHint"></div>
+            <div id="wordSearchList"></div>
           </div>
         </div>
       </div>
       <div class="controls">
+        <div id="status"></div>
+        <div id="errorBox"></div>
         <div id="rewardStrip" hidden>
           <span id="rewardStripLabel"></span>
           <span id="rewardStripMeta"></span>
@@ -136,7 +163,7 @@ function createFrontendConfig(overrides = {}) {
     auth: {
       tauthUrl: "http://localhost:8111",
       googleClientId: "test-google-client-id",
-      tenantId: "crossword",
+      tenantId: "hecate",
       loginPath: "/auth/google",
       logoutPath: "/auth/logout",
       noncePath: "/auth/nonce",
@@ -211,7 +238,24 @@ async function setupBaseRoutes(page) {
   await page.route("**/js-yaml*.js", (route) =>
     route.fulfill(text(200, "window.__jsYamlLoads = (window.__jsYamlLoads || 0) + 1;"))
   );
-  // /tauth.js is loaded via <script src="/tauth.js"> — stub it empty.
+  await page.route("**/bootstrap-icons.min.css", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/css",
+      body: "/* bootstrap-icons stub */",
+    })
+  );
+  await page.route("**/mpr-ui.css", (route) =>
+    route.fulfill({
+      status: 200,
+      contentType: "text/css",
+      body: "/* mpr-ui css stub */",
+    })
+  );
+  await page.route("**/gsi/client", (route) =>
+    route.fulfill(text(200, "window.google = window.google || {};"))
+  );
+  // tauth.js is loaded from the pinned CDN in index.html during tests.
   await page.route("**/tauth.js", (route) =>
     route.fulfill(text(200, "/* tauth stub */"))
   );
@@ -237,9 +281,6 @@ async function setupBaseRoutes(page) {
   );
   await page.route("**/api/billing/checkout", (route) =>
     route.fulfill(json(503, { message: "billing unavailable" }))
-  );
-  await page.route("**/api/billing/checkout/reconcile", (route) =>
-    route.fulfill(json(200, { status: "pending" }))
   );
   await page.route("**/api/billing/portal", (route) =>
     route.fulfill(json(503, { message: "billing unavailable" }))
@@ -306,6 +347,9 @@ async function setupLoggedInRoutes(page, opts = {}) {
       route.fulfill(text(200, opts.configYaml))
     );
   }
+  await page.route("**/assets/data/puzzles.json", (route) =>
+    route.fulfill(json(200, puzzles))
+  );
   await page.route("**/crosswords.json", (route) =>
     route.fulfill(json(200, puzzles))
   );
@@ -347,6 +391,9 @@ async function setupLoggedOutRoutes(page, opts = {}) {
       route.fulfill(text(200, opts.configYaml))
     );
   }
+  await page.route("**/assets/data/puzzles.json", (route) =>
+    route.fulfill(json(200, puzzles))
+  );
   await page.route("**/crosswords.json", (route) =>
     route.fulfill(json(200, puzzles))
   );

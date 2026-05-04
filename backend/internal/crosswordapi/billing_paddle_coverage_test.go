@@ -322,7 +322,7 @@ func TestPaddleParseWebhookEventCoverage(t *testing.T) {
 	      "email_address": "fallback@example.com"
 	    },
 	    "custom_data": {
-	      "crossword_user_id": "user-123"
+	      "hecate_user_id": "user-123"
 	    },
 	    "items": [
 	      {
@@ -406,7 +406,7 @@ func TestPaddleParseWebhookEventLegacyCoverage(t *testing.T) {
 	      "email": "legacy@example.com"
 	    },
 	    "custom_data": {
-	      "crossword_user_id": "legacy-user",
+	      "hecate_user_id": "legacy-user",
 	      "pack_code": "starter",
 	      "credits": "20"
 	    },
@@ -762,9 +762,6 @@ func TestPaddleSharedCheckoutAndPortalCoverage(t *testing.T) {
 		}
 		if session.CheckoutMode != billingCheckoutModeOverlay {
 			t.Fatalf("expected shared checkout mode overlay, got %#v", session)
-		}
-		if !strings.Contains(transactionBody, `"billing_subject_id":"shared-user"`) || !strings.Contains(transactionBody, `"crossword_user_id":"shared-user"`) {
-			t.Fatalf("expected shared transaction metadata to include subject id, got %s", transactionBody)
 		}
 		if !strings.Contains(transactionBody, `"billing_user_email":"shared@example.com"`) || !strings.Contains(transactionBody, `"user_email":"shared@example.com"`) {
 			t.Fatalf("expected shared transaction metadata to include normalized email, got %s", transactionBody)

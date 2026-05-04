@@ -7,7 +7,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	creditv1 "github.com/MarkoPoloResearchLab/ledger/api/credit/v1"
 	"github.com/tyemirov/tauth/pkg/sessionvalidator"
@@ -460,96 +459,5 @@ func TestHandleBillingSyncCoverage(t *testing.T) {
 	response = doRequest(router, http.MethodPost, "/api/billing/sync", "")
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200 for sync success, got %d", response.Code)
-	}
-}
-
-func TestHandleBillingCheckoutReconcileCoverage(t *testing.T) {
-	handler := testHandlerWithConfig(&mockLedgerClient{}, nil, &mockStore{}, validBillingConfig())
-	router := testRouterWithClaims(handler, nil)
-
-	response := doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{"transaction_id":"txn_1"}`)
-	if response.Code != http.StatusUnauthorized {
-		t.Fatalf("expected 401 for missing claims, got %d", response.Code)
-	}
-
-	handler = testHandlerWithConfig(&mockLedgerClient{}, nil, &mockStore{}, validBillingConfig())
-	router = testRouterWithClaims(handler, testClaims())
-	response = doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{"transaction_id":"txn_1"}`)
-	if response.Code != http.StatusInternalServerError {
-		t.Fatalf("expected 500 when billing service is nil, got %d", response.Code)
-	}
-
-	handler.billingService = &billingService{
-		cfg:          validBillingConfig(),
-		ledgerClient: &mockLedgerClient{},
-		logger:       zap.NewNop(),
-		provider:     &mockBillingProvider{code: billingProviderPaddle},
-		store:        &mockStore{},
-	}
-	router = testRouterWithClaims(handler, testClaims())
-	response = doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{`)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for invalid payload, got %d", response.Code)
-	}
-
-	handler.billingService.provider = &mockBillingProvider{
-		code:         billingProviderPaddle,
-		reconcileErr: sharedbilling.ErrPaddleAPITransactionNotFound,
-	}
-	response = doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{"transaction_id":"txn_missing"}`)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for missing transaction, got %d", response.Code)
-	}
-
-	handler.billingService.provider = &mockBillingProvider{
-		code: billingProviderPaddle,
-		reconcileEvent: sharedbilling.WebhookEvent{
-			ProviderCode: billingProviderPaddle,
-			EventID:      "reconcile:txn_forbidden",
-			EventType:    paddleEventTypeTransactionCompleted,
-			OccurredAt:   time.Now().UTC(),
-			Payload:      []byte(`{"data":{}}`),
-		},
-		reconcileEmail: "other@example.com",
-		resolveStatus:  sharedbilling.CheckoutEventStatusSucceeded,
-	}
-	response = doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{"transaction_id":"txn_forbidden"}`)
-	if response.Code != http.StatusForbidden {
-		t.Fatalf("expected 403 for ownership mismatch, got %d", response.Code)
-	}
-
-	handler.billingService.provider = &mockBillingProvider{
-		code: billingProviderPaddle,
-		reconcileEvent: sharedbilling.WebhookEvent{
-			ProviderCode: billingProviderPaddle,
-			EventID:      "reconcile:txn_pending",
-			EventType:    paddleEventTypeTransactionUpdated,
-			OccurredAt:   time.Now().UTC(),
-			Payload:      []byte(`{"data":{}}`),
-		},
-		reconcileEmail: "user@example.com",
-		resolveStatus:  sharedbilling.CheckoutEventStatusPending,
-	}
-	response = doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{"transaction_id":"txn_pending"}`)
-	if response.Code != http.StatusOK {
-		t.Fatalf("expected 200 for pending reconcile, got %d", response.Code)
-	}
-
-	handler.billingService.provider = &mockBillingProvider{
-		code: billingProviderPaddle,
-		reconcileEvent: sharedbilling.WebhookEvent{
-			ProviderCode: billingProviderPaddle,
-			EventID:      "reconcile:txn_foreign",
-			EventType:    paddleEventTypeTransactionCompleted,
-			OccurredAt:   time.Now().UTC(),
-			Payload:      []byte(`{"data":{}}`),
-		},
-		reconcileEmail: "user@example.com",
-		resolveStatus:  sharedbilling.CheckoutEventStatusSucceeded,
-		parseErr:       ErrBillingEventIgnored,
-	}
-	response = doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{"transaction_id":"txn_foreign"}`)
-	if response.Code != http.StatusBadRequest {
-		t.Fatalf("expected 400 for foreign reconcile, got %d", response.Code)
 	}
 }

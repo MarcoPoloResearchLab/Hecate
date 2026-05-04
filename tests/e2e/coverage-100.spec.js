@@ -272,10 +272,10 @@ test.describe("Admin 100 coverage", () => {
     });
 
     await loadScript(page, "admin.js");
-    await page.waitForFunction(() => window.__LLM_CROSSWORD_TEST__ && window.__LLM_CROSSWORD_TEST__.admin);
+    await page.waitForFunction(() => window.__HECATE_TEST__ && window.__HECATE_TEST__.admin);
 
     var result = await page.evaluate(async () => {
-      var admin = window.__LLM_CROSSWORD_TEST__.admin;
+      var admin = window.__HECATE_TEST__.admin;
       var firstUser = { user_id: "first", email: "first@example.com", display: "First" };
       var secondUser = { user_id: "second", email: "second@example.com", display: "Second" };
 
@@ -403,10 +403,10 @@ test.describe("Admin 100 coverage", () => {
     });
 
     await loadScript(page, "admin.js");
-    await page.waitForFunction(() => window.__LLM_CROSSWORD_TEST__ && window.__LLM_CROSSWORD_TEST__.admin);
+    await page.waitForFunction(() => window.__HECATE_TEST__ && window.__HECATE_TEST__.admin);
 
     var result = await page.evaluate(async () => {
-      var admin = window.__LLM_CROSSWORD_TEST__.admin;
+      var admin = window.__HECATE_TEST__.admin;
       admin.setMenuItems();
       admin.setSessionData(null);
       admin.populateAccount();
@@ -468,10 +468,10 @@ test.describe("Admin 100 coverage", () => {
     });
 
     await loadScript(page, "admin.js");
-    await page.waitForFunction(() => window.__LLM_CROSSWORD_TEST__ && window.__LLM_CROSSWORD_TEST__.admin);
+    await page.waitForFunction(() => window.__HECATE_TEST__ && window.__HECATE_TEST__.admin);
 
     var result = await page.evaluate(() => {
-      var admin = window.__LLM_CROSSWORD_TEST__.admin;
+      var admin = window.__HECATE_TEST__.admin;
       var status = document.createElement("div");
 
       admin.setSessionData(null);
@@ -580,7 +580,7 @@ test.describe("App 100 coverage", () => {
           },
         });
       };
-      window.CrosswordApp = {};
+      window.HecateApp = {};
     });
     {
       var missingChildError = page.waitForEvent("pageerror");
@@ -600,12 +600,12 @@ test.describe("App 100 coverage", () => {
           },
         });
       };
-      window.CrosswordApp = {};
+      window.HecateApp = {};
     });
     await loadScript(page, "app.js");
 
     var cleanupResult = await page.evaluate(() => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       app.syncAuthStateFromMprUi();
       return {
         cleared: window.__clearedTimeouts.slice(),
@@ -620,13 +620,13 @@ test.describe("App 100 coverage", () => {
   test("covers logged-out puzzle-view restore and generate submit guard", async ({ page }) => {
     await mountAppShell(page);
     await page.evaluate(() => {
-      window.CrosswordApp = {};
+      window.HecateApp = {};
     });
 
     await loadScript(page, "app.js");
 
     var state = await page.evaluate(async () => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       app.showPuzzle();
       app.showGenerateForm();
       document.getElementById("generateBtn").disabled = false;
@@ -645,16 +645,19 @@ test.describe("App 100 coverage", () => {
   });
 
   test("covers app helper guards through the test hook", async ({ page }) => {
-    await page.goto("/blank.html");
-    await page.setContent(appShellHtml.replace(/<div id="descriptionPanel"[\s\S]*?<\/div>\s+<\/div>/, "</div>"));
+    await mountAppShell(page);
     await page.evaluate(() => {
-      window.CrosswordApp = {};
+      var descriptionPanel = document.getElementById("descriptionPanel");
+      if (descriptionPanel) {
+        descriptionPanel.remove();
+      }
+      window.HecateApp = {};
     });
 
     await loadScript(page, "app.js");
 
     var result = await page.evaluate(async () => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       var missingElementMessage = "";
       var missingChildMessage = "";
 
@@ -672,8 +675,21 @@ test.describe("App 100 coverage", () => {
       app.showGenerateForm();
       app.setLoggedIn(true);
       app.syncAuthStateFromMprUi();
+      window.HecateBilling = null;
+      app.openBillingDrawer("test_guard");
+      window.__billingOpenCalls = [];
+      window.HecateBilling = {
+        openAccountBilling: function (detail) {
+          window.__billingOpenCalls.push(detail);
+        },
+      };
+      app.openBillingDrawer();
+      document.getElementById("shareBtn").disabled = false;
+      document.getElementById("shareBtn").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      window.dispatchEvent(new CustomEvent("hecate:billing-summary"));
 
       return {
+        billingOpenCalls: window.__billingOpenCalls.slice(),
         hasPendingAttribute: document.documentElement.hasAttribute("data-auth-pending"),
         missingChildMessage: missingChildMessage,
         missingElementMessage: missingElementMessage,
@@ -682,9 +698,109 @@ test.describe("App 100 coverage", () => {
     });
 
     expect(result.hasPendingAttribute).toBe(false);
+    expect(result.billingOpenCalls).toEqual([
+      {
+        force: true,
+        message: "",
+        source: "app",
+      },
+    ]);
     expect(result.missingElementMessage).toBe("Missing required app element #missingElement");
     expect(result.missingChildMessage).toBe("Missing required app element body .missing");
     expect(result.state.loggedIn).toBe(false);
+  });
+
+  test("covers credit badge billing fallback when the popover is unavailable", async ({ page }) => {
+    await page.goto("/blank.html");
+    await page.setContent(appShellHtml);
+    await page.evaluate(() => {
+      var creditDetailsPopover = document.getElementById("creditDetailsPopover");
+      if (creditDetailsPopover) {
+        creditDetailsPopover.remove();
+      }
+      window.__billingOpenCalls = [];
+      window.fetch = function () {
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          json: function () {
+            return Promise.resolve({});
+          },
+        });
+      };
+      window.HecateApp = {};
+      window.HecateBilling = {
+        openAccountBilling: function (detail) {
+          window.__billingOpenCalls.push(detail);
+        },
+      };
+    });
+
+    await loadScript(page, "app.js");
+
+    var result = await page.evaluate(() => {
+      var app = window.__HECATE_TEST__.app;
+      document.getElementById("headerCreditBadge").disabled = false;
+      document.getElementById("headerCreditBadge").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      return Promise.resolve(app.setLoggedIn(true)).then(function () {
+        document.getElementById("headerCreditBadge").disabled = false;
+        document.getElementById("headerCreditBadge").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+        return {
+          callCount: window.__billingOpenCalls.length,
+          calls: window.__billingOpenCalls.slice(),
+        };
+      });
+    });
+
+    expect(result.callCount).toBe(1);
+    expect(result.calls[0].source).toBe("header_credit_badge");
+  });
+
+  test("covers onLogin when billing sync rejects", async ({ page }) => {
+    await mountAppShell(page);
+    await page.evaluate(() => {
+      window.fetch = function (url) {
+        if (String(url).indexOf("/api/bootstrap") >= 0) {
+          return Promise.resolve({
+            ok: true,
+            json: function () {
+              return Promise.resolve({
+                balance: {
+                  available_cents: 400,
+                  currency: "USD",
+                },
+              });
+            },
+          });
+        }
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          json: function () {
+            return Promise.resolve({});
+          },
+        });
+      };
+      window.HecateApp = {};
+      window.HecateBilling = {
+        setLoggedIn: function () {
+          return Promise.reject(new Error("billing sync failed"));
+        },
+      };
+    });
+
+    await loadScript(page, "app.js");
+
+    var result = await page.evaluate(() => {
+      document.dispatchEvent(new Event("mpr-ui:auth:authenticated"));
+      return new Promise((resolve) => {
+        setTimeout(function () {
+          resolve(window.__HECATE_TEST__.app.getState());
+        }, 0);
+      });
+    });
+
+    expect(result.loggedIn).toBe(true);
   });
 
   test("covers stale verification callbacks after auth version changes", async ({ page }) => {
@@ -715,12 +831,12 @@ test.describe("App 100 coverage", () => {
     await page.goto("/");
     await page.evaluate(() => {
       document.dispatchEvent(new Event("mpr-ui:auth:unauthenticated"));
-      window.__LLM_CROSSWORD_TEST__.app.setLoggedIn(false);
+      window.__HECATE_TEST__.app.setLoggedIn(false);
       document.dispatchEvent(new Event("mpr-ui:auth:authenticated"));
     });
     await page.waitForTimeout(150);
 
-    var state = await page.evaluate(() => window.__LLM_CROSSWORD_TEST__.app.getState());
+    var state = await page.evaluate(() => window.__HECATE_TEST__.app.getState());
     expect(state.loggedIn).toBe(true);
     await expect(page.locator("#puzzleView")).toBeVisible();
   });
@@ -766,13 +882,13 @@ test.describe("App 100 coverage", () => {
           items: generatedItems,
         };
       };
-      window.CrosswordApp = {};
+      window.HecateApp = {};
     }, defaultPuzzles[0].items);
 
     await loadScript(page, "app.js");
 
     var result = await page.evaluate(async () => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       app.setLoggedIn(true);
       app.updateBalance({ coins: 12, generation_cost_coins: 4 });
       window.__resolveMe({ ok: false, status: 500 });
@@ -809,13 +925,13 @@ test.describe("App 100 coverage", () => {
           },
         });
       };
-      window.CrosswordApp = {};
+      window.HecateApp = {};
     });
 
     await loadScript(page, "app.js");
 
     var result = await page.evaluate(async () => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       app.setLoggedIn(true);
       app.showPuzzle();
       app.showGenerateForm();
@@ -880,13 +996,13 @@ test.describe("App 100 coverage", () => {
           items: generatedItems,
         };
       };
-      window.CrosswordApp = {};
+      window.HecateApp = {};
     }, defaultPuzzles[0].items);
 
     await loadScript(page, "app.js");
 
     var requestID = await page.evaluate(async () => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       if (window.crypto) {
         window.crypto.randomUUID = undefined;
       }
@@ -942,17 +1058,17 @@ test.describe("App 100 coverage", () => {
           items: generatedItems,
         };
       };
-      window.CrosswordApp = {};
+      window.HecateApp = {};
     }, defaultPuzzles[0].items);
 
     await loadScript(page, "app.js");
 
     var requestID = await page.evaluate(async () => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       app.setLoggedIn(true);
       app.updateBalance({ coins: 12, generation_cost_coins: 4 });
       app.setState({
-        activeGenerateRequestFingerprint: "repeat topic|8",
+        activeGenerateRequestFingerprint: "repeat topic|crossword|8",
         activeGenerateRequestId: "existing-request-id",
       });
       app.showPuzzle();
@@ -991,7 +1107,7 @@ test.describe("Crossword 100 coverage", () => {
             };
           });
         }
-        if (String(url).indexOf("crosswords.json") >= 0) {
+        if (String(url).indexOf("assets/data/puzzles.json") >= 0) {
           return window.__puzzlesPromise.then(function (payload) {
             return {
               ok: true,
@@ -1012,10 +1128,11 @@ test.describe("Crossword 100 coverage", () => {
 
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
 
     expect(await page.evaluate(() => {
-      return window.CrosswordApp.loadPrebuilt() === window.CrosswordApp.loadPrebuilt();
+      return window.HecateApp.loadPrebuilt() === window.HecateApp.loadPrebuilt();
     })).toBe(true);
 
     await page.evaluate((spec) => {
@@ -1026,8 +1143,8 @@ test.describe("Crossword 100 coverage", () => {
       });
     }, defaultPuzzles[0]);
 
-    await page.waitForFunction(() => document.getElementById("title").textContent === "Shared Crossword");
-    await expect(page.locator("#title")).toHaveText("Shared Crossword");
+    await page.waitForFunction(() => document.getElementById("title").textContent === "Shared Puzzle");
+    await expect(page.locator("#title")).toHaveText("Shared Puzzle");
   });
 
   test("covers crossword layout observer registrations and ignores invalid card indices", async ({ page }) => {
@@ -1056,8 +1173,9 @@ test.describe("Crossword 100 coverage", () => {
 
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
-    await page.waitForFunction(() => document.getElementById("title").textContent === "Test Puzzle");
+    await page.waitForFunction(() => document.getElementById("title").textContent === "Moon Signals");
 
     expect(await page.evaluate(() => window.__resizeObserved.slice().sort())).toEqual(
       expect.arrayContaining(["app-header", "page-footer"])
@@ -1071,7 +1189,7 @@ test.describe("Crossword 100 coverage", () => {
       badCard.click();
     });
 
-    await expect(page.locator("#title")).toHaveText("Test Puzzle");
+    await expect(page.locator("#title")).toHaveText("Moon Signals");
   });
 
   test("covers crossword mutation refreshes when ResizeObserver is unavailable", async ({ page }) => {
@@ -1097,8 +1215,9 @@ test.describe("Crossword 100 coverage", () => {
 
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
-    await page.waitForFunction(() => document.getElementById("title").textContent === "Test Puzzle");
+    await page.waitForFunction(() => document.getElementById("title").textContent === "Moon Signals");
 
     await page.evaluate(() => {
       window.__mutationCallbacks.forEach(function (callback) {
@@ -1106,7 +1225,7 @@ test.describe("Crossword 100 coverage", () => {
       });
     });
 
-    await expect(page.locator("#title")).toHaveText("Test Puzzle");
+    await expect(page.locator("#title")).toHaveText("Moon Signals");
   });
 
   test("covers crossword hook guards, observer fallbacks, and empty shared tokens", async ({ page }) => {
@@ -1142,11 +1261,12 @@ test.describe("Crossword 100 coverage", () => {
 
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
     await page.waitForTimeout(50);
 
     var result = await page.evaluate(() => {
-      var crossword = window.__LLM_CROSSWORD_TEST__.crossword;
+      var crossword = window.__HECATE_TEST__.crossword;
       var oldHeader = document.createElement("div");
       var oldFooter = document.createElement("div");
 
@@ -1234,9 +1354,10 @@ test.describe("Crossword 100 coverage", () => {
 
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
     await page.waitForTimeout(50);
-    expect(await page.evaluate(() => document.getElementById("title").textContent)).toBe("Test Puzzle");
+    expect(await page.evaluate(() => document.getElementById("title").textContent)).toBe("Moon Signals");
   });
 });
 
@@ -1299,7 +1420,7 @@ test.describe("App completion coverage", () => {
           },
         });
       };
-      window.CrosswordApp = {
+      window.HecateApp = {
         getActivePuzzle: function () {
           return { id: "owned-1", source: "owned", shareToken: null };
         },
@@ -1312,7 +1433,7 @@ test.describe("App completion coverage", () => {
     await loadScript(page, "app.js");
 
     var result = await page.evaluate(async () => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       var storageProto = Object.getPrototypeOf(window.sessionStorage);
       var modal = document.getElementById("completionModal");
 
@@ -1323,7 +1444,7 @@ test.describe("App completion coverage", () => {
       }
 
       function dispatchCompletionEvent() {
-        window.dispatchEvent(new CustomEvent("crossword:completed", {
+        window.dispatchEvent(new CustomEvent("hecate:puzzle:completed", {
           detail: { usedHint: false, usedReveal: false },
         }));
       }
@@ -1381,7 +1502,7 @@ test.describe("App completion coverage", () => {
     expect(result.primaryState).toEqual({
       modalOpen: false,
       generateDisplay: "",
-      title: "Generate a New Crossword",
+      title: "Generate a New Puzzle",
     });
     expect(result.rewardUpdate).toEqual({
       puzzleId: "owned-1",
@@ -1455,7 +1576,7 @@ test.describe("App completion coverage", () => {
           },
         });
       };
-      window.CrosswordApp = {
+      window.HecateApp = {
         addGeneratedPuzzle: function (puzzle) {
           window.__lastGeneratedPuzzle = puzzle;
         },
@@ -1469,7 +1590,7 @@ test.describe("App completion coverage", () => {
     await loadScript(page, "app.js");
 
     var result = await page.evaluate(async () => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
 
       function waitForAsyncWork() {
         return new Promise(function (resolve) {
@@ -1570,10 +1691,10 @@ test.describe("App completion coverage", () => {
       document.getElementById("generateBtn").click();
       await waitForAsyncWork();
 
-      window.dispatchEvent(new CustomEvent("crossword:active-puzzle", {
+      window.dispatchEvent(new CustomEvent("hecate:puzzle:active", {
         detail: {},
       }));
-      window.dispatchEvent(new CustomEvent("crossword:active-puzzle"));
+      window.dispatchEvent(new CustomEvent("hecate:puzzle:active"));
       var shareTokenAfterEmptyActivePuzzle = app.getState().currentShareToken;
 
       window.__meMode = "pending";
@@ -1658,7 +1779,7 @@ test.describe("App completion coverage", () => {
           },
         });
       };
-      window.CrosswordApp = {
+      window.HecateApp = {
         getActivePuzzle: function () {
           return window.__activePuzzle;
         },
@@ -1668,7 +1789,7 @@ test.describe("App completion coverage", () => {
     await loadScript(page, "app.js");
 
     var result = await page.evaluate(async () => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
 
       function waitForAsyncWork() {
         return new Promise(function (resolve) {
@@ -1679,10 +1800,10 @@ test.describe("App completion coverage", () => {
       app.setLoggedIn(true);
       app.showGenerateForm();
 
-      window.CrosswordApp = {};
+      window.HecateApp = {};
       app.submitPuzzleCompletion({});
 
-      window.CrosswordApp = {
+      window.HecateApp = {
         getActivePuzzle: function () {
           return window.__activePuzzle;
         },
@@ -1772,11 +1893,12 @@ test.describe("Crossword reward coverage", () => {
 
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
-    await page.waitForFunction(() => document.getElementById("title").textContent === "Test Puzzle");
+    await page.waitForFunction(() => document.getElementById("title").textContent === "Moon Signals");
 
     var result = await page.evaluate(async (spec) => {
-      var crossword = window.__LLM_CROSSWORD_TEST__.crossword;
+      var crossword = window.__HECATE_TEST__.crossword;
 
       function buildRewardSummary(status, sharedSolves, creatorCredits) {
         return {
@@ -1853,9 +1975,9 @@ test.describe("Crossword reward coverage", () => {
         activePuzzleKey: sharedPuzzle.puzzleKey,
         activePuzzleIndex: 0,
       });
-      window.CrosswordApp.setViewerSession({ loggedIn: true });
-      window.CrosswordApp.updatePuzzleRewardData("shared-rewarded", buildRewardSummary("available", 4, 6));
-      var activeSharedRewardSummary = window.CrosswordApp.getActivePuzzle().rewardSummary;
+      window.HecateApp.setViewerSession({ loggedIn: true });
+      window.HecateApp.updatePuzzleRewardData("shared-rewarded", buildRewardSummary("available", 4, 6));
+      var activeSharedRewardSummary = window.HecateApp.getActivePuzzle().rewardSummary;
 
       crossword.setState({
         loggedIn: false,
@@ -1888,7 +2010,7 @@ test.describe("Crossword reward coverage", () => {
       };
     }, defaultPuzzles[0]);
 
-    expect(result.invalidStoredMessage).toBe("Crossword specification invalid");
+    expect(result.invalidStoredMessage).toBe("Puzzle specification invalid");
     expect(result.cardTitles).toEqual(["Owned A", "Owned B Updated"]);
     expect(result.activeSharedRewardSummary).toEqual({
       owner_reward_status: "available",
@@ -1974,11 +2096,12 @@ test.describe("Crossword reward coverage", () => {
 
     await loadScript(page, "generator.js");
     await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
     await loadScript(page, "crossword.js");
-    await page.waitForFunction(() => document.getElementById("title").textContent === "Test Puzzle");
+    await page.waitForFunction(() => document.getElementById("title").textContent === "Moon Signals");
 
     var result = await page.evaluate(async (spec) => {
-      var crossword = window.__LLM_CROSSWORD_TEST__.crossword;
+      var crossword = window.__HECATE_TEST__.crossword;
 
       function buildOwnedPuzzle(id, title, rewardSummary) {
         return crossword.buildStoredPuzzleFromResponse({
@@ -2013,7 +2136,7 @@ test.describe("Crossword reward coverage", () => {
         reward_summary: {},
       }, null, 2);
 
-      window.CrosswordApp.render(buildOwnedPuzzle("claimed-zero", "Claimed Zero", {
+      window.HecateApp.render(buildOwnedPuzzle("claimed-zero", "Claimed Zero", {
         owner_reward_status: "claimed",
         owner_reward_claim_total: 0,
         shared_unique_solves: 0,
@@ -2041,7 +2164,7 @@ test.describe("Crossword reward coverage", () => {
       crossword.selectPuzzleByKey("missing-puzzle-key");
       var titleAfterInvalidSelect = document.getElementById("title").textContent;
       crossword.setActivePuzzleByKey(null);
-      var activePuzzleIndexAfterNullKey = window.CrosswordApp.getActivePuzzle();
+      var activePuzzleIndexAfterNullKey = window.HecateApp.getActivePuzzle();
 
       var reusedPromise = Promise.resolve(["reused"]);
       crossword.setState({
@@ -2069,7 +2192,7 @@ test.describe("Crossword reward coverage", () => {
       crossword.renderSidebar();
       var emptySidebarMarkup = document.getElementById("puzzleCardList").textContent;
 
-      window.CrosswordApp.updatePuzzleRewardData("claimed-zero", null);
+      window.HecateApp.updatePuzzleRewardData("claimed-zero", null);
       crossword.setState({
         ownedPuzzles: [buildOwnedPuzzle("owned-match", "Owned Match", {
           owner_reward_status: "available",
@@ -2080,7 +2203,7 @@ test.describe("Crossword reward coverage", () => {
           creator_daily_cap_remaining: 19,
         })],
       });
-      window.CrosswordApp.updatePuzzleRewardData("non-matching-id", {
+      window.HecateApp.updatePuzzleRewardData("non-matching-id", {
         owner_reward_status: "claimed",
         owner_reward_claim_total: 3,
         shared_unique_solves: 1,
@@ -2098,7 +2221,7 @@ test.describe("Crossword reward coverage", () => {
           return 0.5;
         },
       });
-      window.CrosswordApp.render(plainPractice);
+      window.HecateApp.render(plainPractice);
 
       return {
         claimedZeroMeta: claimedZeroMeta,
@@ -2181,7 +2304,7 @@ test.describe("Crossword widget completion coverage", () => {
       var widget;
 
       document.body.appendChild(container);
-      window.addEventListener("crossword:completed", function handleCompletion(event) {
+      window.addEventListener("hecate:puzzle:completed", function handleCompletion(event) {
         completionDetail = event.detail;
       }, { once: true });
 
@@ -2280,5 +2403,769 @@ test.describe("Generator comparison coverage", () => {
     expect(result.noBestLayoutTreatsCandidateAsBetter).toBe(true);
     expect(result.densityBetter).toBe(true);
     expect(result.shorterLongestSideBetter).toBe(true);
+  });
+});
+
+test.describe("Word search widget coverage", () => {
+  test("covers word-search helper branches and widget interactions", async ({ page }) => {
+    await page.goto("/blank.html");
+    await loadScript(page, "word-search-widget.js");
+
+    var result = await page.evaluate(() => {
+      var directions = ["N", "NE", "E", "SE", "S", "SW", "W", "NW", "BAD"];
+      var helpers = window.WordSearchWidget.__test;
+      var events = [];
+      var puzzle = {
+        puzzleType: "word_search",
+        title: "Animals",
+        subtitle: "Find pets",
+        size: 4,
+        grid: [
+          ["C", "A", "T", "X"],
+          ["X", "X", "D", "X"],
+          ["X", "X", "O", "X"],
+          ["X", "X", "G", "X"],
+        ],
+        items: [
+          { id: "W0", word: "CAT", definition: "Feline", hint: "feline" },
+          { id: "W1", word: "DOG", definition: "Canine", hint: "canine" },
+        ],
+        placements: [
+          { id: "W0", word: "CAT", row: 0, col: 0, dir: "E", hint: "feline" },
+          { id: "W1", word: "DOG", row: 1, col: 2, dir: "S", hint: "canine" },
+        ],
+      };
+
+      window.addEventListener("hecate:puzzle:completed", function (event) {
+        events.push({ name: "completed", detail: event.detail });
+      });
+      window.addEventListener("hecate:puzzle:reveal-used", function (event) {
+        events.push({ name: "reveal", detail: event.detail });
+      });
+
+      var nullWidget = new window.WordSearchWidget(null);
+      nullWidget.ensureStandaloneElements();
+      nullWidget.recalculate();
+      nullWidget.clearTransientSelection();
+      nullWidget.clearHintPulse();
+      nullWidget.updateProgress();
+      nullWidget.updateStatus("ignored");
+      nullWidget.dispatchWidgetEvent("hecate:test-event", { ok: true });
+      nullWidget.emitCompletionIfNeeded("none");
+      nullWidget.emitRevealIfNeeded();
+      nullWidget.emitRevealIfNeeded();
+      nullWidget.markPlacementFound(null, false);
+      nullWidget.render(null);
+      nullWidget.finishSelection();
+      nullWidget.moveSelection(0, 0);
+      nullWidget.resolveHintPlacement();
+
+      var container = document.createElement("div");
+      document.body.appendChild(container);
+      var standalone = new window.WordSearchWidget(container);
+      standalone.ensureStandaloneElements();
+      standalone.render(puzzle);
+      standalone.ensureStandaloneElements();
+
+      var standaloneCells = container.querySelectorAll(".word-search-cell");
+      standaloneCells[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      standaloneCells[2].dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      standaloneCells[2].dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      standaloneCells[14].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      standaloneCells[6].dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
+      standaloneCells[6].dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      standalone.showHint();
+      standalone.revealAll();
+      standalone.revealAll();
+
+      var grid = document.createElement("div");
+      var viewport = document.createElement("div");
+      var panel = document.createElement("div");
+      var list = document.createElement("ol");
+      var progress = document.createElement("div");
+      var hint = document.createElement("div");
+      var check = document.createElement("button");
+      var reveal = document.createElement("button");
+      var status = document.createElement("div");
+      var error = document.createElement("div");
+      document.body.appendChild(viewport);
+      viewport.appendChild(grid);
+      document.body.appendChild(panel);
+      document.body.appendChild(list);
+      document.body.appendChild(progress);
+      document.body.appendChild(hint);
+      document.body.appendChild(check);
+      document.body.appendChild(reveal);
+      document.body.appendChild(status);
+      document.body.appendChild(error);
+
+      var widget = new window.WordSearchWidget(document.createElement("div"), {
+        _existingElements: {
+          gridEl: grid,
+          gridViewport: viewport,
+          wordSearchPanel: panel,
+          wordSearchList: list,
+          wordSearchProgress: progress,
+          wordSearchHint: hint,
+          checkBtn: check,
+          revealBtn: reveal,
+          statusEl: status,
+          errorBox: error,
+        },
+      });
+      widget.ensureStandaloneElements();
+      widget.render(null);
+      var invalidText = error.textContent;
+      widget.render(puzzle);
+      widget.moveSelection(0, 0);
+      widget.finishSelection();
+      widget.highlightSelection([{ row: 0, col: 0 }, { row: 9, col: 9 }]);
+      widget.clearTransientSelection();
+      widget.matchSelection([{ row: 9, col: 9 }, { row: 9, col: 8 }, { row: 9, col: 7 }]);
+      widget.showHint();
+      check.click();
+      widget.clearHintPulse();
+
+      var originalElementFromPoint = document.elementFromPoint;
+      document.elementFromPoint = function () {
+        return null;
+      };
+      viewport.ontouchstart({ touches: [{ clientX: 1, clientY: 1 }] });
+      viewport.ontouchmove({ touches: [{ clientX: 1, clientY: 1 }] });
+      document.elementFromPoint = function () {
+        return grid.querySelector('[data-row="0"][data-col="0"]');
+      };
+      viewport.ontouchstart({ touches: [{ clientX: 1, clientY: 1 }] });
+      document.elementFromPoint = function () {
+        return grid.querySelector('[data-row="0"][data-col="1"]');
+      };
+      viewport.ontouchmove({ touches: [{ clientX: 1, clientY: 1 }] });
+      viewport.ontouchend();
+      viewport.onmouseleave();
+      document.elementFromPoint = originalElementFromPoint;
+
+      reveal.click();
+      reveal.click();
+
+      var branchWidget = new window.WordSearchWidget(null, {
+        _existingElements: {
+          wordSearchProgress: document.createElement("div"),
+          wordSearchHint: document.createElement("div"),
+          statusEl: document.createElement("div"),
+        },
+      });
+      branchWidget._puzzle = { items: [{ id: "done" }] };
+      branchWidget._foundIds = {};
+      branchWidget.emitCompletionIfNeeded("missing");
+      branchWidget._foundIds = { done: true };
+      branchWidget.emitCompletionIfNeeded("manual");
+      branchWidget.emitCompletionIfNeeded("again");
+      branchWidget._completionEmitted = false;
+      branchWidget._usedReveal = true;
+      branchWidget.emitCompletionIfNeeded("revealed");
+      branchWidget._usedReveal = false;
+      branchWidget._puzzle = null;
+      branchWidget.emitCompletionIfNeeded("no-puzzle");
+      branchWidget._foundIds = { existing: true };
+      branchWidget.markPlacementFound({ id: "existing", word: "A", row: 0, col: 0, dir: "BAD" }, false);
+      branchWidget._puzzle = { items: [{ id: "missing", hint: "" }] };
+      branchWidget._foundIds = {};
+      branchWidget._cellsByKey = {};
+      branchWidget._itemsById = { missing: { id: "missing", hint: "" } };
+      branchWidget._listById = {};
+      branchWidget.markPlacementFound({ id: "missing", word: "A", row: 0, col: 0, dir: "BAD" }, true);
+      branchWidget._foundIds = {};
+      branchWidget._placementsById = {};
+      branchWidget.resolveHintPlacement();
+      branchWidget._placementsById = {
+        missing: { id: "missing", word: "CAT", row: 0, col: 0, dir: "E", hint: "" },
+      };
+      branchWidget.resolveHintPlacement();
+      branchWidget.showHint();
+      branchWidget.clearHintPulse();
+      branchWidget._wordSearchHint = null;
+      branchWidget._foundIds = {};
+      branchWidget.showHint();
+
+      var minimalWidget = new window.WordSearchWidget(null, { _existingElements: {} });
+      minimalWidget.render({
+        puzzleType: "word_search",
+        size: 0,
+        grid: [],
+        placements: [],
+        items: [],
+      });
+
+      var zeroGrid = document.createElement("div");
+      var zeroViewport = document.createElement("div");
+      zeroViewport.appendChild(zeroGrid);
+      document.body.appendChild(zeroViewport);
+      var zeroWidget = new window.WordSearchWidget(null, {
+        _existingElements: {
+          gridEl: zeroGrid,
+          gridViewport: zeroViewport,
+        },
+      });
+      zeroWidget.render({
+        puzzleType: "word_search",
+        size: 0,
+        grid: [],
+        placements: [],
+        items: [],
+      });
+
+      return {
+        cellKey: helpers.cellKey(2, 3),
+        boundedCellSizes: [
+          helpers.computeBoundedCellSize(1000, 10, 6),
+          helpers.computeBoundedCellSize(440, 10, 6),
+          helpers.computeBoundedCellSize(200, 10, 6),
+        ],
+        directionVectors: directions.map(function (direction) {
+          return helpers.directionVector(direction);
+        }),
+        selections: [
+          helpers.selectionCells(0, 0, 0, 2).length,
+          helpers.selectionCells(0, 0, 2, 0).length,
+          helpers.selectionCells(0, 0, 2, 2).length,
+          helpers.selectionCells(2, 0, 0, 2).length,
+          helpers.selectionCells(0, 0, 1, 2).length,
+        ],
+        events: events,
+        invalidText: invalidText,
+        listText: Array.prototype.map.call(list.children, function (element) {
+          return element.textContent;
+        }),
+        progressText: progress.textContent,
+        statusText: status.textContent,
+        zeroColumnCount: zeroWidget._currentColumnCount,
+      };
+    });
+
+    expect(result.cellKey).toBe("2:3");
+    expect(result.boundedCellSizes).toEqual([44, 38, 36]);
+    expect(result.directionVectors).toContainEqual({ row: 0, col: 0 });
+    expect(result.selections).toEqual([3, 3, 3, 3, 0]);
+    expect(result.events.map((event) => event.name)).toEqual(expect.arrayContaining(["completed", "reveal"]));
+    expect(result.invalidText).toBe("Word search specification invalid");
+    expect(result.listText).toEqual(["CAT", "DOG"]);
+    expect(result.progressText).toBe("2 of 2 found");
+    expect(result.statusText).toBe("All words revealed.");
+    expect(result.zeroColumnCount).toBe(0);
+  });
+});
+
+test.describe("Word search controller coverage", () => {
+  test("covers app puzzle-type buttons and word-search generate fallbacks", async ({ page }) => {
+    await page.goto("/blank.html");
+    await page.setContent(appShellHtml.replace('id="puzzleToolbar"', 'id="removedPuzzleToolbar"'));
+    await page.evaluate(() => {
+      window.__selectedPuzzleTypes = [];
+      window.__builtSpecs = [];
+      window.__generatedPayloads = [];
+      window.__generateCalls = [];
+      window.fetch = function (url) {
+        if (String(url).indexOf("/api/generate") >= 0) {
+          return Promise.resolve({
+            ok: true,
+            json: function () {
+              return Promise.resolve({
+                puzzle_type: "word_search",
+                subtitle: "",
+                description: "",
+                layout_seed: "",
+                layout_version: 0,
+                options: null,
+                balance: {
+                  available_coins: 8,
+                  coin_value_cents: 100,
+                  generation_cost_coins: 4,
+                },
+              });
+            },
+          });
+        }
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          json: function () {
+            return Promise.resolve({});
+          },
+        });
+      };
+      window.HecateApp = {
+        setSelectedPuzzleType: function (puzzleType) {
+          window.__selectedPuzzleTypes.push(puzzleType);
+        },
+        buildPuzzleFromSpecification: function (specification) {
+          window.__builtSpecs.push(specification);
+          return { puzzleType: specification.puzzle_type };
+        },
+        loadPrebuilt: function () {
+          return Promise.resolve([]);
+        },
+        addGeneratedPuzzle: function (payload) {
+          window.__generatedPayloads.push(payload);
+        },
+      };
+    });
+    await loadScript(page, "app.js");
+
+    var firstResult = await page.evaluate(async () => {
+      var app = window.__HECATE_TEST__.app;
+      app.setLoggedIn(true);
+      app.updateBalance({
+        available_coins: 8,
+        coin_value_cents: 100,
+        generation_cost_coins: 4,
+      });
+      document.getElementById("landingTypeWordSearch").click();
+      app.showPuzzle();
+      app.showGenerateForm();
+      document.getElementById("generateTypeCrossword").click();
+      document.getElementById("generateTypeWordSearch").click();
+      document.getElementById("topicInput").value = "Forest paths";
+      document.getElementById("generateBtn").disabled = false;
+      document.getElementById("generateBtn").click();
+      document.getElementById("landingTryPrebuilt").click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return {
+        builtSpecs: window.__builtSpecs.slice(),
+        generatedPayloads: window.__generatedPayloads.slice(),
+        selectedPuzzleTypes: window.__selectedPuzzleTypes.slice(),
+      };
+    });
+
+    expect(firstResult.selectedPuzzleTypes).toEqual(expect.arrayContaining(["crossword", "word_search"]));
+    expect(firstResult.builtSpecs[0].items).toEqual([]);
+    expect(firstResult.builtSpecs[0].title).toBe("Forest paths");
+    expect(firstResult.generatedPayloads[0].puzzleType).toBe("word_search");
+  });
+
+  test("covers app generate fallback title from the topic", async ({ page }) => {
+    await page.goto("/blank.html");
+    await page.setContent(appShellHtml);
+    await page.evaluate(() => {
+      window.__generateCalls = [];
+      window.__renderedPayloads = [];
+      window.fetch = function (url) {
+        if (String(url).indexOf("/api/generate") >= 0) {
+          return Promise.resolve({
+            ok: true,
+            json: function () {
+              return Promise.resolve({
+                items: [{ word: "orbit", definition: "Path", hint: "route" }],
+              });
+            },
+          });
+        }
+        return Promise.resolve({
+          ok: false,
+          status: 401,
+          json: function () {
+            return Promise.resolve({});
+          },
+        });
+      };
+      window.generateCrossword = function (items, opts) {
+        window.__generateCalls.push({ items: items, opts: opts });
+        return { entries: [], overlaps: [] };
+      };
+      window.HecateApp = {
+        render: function (payload) {
+          window.__renderedPayloads.push(payload);
+        },
+      };
+    });
+    await loadScript(page, "app.js");
+
+    var fallbackResult = await page.evaluate(async () => {
+      var app = window.__HECATE_TEST__.app;
+      app.setLoggedIn(true);
+      app.updateBalance({
+        available_coins: 8,
+        coin_value_cents: 100,
+        generation_cost_coins: 4,
+      });
+      app.showPuzzle();
+      app.showGenerateForm();
+      document.getElementById("topicInput").value = "Fallback Topic";
+      document.getElementById("generateBtn").disabled = false;
+      document.getElementById("generateBtn").click();
+      await new Promise((resolve) => setTimeout(resolve, 20));
+      return {
+        generateCalls: window.__generateCalls.slice(),
+        renderedPayloads: window.__renderedPayloads.slice(),
+      };
+    });
+
+    expect(fallbackResult.generateCalls[0].opts.title).toBe("Fallback Topic");
+    expect(fallbackResult.renderedPayloads[0].puzzleType).toBe("crossword");
+  });
+
+  test("covers crossword word-search rendering and helper branches", async ({ page }) => {
+    await page.goto("/blank.html");
+    await page.setContent(appShellHtml);
+    await page.evaluate((specification) => {
+      window.fetch = function () {
+        return Promise.resolve({
+          ok: true,
+          json: function () {
+            return Promise.resolve([specification]);
+          },
+        });
+      };
+    }, defaultPuzzles[0]);
+    await loadScript(page, "generator.js");
+    await loadScript(page, "word-search-generator.js");
+    await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
+    await page.evaluate(() => {
+      window.WordSearchWidget.prototype.recalculate = null;
+    });
+    await loadScript(page, "crossword.js");
+    await page.waitForFunction(() => window.__HECATE_TEST__ && window.__HECATE_TEST__.crossword);
+
+    var result = await page.evaluate(() => {
+      var crossword = window.__HECATE_TEST__.crossword;
+      var wordSearchSpec = {
+        puzzle_type: "word_search",
+        title: "Forest Finds",
+        subtitle: "",
+        description: 7,
+        items: [
+          { word: "moss", definition: "Soft green carpet", hint: "damp stone" },
+          { word: "fern", definition: "Feathery plant", hint: "fiddlehead" },
+          { word: "cedar", definition: "Evergreen", hint: "aromatic" },
+        ],
+        layout_seed: "",
+        layout_version: 0,
+        options: null,
+      };
+      crossword.createDeterministicRandom("")();
+      var wordSearchPuzzle = crossword.buildPuzzleFromSpecification(wordSearchSpec);
+      var emptyMiniGrid = window.HecateApp.renderMiniGrid({ puzzleType: "word_search", grid: [] });
+      var miniGrid = window.HecateApp.renderMiniGrid(wordSearchPuzzle);
+      var missingWordSearch = window.HecateApp.openFirstPuzzleOfType("word_search");
+      document.getElementById("across").remove();
+      document.getElementById("down").remove();
+      window.HecateApp.render(wordSearchPuzzle);
+      var selectedFromPublicHook = window.HecateApp.getSelectedPuzzleType();
+      window.HecateApp.setSelectedPuzzleType("crossword");
+      crossword.setSelectedPuzzleType("word_search");
+      var storedWordSearch = crossword.buildStoredPuzzleFromResponse({
+        puzzle_type: "word_search",
+        subtitle: "",
+        items: wordSearchSpec.items,
+        options: { directions: ["E"] },
+      }, "owned", 3);
+      var sharedDefaultWordSearch = crossword.buildSharedPuzzleFromResponse({
+        puzzle_type: "word_search",
+        title: "",
+        subtitle: "",
+        items: wordSearchSpec.items,
+        layout_version: 0,
+        options: null,
+      }, "");
+      var sharedWordSearch = crossword.buildSharedPuzzleFromResponse({
+        puzzle_type: "word_search",
+        title: "Shared Word Search",
+        subtitle: "",
+        items: wordSearchSpec.items,
+        layout_version: 1,
+        options: { directions: ["E"] },
+      }, "shared-seed-token");
+      var sharedExplicitSeed = crossword.buildSharedPuzzleFromResponse({
+        puzzle_type: "word_search",
+        title: "Shared Explicit",
+        subtitle: "",
+        items: wordSearchSpec.items,
+        layout_seed: "explicit-shared-seed",
+      }, "ignored-token");
+      return {
+        activePuzzleType: window.HecateApp.getActivePuzzle() && window.HecateApp.getActivePuzzle().puzzleType,
+        emptyMiniGridCellCount: emptyMiniGrid.children.length,
+        invalidTypeIsValid: crossword.validatePuzzleSpecification({
+          puzzle_type: "maze",
+          title: "Bad",
+          subtitle: "",
+          items: [],
+        }),
+        miniGridCells: miniGrid.children.length,
+        missingWordSearch: missingWordSearch,
+        selectedFromPublicHook: selectedFromPublicHook,
+        sharedDefaultSeed: sharedDefaultWordSearch.layoutSeed,
+        sharedExplicitSeed: sharedExplicitSeed.layoutSeed,
+        sharedPuzzleType: sharedWordSearch.puzzleType,
+        sharedPuzzleVersion: sharedWordSearch.layoutVersion,
+        sharedPuzzleDirections: sharedWordSearch.options.directions,
+        storedPuzzleType: storedWordSearch.puzzleType,
+        storedTitle: storedWordSearch.title,
+        testHookSelectedType: window.__HECATE_TEST__.crossword.preparePuzzle({ puzzle_type: "word_search" }, "", 9).puzzleType,
+        wordSearchPanelHidden: document.getElementById("wordSearchPanel").hidden,
+      };
+    });
+
+    expect(result.emptyMiniGridCellCount).toBe(0);
+    expect(result.invalidTypeIsValid).toBe(false);
+    expect(result.miniGridCells).toBeGreaterThan(0);
+    expect(result.missingWordSearch).toBeNull();
+    expect(result.selectedFromPublicHook).toBe("word_search");
+    expect(result.sharedDefaultSeed).toBe("shared:");
+    expect(result.sharedExplicitSeed).toBe("explicit-shared-seed");
+    expect(result.sharedPuzzleType).toBe("word_search");
+    expect(result.sharedPuzzleVersion).toBe(1);
+    expect(result.sharedPuzzleDirections).toEqual(["E"]);
+    expect(result.storedPuzzleType).toBe("word_search");
+    expect(result.storedTitle).toBe("Word Search");
+    expect(result.testHookSelectedType).toBe("word_search");
+    expect(result.wordSearchPanelHidden).toBe(false);
+  });
+
+  test("covers landing word-search samples and word-search generator edges", async ({ page }) => {
+    await page.goto("/blank.html");
+    await page.setContent(`<!doctype html>
+      <html>
+        <body>
+          <h1 class="landing__title"></h1>
+          <p class="landing__subtitle"></p>
+          <div id="landingSamplePuzzle"></div>
+        </body>
+      </html>`);
+    await page.evaluate(() => {
+      window.fetch = function () {
+        return Promise.resolve({
+          ok: false,
+          json: function () {
+            return Promise.resolve([]);
+          },
+        });
+      };
+      window.HecateApp = {
+        getSelectedPuzzleType: function () {
+          return "word_search";
+        },
+      };
+    });
+    await loadScript(page, "generator.js");
+    await loadScript(page, "word-search-generator.js");
+    await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
+    await loadScript(page, "landing-puzzle.js");
+    await page.waitForFunction(() => document.querySelector("#landingSamplePuzzle .word-search-cell"));
+
+    var landingResult = await page.evaluate(() => {
+      var landing = window.__HECATE_TEST__.landing;
+      var generator = window.generateWordSearch.__test;
+      var unsupportedMessage = "";
+      var emptyMessage = "";
+      var failedMessage = "";
+      try {
+        window.generateWordSearch([], {});
+      } catch (error) {
+        emptyMessage = error.message;
+      }
+      try {
+        window.generateWordSearch(null, {});
+      } catch (_) {}
+      try {
+        window.generateWordSearch([{ word: "moss", definition: "", hint: "" }], { layoutVersion: 2 });
+      } catch (error) {
+        unsupportedMessage = error.message;
+      }
+      window.generateWordSearch([{ word: "moss", definition: "", hint: "" }]);
+      landing.createDeterministicRandom("")();
+      landing.buildPuzzleFromSpecification({
+        puzzle_type: "word_search",
+        title: "Sparse Word Search",
+        items: [{ word: "moss", definition: "", hint: "" }],
+        layout_seed: "landing-sparse",
+      });
+      try {
+        landing.buildPuzzleFromSpecification({
+          puzzle_type: "crossword",
+          subtitle: "",
+          items: [
+            { word: "orbit", definition: "Path", hint: "route" },
+            { word: "tides", definition: "Ocean", hint: "shore" },
+            { word: "lunar", definition: "Moon", hint: "night" },
+          ],
+        });
+      } catch (_) {}
+      try {
+        generator.buildWordSearchFromNormalizedItems(
+          [{ id: "W0", word: "TOOLONG", definition: "", hint: "" }],
+          {},
+          ["E"],
+          "forced",
+          1,
+          2,
+          2
+        );
+      } catch (error) {
+        failedMessage = error.message;
+      }
+      generator.createDeterministicRandom("")();
+      generator.normalizePuzzleWord(null);
+      try {
+        generator.normalizeItems([null]);
+      } catch (_) {}
+      generator.buildPayload([], [], [], {}, []);
+      var normalized = generator.normalizeItems([
+        { word: "moss", definition: null, hint: null },
+        { word: "moss", definition: "duplicate", hint: "duplicate" },
+        { word: "fern", definition: "", hint: "" },
+      ]);
+      var candidates = generator.collectCandidates(
+        [["X", "X"], ["X", "X"]],
+        2,
+        { word: "CAT" },
+        ["E"],
+        function () { return 0.5; }
+      );
+      return {
+        candidatesLength: candidates.length,
+        defaultPayloadTitle: generator.buildPayload([], [], [], {}, []).title,
+        duplicateLength: normalized.length,
+        emptyMessage: emptyMessage,
+        failedMessage: failedMessage,
+        fallbackMissing: landing.findSpecificationByType([], "word_search"),
+        landingSubtitle: document.querySelector(".landing__subtitle").textContent,
+        landingTitle: document.querySelector(".landing__title").textContent,
+        normalizedDirections: generator.normalizeDirections({ directions: ["BAD"] }).length,
+        unsupportedMessage: unsupportedMessage,
+      };
+    });
+
+    expect(landingResult.candidatesLength).toBe(0);
+    expect(landingResult.duplicateLength).toBe(2);
+    expect(landingResult.emptyMessage).toContain("No valid words");
+    expect(landingResult.failedMessage).toContain("Failed to generate");
+    expect(landingResult.fallbackMissing).toBeNull();
+    expect(landingResult.landingSubtitle).toContain("Switch formats");
+    expect(landingResult.landingTitle).toContain("Create crosswords");
+    expect(landingResult.normalizedDirections).toBe(8);
+    expect(landingResult.unsupportedMessage).toContain("Unsupported");
+  });
+
+  test("covers landing sample rendering without landing copy nodes", async ({ page }) => {
+    await page.goto("/blank.html");
+    await page.setContent('<!doctype html><html><body><div id="landingSamplePuzzle"></div></body></html>');
+    await page.evaluate(() => {
+      window.fetch = function () {
+        return Promise.resolve({
+          ok: true,
+          json: function () {
+            return Promise.resolve([]);
+          },
+        });
+      };
+      window.HecateApp = {
+        getSelectedPuzzleType: function () {
+          return "crossword";
+        },
+      };
+    });
+    await loadScript(page, "generator.js");
+    await loadScript(page, "word-search-generator.js");
+    await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
+    await loadScript(page, "landing-puzzle.js");
+    await page.waitForFunction(() => document.querySelector("#landingSamplePuzzle .cell"));
+    expect(await page.locator("#landingSamplePuzzle").textContent()).toContain("Moon Signals");
+  });
+
+  test("covers shared landing word-search metadata branches", async ({ page }) => {
+    await page.goto("/blank.html?puzzle=shared-word-search");
+    await page.setContent(`<!doctype html>
+      <html>
+        <body>
+          <h1 class="landing__title"></h1>
+          <p class="landing__subtitle"></p>
+          <div id="landingSamplePuzzle"></div>
+        </body>
+      </html>`);
+    await page.evaluate(() => {
+      window.fetch = function () {
+        return Promise.resolve({
+          ok: true,
+          json: function () {
+            return Promise.resolve({
+              puzzle_type: "word_search",
+              title: "Shared Forest",
+              subtitle: "Shared subtitle",
+              description: "Shared description",
+              items: [
+                { word: "moss", definition: "Soft green carpet", hint: "damp stone" },
+                { word: "fern", definition: "Feathery plant", hint: "fiddlehead" },
+                { word: "cedar", definition: "Evergreen", hint: "aromatic" },
+              ],
+              layout_seed: "shared-layout",
+              layout_version: 1,
+              options: { directions: ["E"] },
+            });
+          },
+        });
+      };
+    });
+    await loadScript(page, "generator.js");
+    await loadScript(page, "word-search-generator.js");
+    await loadScript(page, "crossword-widget.js");
+    await loadScript(page, "word-search-widget.js");
+    await loadScript(page, "landing-puzzle.js");
+    await page.waitForFunction(() => document.querySelector("#landingSamplePuzzle .word-search-cell"));
+
+    expect(await page.locator(".landing__title").textContent()).toBe("Shared Forest");
+    expect(await page.locator("#landingSamplePuzzle").textContent()).toContain("Shared Forest");
+  });
+
+  test("covers shared landing item fallback with stubbed rendering", async ({ page }) => {
+    await page.goto("/blank.html?puzzle=shared-missing-items");
+    await page.setContent(`<!doctype html>
+      <html>
+        <body>
+          <h1 class="landing__title"></h1>
+          <p class="landing__subtitle"></p>
+          <div id="landingSamplePuzzle"></div>
+        </body>
+      </html>`);
+    await page.evaluate(() => {
+      window.fetch = function () {
+        return Promise.resolve({
+          ok: true,
+          json: function () {
+            return Promise.resolve({
+              puzzle_type: "word_search",
+              title: "Sparse Shared",
+              subtitle: "",
+            });
+          },
+        });
+      };
+      window.generateCrossword = function () {
+        return { title: "unused", entries: [], overlaps: [] };
+      };
+      window.generateWordSearch = function (items) {
+        window.__sharedItemsFallbackLength = items.length;
+        return {
+          puzzleType: "word_search",
+          title: "Sparse Shared",
+          grid: [],
+          placements: [],
+          items: [],
+          size: 0,
+        };
+      };
+      window.WordSearchWidget = function (container) {
+        this.render = function () {
+          container.textContent = "stub word search rendered";
+        };
+      };
+      window.CrosswordWidget = function () {};
+    });
+    await loadScript(page, "landing-puzzle.js");
+    await page.waitForFunction(() => window.__sharedItemsFallbackLength === 0);
+
+    expect(await page.locator("#landingSamplePuzzle").textContent()).toContain("stub word search rendered");
   });
 });

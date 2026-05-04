@@ -1,3 +1,5 @@
+// @ts-check
+
 /* service-config.js — resolve browser-facing service URLs */
 (function () {
   "use strict";
@@ -25,7 +27,7 @@
   }
 
   function readRuntimeServices() {
-    var runtimeConfig = window.LLMCrosswordRuntimeConfig;
+    var runtimeConfig = window.HecateRuntimeConfig;
     var services = runtimeConfig && typeof runtimeConfig === "object" ? runtimeConfig.services : null;
 
     if (!services || typeof services !== "object") {
@@ -115,7 +117,7 @@
     return joinUrl(getAuthBaseUrl(), path);
   }
 
-  window.LLMCrosswordServices = Object.freeze({
+  window.HecateServices = Object.freeze({
     buildApiUrl: buildApiUrl,
     buildAuthUrl: buildAuthUrl,
     getApiBaseUrl: getApiBaseUrl,

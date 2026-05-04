@@ -58,11 +58,10 @@ async function loadAdminScript(page) {
 }
 
 test.describe("Admin billing coverage", () => {
-  test("covers startup drawer restore when billing checkout requested it", async ({ page }) => {
+  test("does not auto-open the billing drawer on startup", async ({ page }) => {
     await page.goto("/blank.html");
     await page.setContent(buildAdminBillingShell());
     await page.evaluate(() => {
-      window.sessionStorage.setItem("llm-crossword-billing-restore-drawer", "1");
       window.fetch = function (url) {
         if (String(url).indexOf("/api/session") >= 0) {
           return Promise.resolve({
@@ -88,17 +87,14 @@ test.describe("Admin billing coverage", () => {
     });
     await loadAdminScript(page);
 
-    await expect(page.locator("#settingsDrawer")).toHaveAttribute("open", "");
-    await expect.poll(async () => page.evaluate(() =>
-      window.sessionStorage.getItem("llm-crossword-billing-restore-drawer")
-    )).toBeNull();
+    await expect(page.locator("#settingsDrawer")).not.toHaveAttribute("open", "");
   });
 
   test("covers admin billing helpers, events, and coordinator actions", async ({ page }) => {
     await page.goto("/blank.html");
     await page.setContent(buildAdminBillingShell());
     await page.evaluate(() => {
-      window.__LLM_CROSSWORD_TEST__ = {};
+      window.__HECATE_TEST__ = {};
       window.__checkoutCalls = [];
       window.__portalCalls = 0;
       window.__scrollCalls = [];
@@ -127,10 +123,8 @@ test.describe("Admin billing coverage", () => {
     await loadAdminScript(page);
 
     const result = await page.evaluate(async () => {
-      var admin = window.__LLM_CROSSWORD_TEST__.admin;
+      var admin = window.__HECATE_TEST__.admin;
       var manageButton = document.getElementById("settingsManageBillingButton");
-      var originalGetItem = window.sessionStorage.getItem;
-      var originalURL = window.URL;
       var outcomes = {};
 
       async function flushPromises() {
@@ -144,18 +138,6 @@ test.describe("Admin billing coverage", () => {
       outcomes.generationCostMissing = admin.getGenerationCostCredits({});
       outcomes.balanceInvalid = admin.getBalanceCredits({ available_cents: "nope" });
       outcomes.emptyPackLabel = admin.getBillingPackLabel("");
-
-      window.URL = function () {
-        throw new Error("bad url");
-      };
-      outcomes.pendingReturnError = admin.hasPendingBillingReturn();
-      window.URL = originalURL;
-
-      window.sessionStorage.getItem = function () {
-        throw new Error("blocked");
-      };
-      outcomes.restoreDrawerError = admin.shouldRestoreBillingDrawer();
-      window.sessionStorage.getItem = originalGetItem;
 
       admin.setBillingSummary(null);
       outcomes.emptySummary = {
@@ -202,7 +184,7 @@ test.describe("Admin billing coverage", () => {
       manageButton.click();
       outcomes.portalCallsWithoutProvider = window.__portalCalls;
 
-      window.CrosswordBilling = {
+      window.HecateBilling = {
         getState: function () {
           return { lastStatus: { message: "Billing synced", tone: "success" } };
         },
@@ -228,10 +210,10 @@ test.describe("Admin billing coverage", () => {
       manageButton.click();
       await flushPromises();
 
-      window.CrosswordBilling.requestCheckout = function () {
+      window.HecateBilling.requestCheckout = function () {
         return Promise.reject(new Error("checkout failed"));
       };
-      window.CrosswordBilling.requestPortalSession = function () {
+      window.HecateBilling.requestPortalSession = function () {
         return Promise.reject(new Error("portal failed"));
       };
       document.querySelector("[data-billing-pack-button]").click();
@@ -258,10 +240,10 @@ test.describe("Admin billing coverage", () => {
         packButtonValue: document.querySelector("[data-billing-pack-button]").getAttribute("data-billing-pack-button"),
       };
 
-      window.dispatchEvent(new CustomEvent("llm-crossword:billing-status"));
+      window.dispatchEvent(new CustomEvent("hecate:billing-status"));
       outcomes.statusAfterEmptyEvent = document.getElementById("settingsBillingStatus").textContent;
 
-      window.dispatchEvent(new CustomEvent("llm-crossword:billing-open-request"));
+      window.dispatchEvent(new CustomEvent("hecate:billing-open-request"));
       await flushPromises();
       outcomes.drawerOpen = document.getElementById("settingsDrawer").getAttribute("open");
       outcomes.scrollCalls = window.__scrollCalls.slice();
@@ -275,8 +257,6 @@ test.describe("Admin billing coverage", () => {
     expect(result.generationCostMissing).toBeNull();
     expect(result.balanceInvalid).toBeNull();
     expect(result.emptyPackLabel).toBe("");
-    expect(result.pendingReturnError).toBe(false);
-    expect(result.restoreDrawerError).toBe(false);
     expect(result.emptySummary).toEqual({
       balance: "—",
       manageDisplay: "none",
@@ -285,7 +265,7 @@ test.describe("Admin billing coverage", () => {
     expect(result.liveSummary.balance).toBe("3 credits");
     expect(result.liveSummary.manageDisplay).toBe("");
     expect(result.liveSummary.manageDisabled).toBe(false);
-    expect(result.liveSummary.meta).toBe("Each new crossword costs 6 credits. Purchases are granted after Paddle confirms payment.");
+    expect(result.liveSummary.meta).toBe("Each new puzzle costs 6 credits. Purchases are granted after Paddle confirms payment.");
     expect(result.liveSummary.packText).toContain("—");
     expect(result.liveSummary.activityText).toContain("Billing activity recorded.");
     expect(result.liveSummary.activityText).toContain("completed");
@@ -316,7 +296,7 @@ test.describe("Admin billing coverage", () => {
       includePackList: false,
     }));
     await page.evaluate(() => {
-      window.__LLM_CROSSWORD_TEST__ = {};
+      window.__HECATE_TEST__ = {};
       window.fetch = function (url) {
         if (String(url).indexOf("/api/session") >= 0) {
           return Promise.resolve({
@@ -339,7 +319,7 @@ test.describe("Admin billing coverage", () => {
     await loadAdminScript(page);
 
     const result = await page.evaluate(async () => {
-      var admin = window.__LLM_CROSSWORD_TEST__.admin;
+      var admin = window.__HECATE_TEST__.admin;
       var outcomes = {};
 
       async function flushPromises() {
@@ -350,10 +330,6 @@ test.describe("Admin billing coverage", () => {
 
       outcomes.balanceNull = admin.getBalanceCredits(null);
       outcomes.blankTimestamp = admin.formatBillingTimestamp("");
-
-      window.history.replaceState({}, "", "/blank.html?billing_transaction_id=txn_restore");
-      outcomes.restoreDrawerWithReturn = admin.shouldRestoreBillingDrawer();
-      window.history.replaceState({}, "", "/blank.html");
 
       admin.renderBillingActivity(null);
       admin.renderBillingPacks(null);
@@ -366,7 +342,7 @@ test.describe("Admin billing coverage", () => {
       });
 
       document.getElementById("settingsBillingPanel").scrollIntoView = null;
-      window.dispatchEvent(new CustomEvent("llm-crossword:billing-open-request"));
+      window.dispatchEvent(new CustomEvent("hecate:billing-open-request"));
       await flushPromises();
 
       outcomes.balanceValue = document.getElementById("settingsBillingBalanceValue").textContent;
@@ -377,7 +353,6 @@ test.describe("Admin billing coverage", () => {
 
     expect(result.balanceNull).toBeNull();
     expect(result.blankTimestamp).toBe("—");
-    expect(result.restoreDrawerWithReturn).toBe(true);
     expect(result.balanceValue).toBe("—");
     expect(result.metaValue).toBe("Purchases are granted after Paddle confirms payment.");
     expect(result.drawerOpen).toBe("");

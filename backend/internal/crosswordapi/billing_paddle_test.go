@@ -51,7 +51,7 @@ func TestPaddleBillingProviderParseWebhookEvent(t *testing.T) {
 	      "email": "user@example.com"
 	    },
 	    "custom_data": {
-	      "crossword_user_id": "user-123",
+	      "hecate_user_id": "user-123",
 	      "user_email": "user@example.com",
 	      "pack_code": "starter",
 	      "credits": "20"

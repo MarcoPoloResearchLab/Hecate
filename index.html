@@ -3,20 +3,22 @@
 <head>
   <meta charset="utf-8"/>
   <meta content="width=device-width,initial-scale=1" name="viewport"/>
-  <title>LLM Crossword Puzzle Widget</title>
-  <meta name="description" content="Interactive crossword puzzle generator and solver powered by large language models."/>
+  <title>Hecate</title>
+  <meta name="description" content="Create crosswords and word searches with AI in one interactive puzzle workspace."/>
   <link rel="canonical" href="https://llm-crossword.mprlab.com/"/>
   <link rel="icon" type="image/svg+xml" href="/assets/img/llm_crossword_favicon.svg"/>
   <link rel="icon" type="image/png" sizes="512x512" href="/assets/img/llm_crossword_favicon.png"/>
   <link rel="shortcut icon" type="image/x-icon" href="/assets/img/llm_crossword_favicon.ico"/>
   <link rel="apple-touch-icon" href="/assets/img/llm_crossword_favicon.png"/>
-  <meta property="og:title" content="LLM Crossword Puzzle Widget"/>
-  <meta property="og:description" content="Interactive crossword puzzle generator and solver powered by large language models."/>
+  <meta property="og:title" content="Hecate"/>
+  <meta property="og:description" content="Create crosswords and word searches with AI in one interactive puzzle workspace."/>
   <meta property="og:url" content="https://llm-crossword.mprlab.com/"/>
 
   <!-- load order matters: generator -> renderer -> app -->
   <link as="script" href="js/generator.js" rel="preload">
+  <link as="script" href="js/word-search-generator.js" rel="preload">
   <link as="script" href="js/crossword-widget.js" rel="preload">
+  <link as="script" href="js/word-search-widget.js" rel="preload">
   <link as="script" href="js/crossword.js" rel="preload">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
 
@@ -36,7 +38,6 @@
 
   <!-- App runtime config for API and billing -->
   <script src="./js/runtime-auth-config.js"></script>
-  <script src="./js/runtime-auth-config.override.js"></script>
   <script src="./js/service-config.js"></script>
   <script defer src="https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js"></script>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
@@ -44,7 +45,10 @@
   <script src="https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui-config.js"></script>
   <script>
     (function () {
-      var configUrl = "/configs/frontend-config.yml";
+      var configUrl = window.HecateServices &&
+        typeof window.HecateServices.getConfigUrl === "function"
+        ? window.HecateServices.getConfigUrl()
+        : "/configs/frontend-config.yml";
       var mprUiBundleUrl = "https://cdn.jsdelivr.net/gh/MarcoPoloResearchLab/mpr-ui@latest/mpr-ui.js";
 
       function loadMprUiBundle() {
@@ -90,7 +94,7 @@
 <mpr-header
   id="app-header"
   base-url="/"
-  brand-label="LLM Crossword"
+  brand-label="Hecate"
   brand-href="/"
   data-config-url="/configs/frontend-config.yml"
   user-menu-display-mode="avatar"
@@ -123,20 +127,43 @@
         <img
           class="landing__logo"
           src="/assets/img/llm_crossword_favicon.svg"
-          alt="LLM Crossword logo"
+          alt="Hecate logo"
           width="512"
           height="512"
         />
       </div>
-      <p class="landing__eyebrow">LLM Crossword</p>
+      <p class="landing__eyebrow">Hecate</p>
     </div>
-    <h1 class="landing__title">Create crossword puzzles with AI</h1>
+    <h1 class="landing__title">Create crosswords and word searches with AI</h1>
     <p class="landing__subtitle">
-      Enter any topic and let a large language model generate a unique
-      crossword puzzle for you. Try pre-built puzzles or sign in to create your own.
+      Choose a puzzle type, generate it from any topic, and solve everything inside one Hecate workspace.
     </p>
+    <div class="landing__type-grid" aria-label="Choose a puzzle type">
+      <button
+        id="landingTypeCrossword"
+        class="landing__type-card landing__type-card--selected"
+        type="button"
+        data-landing-puzzle-type
+        data-puzzle-type="crossword"
+        aria-pressed="true"
+      >
+        <span class="landing__type-label">Crossword</span>
+        <span class="landing__type-desc">Solve clue-driven answers in an intersecting grid.</span>
+      </button>
+      <button
+        id="landingTypeWordSearch"
+        class="landing__type-card"
+        type="button"
+        data-landing-puzzle-type
+        data-puzzle-type="word_search"
+        aria-pressed="false"
+      >
+        <span class="landing__type-label">Word Search</span>
+        <span class="landing__type-desc">Find hidden words in a straight-line letter grid.</span>
+      </button>
+    </div>
     <div class="landing__actions">
-      <button id="landingTryPrebuilt" class="landing__btn landing__btn--primary">Try a pre-built puzzle</button>
+      <button id="landingTryPrebuilt" class="landing__btn landing__btn--primary">Try a sample puzzle</button>
       <button id="landingSignIn" class="landing__btn landing__btn--secondary">Sign in to generate</button>
     </div>
   </div>
@@ -169,9 +196,9 @@
   <!-- Left sidebar with puzzle cards -->
   <aside id="puzzleSidebar" class="puzzle-sidebar">
     <div id="puzzleSidebarContent" class="puzzle-sidebar__content">
-      <div id="newCrosswordCard" class="puzzle-card puzzle-card--new">
+      <div id="newPuzzleCard" class="puzzle-card puzzle-card--new">
         <div class="puzzle-card__icon">+</div>
-        <div class="puzzle-card__title">New Crossword</div>
+        <div class="puzzle-card__title">New Puzzle</div>
       </div>
       <div id="puzzleCardList" class="puzzle-card-list"></div>
     </div>
@@ -198,7 +225,7 @@
             id="puzzleInfoButton"
             class="puzzle-info-button"
             type="button"
-            aria-label="About this crossword"
+            aria-label="About this puzzle"
             aria-controls="puzzleInfoPopover"
             aria-expanded="false"
             hidden
@@ -213,9 +240,27 @@
       </div>
     </div>
 
-    <!-- Generate form (shown when "New Crossword" card is selected) -->
+    <!-- Generate form (shown when "New Puzzle" card is selected) -->
     <div id="generatePanel" class="panel-bar" style="display:none;">
       <div class="generate-form">
+        <div class="puzzle-type-switch" role="group" aria-label="Puzzle type">
+          <button
+            id="generateTypeCrossword"
+            class="puzzle-type-switch__button puzzle-type-switch__button--active"
+            type="button"
+            data-generate-puzzle-type
+            data-puzzle-type="crossword"
+            aria-pressed="true"
+          >Crossword</button>
+          <button
+            id="generateTypeWordSearch"
+            class="puzzle-type-switch__button"
+            type="button"
+            data-generate-puzzle-type
+            data-puzzle-type="word_search"
+            aria-pressed="false"
+          >Word Search</button>
+        </div>
         <input type="text" id="topicInput" placeholder="Enter a topic (e.g. Greek mythology)" maxlength="200"/>
         <label class="word-count-label">
           Words:
@@ -265,11 +310,21 @@
         <div id="descriptionPanel" class="clues__header" hidden>
           <p id="descriptionContent" class="clues__description" hidden></p>
         </div>
-        <div class="cluegrp"><h3>Across</h3>
-          <ol id="across"></ol>
+        <div id="crosswordCluePanel">
+          <div class="cluegrp"><h3>Across</h3>
+            <ol id="across"></ol>
+          </div>
+          <div class="cluegrp"><h3>Down</h3>
+            <ol id="down"></ol>
+          </div>
         </div>
-        <div class="cluegrp"><h3>Down</h3>
-          <ol id="down"></ol>
+        <div id="wordSearchPanel" class="word-search-panel" hidden>
+          <div class="word-search-panel__header">
+            <h3 class="word-search-panel__title">Find these words</h3>
+            <div id="wordSearchProgress" class="word-search-panel__progress">0 of 0 found</div>
+          </div>
+          <div id="wordSearchHint" class="word-search-panel__hint" hidden></div>
+          <ol id="wordSearchList" class="word-search-list"></ol>
         </div>
       </div>
     </div>
@@ -345,7 +400,7 @@
             <div class="settings-billing__copy">
               <div class="settings-account-card__details-header">Credits</div>
               <div id="settingsBillingBalanceValue" class="settings-billing__balance">—</div>
-              <p id="settingsBillingBalanceMeta" class="settings-billing__meta">Use credits to generate new crosswords and keep track of purchases here.</p>
+              <p id="settingsBillingBalanceMeta" class="settings-billing__meta">Use credits to generate new puzzles and keep track of purchases here.</p>
             </div>
             <button id="settingsManageBillingButton" class="secondary settings-billing__manage" type="button" style="display:none;">Manage billing</button>
           </div>
@@ -453,14 +508,16 @@
       { "label": "Marco Polo Research Lab LLC", "url": "https://mprlab.com" },
       { "label": "Gravity Notes", "url": "https://gravity.mprlab.com" },
       { "label": "LoopAware", "url": "https://loopaware.mprlab.com" },
-      { "label": "LLM Crossword", "url": "https://llm-crossword.mprlab.com" }
+      { "label": "Hecate", "url": "https://llm-crossword.mprlab.com" }
     ]
   }'
   theme-switcher="toggle"
 ></mpr-footer>
 
 <script src="js/generator.js"></script>
+<script src="js/word-search-generator.js"></script>
 <script src="js/crossword-widget.js"></script>
+<script src="js/word-search-widget.js"></script>
 <script src="js/landing-puzzle.js"></script>
 <script src="js/crossword.js"></script>
 <script src="js/billing.js"></script>

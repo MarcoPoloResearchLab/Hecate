@@ -1,14 +1,14 @@
 // @ts-check
 
 const { test, expect } = require("./coverage-fixture");
-const { setupLoggedOutRoutes } = require("./route-helpers");
+const { setupLoggedOutRoutes, text } = require("./route-helpers");
 
 test.describe("Config — default behavior", () => {
   test("header has base-url set", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
 
-    var baseUrl = await page.locator("mpr-header").getAttribute("base-url");
+    var baseUrl = await page.locator("#app-header").getAttribute("base-url");
     expect(baseUrl).toBeTruthy();
   });
 
@@ -18,7 +18,7 @@ test.describe("Config — default behavior", () => {
         auth: {
           tauthUrl: "https://tauth.example.test",
           googleClientId: "test-google-client-id",
-          tenantId: "crossword",
+          tenantId: "hecate",
           loginPath: "/auth/google",
           logoutPath: "/auth/logout",
           noncePath: "/auth/nonce",
@@ -29,7 +29,7 @@ test.describe("Config — default behavior", () => {
 
     await expect(page.locator("#app-header")).toHaveAttribute("tauth-url", "https://tauth.example.test");
     await expect(page.locator("#app-header")).toHaveAttribute("google-site-id", "test-google-client-id");
-    await expect(page.locator("#app-header")).toHaveAttribute("tauth-tenant-id", "crossword");
+    await expect(page.locator("#app-header")).toHaveAttribute("tauth-tenant-id", "hecate");
   });
 
   test("mpr-ui bootstrap loads the parser, config loader, and bundle once", async ({ page }) => {
@@ -47,11 +47,73 @@ test.describe("Config — default behavior", () => {
     });
   });
 
+  test("localhost runtime config is applied before mpr-ui bootstrap", async ({ page }) => {
+    await setupLoggedOutRoutes(page, {
+      extra: {
+        "**/js/runtime-auth-config.js": (route) =>
+          route.fulfill(text(200, [
+            "(function initRuntimeAuthConfig(globalScope) {",
+            '  "use strict";',
+            "  var hostname = (globalScope.location && globalScope.location.hostname) || \"\";",
+            "  globalScope.HecateRuntimeConfig = Object.freeze(hostname === \"localhost\" ? {",
+            "    billing: Object.freeze({",
+            '      clientToken: "test_local_token",',
+            '      environment: "sandbox",',
+            '      providerCode: "paddle",',
+            "    }),",
+            "    services: Object.freeze({",
+            '      apiBaseUrl: "",',
+            '      authBaseUrl: "",',
+            '      configUrl: "/configs/localhost-frontend-config.yml",',
+            '      tauthScriptUrl: "https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js",',
+            "    }),",
+            "  } : {",
+            "    billing: Object.freeze({",
+            '      clientToken: "live_hosted_token",',
+            '      environment: "production",',
+            '      providerCode: "paddle",',
+            "    }),",
+            "    services: Object.freeze({",
+            '      apiBaseUrl: "https://llm-crossword-api.mprlab.com",',
+            '      authBaseUrl: "https://tauth-api.mprlab.com",',
+            '      configUrl: "/configs/hosted-frontend-config.yml",',
+            '      tauthScriptUrl: "https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js",',
+            "    }),",
+            "  });",
+            "})(window);",
+          ].join("\n"))),
+        "**/configs/localhost-frontend-config.yml*": (route) =>
+          route.fulfill(text(200, [
+            "environments:",
+            '  - description: "Local development"',
+            "    origins:",
+            '      - "http://localhost:8111"',
+            "    auth:",
+            '      tauthUrl: "https://override-auth.example.test"',
+            '      googleClientId: "override-google-client-id"',
+            '      tenantId: "hecate"',
+            '      loginPath: "/auth/google"',
+            '      logoutPath: "/auth/logout"',
+            '      noncePath: "/auth/nonce"',
+            "    authButton:",
+            '      text: "signin_with"',
+            '      size: "large"',
+            '      theme: "outline"',
+            '      shape: "circle"',
+          ].join("\n"))),
+      },
+    });
+    await page.goto("/");
+
+    await expect(page.locator("#app-header")).toHaveAttribute("tauth-url", "https://override-auth.example.test");
+    await expect(page.locator("#app-header")).toHaveAttribute("google-site-id", "override-google-client-id");
+  });
+
   test("service-config keeps frontend config on the site origin when apiBaseUrl is set", async ({ page }) => {
     await page.goto("/blank.html");
     await page.setContent("<!doctype html><html><body><mpr-header id=\"app-header\"></mpr-header></body></html>");
     await page.evaluate(() => {
-      window.LLMCrosswordRuntimeConfig = {
+      window.HecateRuntimeConfig = {
         services: {
           apiBaseUrl: "https://llm-crossword-api.mprlab.com",
         },
@@ -59,35 +121,94 @@ test.describe("Config — default behavior", () => {
     });
     await page.addScriptTag({ url: "/js/service-config.js" });
 
-    expect(await page.evaluate(() => window.LLMCrosswordServices.getConfigUrl())).toBe(
+    expect(await page.evaluate(() => window.HecateServices.getConfigUrl())).toBe(
       "http://localhost:8111/configs/frontend-config.yml"
     );
   });
 
-  test("committed runtime config keeps split-origin service defaults", async ({ page }) => {
+  test("committed runtime config resolves localhost defaults on localhost", async ({ page }) => {
     await page.goto("/blank.html");
     await page.setContent("<!doctype html><html><body></body></html>");
     await page.addScriptTag({ url: "/js/runtime-auth-config.js" });
     await page.addScriptTag({ url: "/js/service-config.js" });
 
-    expect(await page.evaluate(() => window.LLMCrosswordServices.getConfig())).toEqual({
+    expect(await page.evaluate(() => window.HecateServices.getConfig())).toEqual({
+      apiBaseUrl: "http://localhost:8111",
+      authBaseUrl: "http://localhost:8111",
+      configUrl: "/configs/frontend-config.yml",
+      tauthScriptUrl: "https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js",
+    });
+
+    expect(await page.evaluate(() => window.HecateRuntimeConfig.services)).toEqual({
+      apiBaseUrl: "",
+      authBaseUrl: "",
+      configUrl: "/configs/frontend-config.yml",
+      tauthScriptUrl: "https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js",
+    });
+
+    const billingConfig = await page.evaluate(() => window.HecateRuntimeConfig.billing);
+    expect(billingConfig.providerCode).toBe("paddle");
+    expect(billingConfig.environment).toBe("sandbox");
+    expect(billingConfig.clientToken).toMatch(/^test_/);
+  });
+
+  test("committed runtime config selects hosted defaults on non-local hosts", async ({ page, request }) => {
+    var hostedPageUrl = "http://llm-crossword.mprlab.com/hosted-runtime-config-test";
+    var runtimeConfigSource = await request
+      .get("http://localhost:8111/js/runtime-auth-config.js")
+      .then((response) => response.text());
+    var serviceConfigSource = await request
+      .get("http://localhost:8111/js/service-config.js")
+      .then((response) => response.text());
+
+    await page.route(hostedPageUrl, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "text/html",
+        body: [
+          "<!doctype html>",
+          "<html>",
+          "  <body>",
+          '    <mpr-header id="app-header"></mpr-header>',
+          '    <script src="/js/runtime-auth-config.js"></script>',
+          '    <script src="/js/service-config.js"></script>',
+          "  </body>",
+          "</html>",
+        ].join("\n"),
+      })
+    );
+    await page.route("http://llm-crossword.mprlab.com/js/runtime-auth-config.js", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/javascript",
+        body: runtimeConfigSource,
+      })
+    );
+    await page.route("http://llm-crossword.mprlab.com/js/service-config.js", (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: "application/javascript",
+        body: serviceConfigSource,
+      })
+    );
+
+    await page.goto(hostedPageUrl);
+
+    expect(await page.evaluate(() => window.HecateRuntimeConfig.services)).toEqual({
       apiBaseUrl: "https://llm-crossword-api.mprlab.com",
       authBaseUrl: "https://tauth-api.mprlab.com",
       configUrl: "/configs/frontend-config.yml",
       tauthScriptUrl: "https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js",
     });
-  });
-
-  test("committed runtime config keeps production paddle defaults", async ({ page }) => {
-    await page.goto("/blank.html");
-    await page.setContent("<!doctype html><html><body></body></html>");
-    await page.addScriptTag({ url: "/js/runtime-auth-config.js" });
-
-    const billingConfig = await page.evaluate(() => window.LLMCrosswordRuntimeConfig.billing);
-
-    expect(billingConfig.providerCode).toBe("paddle");
-    expect(billingConfig.environment).toBe("production");
-    expect(billingConfig.clientToken).toMatch(/^live_/);
+    expect(await page.evaluate(() => window.HecateServices.getConfig())).toEqual({
+      apiBaseUrl: "https://llm-crossword-api.mprlab.com",
+      authBaseUrl: "https://tauth-api.mprlab.com",
+      configUrl: "/configs/frontend-config.yml",
+      tauthScriptUrl: "https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js",
+    });
+    expect(await page.evaluate(() => window.HecateRuntimeConfig.billing.providerCode)).toBe("paddle");
+    expect(await page.evaluate(() => window.HecateRuntimeConfig.billing.environment)).toBe("production");
+    expect(await page.evaluate(() => window.HecateRuntimeConfig.billing.clientToken)).toMatch(/^live_/);
   });
 
   test("committed frontend config keeps the production auth host aligned with runtime config", async ({ page }) => {
@@ -111,8 +232,8 @@ test.describe("Config — fetch failure", () => {
     });
     await page.goto("/");
 
-    await expect(page.getByText("Create crossword puzzles with AI")).toBeVisible();
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await expect(page.getByText("Create crosswords and word searches with AI")).toBeVisible();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
   });
 });

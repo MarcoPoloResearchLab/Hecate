@@ -1,17 +1,19 @@
+// @ts-check
+
 /* crossword.js - main puzzle view controller */
 (function () {
   "use strict";
 
-  if (window.__LLM_CROSSWORD_MAIN_PAGE_BOOTED__) {
+  if (window.__HECATE_MAIN_PAGE_BOOTED__) {
     return;
   }
-  window.__LLM_CROSSWORD_MAIN_PAGE_BOOTED__ = true;
+  window.__HECATE_MAIN_PAGE_BOOTED__ = true;
 
-  if (typeof window.CrosswordWidget !== "function") {
-    throw new Error("CrosswordWidget is required before crossword.js");
+  if (typeof window.CrosswordWidget !== "function" || typeof window.WordSearchWidget !== "function") {
+    throw new Error("Puzzle widgets are required before crossword.js");
   }
 
-  var services = window.LLMCrosswordServices || null;
+  var services = window.HecateServices || null;
   var _fetch = window.fetch.bind(window);
   var documentElement = document.documentElement;
   var emptyString = "";
@@ -21,10 +23,13 @@
   var cssViewportHeightProperty = "--viewport-height";
   var defaultFooterHeight = 40;
   var defaultHeaderHeight = 56;
-  var puzzleDataPath = "assets/data/crosswords.json";
-  var sharedPuzzleFallbackTitle = "Shared Crossword";
+  var puzzleDataPath = "assets/data/puzzles.json";
+  var defaultPuzzleType = "crossword";
+  var puzzleTypeCrossword = "crossword";
+  var puzzleTypeWordSearch = "word_search";
+  var sharedPuzzleFallbackTitle = "Shared Puzzle";
   var sharedPuzzleQueryParam = "puzzle";
-  var sidebarCollapsedStorageKey = "llm-crossword-sidebar-collapsed";
+  var sidebarCollapsedStorageKey = "hecate-sidebar-collapsed";
   var defaultRewardPolicy = Object.freeze({
     owner_solve_coins: 3,
     owner_no_hint_bonus_coins: 1,
@@ -40,6 +45,43 @@
       return services.buildApiUrl(path);
     }
     return path;
+  }
+
+  function normalizePuzzleType(value) {
+    return value === puzzleTypeWordSearch ? puzzleTypeWordSearch : puzzleTypeCrossword;
+  }
+
+  function createSeedHash(seedText) {
+    var hash = 1779033703 ^ seedText.length;
+    var index;
+
+    for (index = 0; index < seedText.length; index++) {
+      hash = Math.imul(hash ^ seedText.charCodeAt(index), 3432918353);
+      hash = (hash << 13) | (hash >>> 19);
+    }
+
+    return function () {
+      hash = Math.imul(hash ^ (hash >>> 16), 2246822507);
+      hash = Math.imul(hash ^ (hash >>> 13), 3266489909);
+      hash ^= hash >>> 16;
+      return hash >>> 0;
+    };
+  }
+
+  function createDeterministicRandom(seedText) {
+    var seed = createSeedHash(String(seedText || ""))();
+
+    return function () {
+      seed += 0x6D2B79F5;
+      var next = Math.imul(seed ^ (seed >>> 15), seed | 1);
+      next ^= next + Math.imul(next ^ (next >>> 7), next | 61);
+      return ((next ^ (next >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  function createSpecificationSeed(specification, fallbackPrefix) {
+    var title = specification && typeof specification.title === "string" ? specification.title : emptyString;
+    return fallbackPrefix + ":" + title;
   }
 
   var elements = {
@@ -72,6 +114,10 @@
     statusEl: document.getElementById("status"),
     subEl: document.getElementById("subtitle"),
     titleEl: document.getElementById("title"),
+    wordSearchHint: document.getElementById("wordSearchHint"),
+    wordSearchList: document.getElementById("wordSearchList"),
+    wordSearchPanel: document.getElementById("wordSearchPanel"),
+    wordSearchProgress: document.getElementById("wordSearchProgress"),
   };
 
   if (!elements.puzzleView || !elements.gridViewport || !elements.gridEl || !elements.acrossOl || !elements.downOl) {
@@ -99,11 +145,12 @@
     loggedIn: false,
     ownedPuzzles: [],
     prebuiltPuzzles: [],
+    selectedPuzzleType: defaultPuzzleType,
     sharedPuzzle: null,
     sidebarCollapsed: false,
   };
 
-  var widget = new window.CrosswordWidget(null, {
+  var crosswordWidget = new window.CrosswordWidget(null, {
     hints: true,
     responsive: true,
     draggable: true,
@@ -120,6 +167,20 @@
       gridViewport: elements.gridViewport,
       revealBtn: elements.revealBtn,
       statusEl: elements.statusEl,
+    },
+  });
+  var wordSearchWidget = new window.WordSearchWidget(null, {
+    _existingElements: {
+      checkBtn: elements.checkBtn,
+      errorBox: elements.errorBox,
+      gridEl: elements.gridEl,
+      gridViewport: elements.gridViewport,
+      revealBtn: elements.revealBtn,
+      statusEl: elements.statusEl,
+      wordSearchHint: elements.wordSearchHint,
+      wordSearchList: elements.wordSearchList,
+      wordSearchPanel: elements.wordSearchPanel,
+      wordSearchProgress: elements.wordSearchProgress,
     },
   });
 
@@ -205,9 +266,18 @@
     if (state.recalculateQueued) return;
     state.recalculateQueued = true;
     requestAnimationFrame(function () {
+      var activeWidget;
       state.recalculateQueued = false;
-      widget.recalculate();
+      activeWidget = state.selectedPuzzleType === puzzleTypeWordSearch ? wordSearchWidget : crosswordWidget;
+      if (activeWidget && typeof activeWidget.recalculate === "function") {
+        activeWidget.recalculate();
+      }
     });
+  }
+
+  function scheduleViewportRefresh() {
+    scheduleLayoutSync();
+    scheduleRecalculate();
   }
 
   function readStoredSidebarCollapsed() {
@@ -262,6 +332,14 @@
     setSidebarCollapsed(!state.sidebarCollapsed);
   }
 
+  function puzzleTypeLabel(puzzleType) {
+    return normalizePuzzleType(puzzleType) === puzzleTypeWordSearch ? "Word Search" : "Crossword";
+  }
+
+  function isWordSearchPuzzle(puzzle) {
+    return normalizePuzzleType(puzzle && (puzzle.puzzleType || puzzle.puzzle_type)) === puzzleTypeWordSearch;
+  }
+
   function setActiveCard(cardElement) {
     var cards = elements.puzzleView.querySelectorAll(".puzzle-card");
     var index;
@@ -276,7 +354,10 @@
     }
   }
 
-  function renderMiniGrid(entries) {
+  function renderMiniGrid(puzzleOrEntries) {
+    var isWordSearch = puzzleOrEntries && !Array.isArray(puzzleOrEntries) && isWordSearchPuzzle(puzzleOrEntries);
+    var entries = Array.isArray(puzzleOrEntries) ? puzzleOrEntries : (puzzleOrEntries && puzzleOrEntries.entries) || [];
+    var grid = isWordSearch && puzzleOrEntries && Array.isArray(puzzleOrEntries.grid) ? puzzleOrEntries.grid : null;
     var minRow = Infinity;
     var minCol = Infinity;
     var maxRow = -1;
@@ -286,6 +367,33 @@
     var rowIndex;
     var columnIndex;
     var lengthIndex;
+
+    if (grid) {
+      var wordSearchElement = document.createElement("div");
+      var wordSearchRow;
+      var wordSearchCol;
+      var thumbSize = 36;
+      var wordSearchRows = grid.length;
+      var wordSearchCols = wordSearchRows > 0 ? grid[0].length : 0;
+      var gapSize = 1;
+      var wordSearchCellSize = wordSearchCols > 0
+        ? Math.max(1, Math.floor((thumbSize - (wordSearchCols - 1) * gapSize) / wordSearchCols))
+        : 1;
+
+      wordSearchElement.className = "mini-grid";
+      wordSearchElement.style.gridTemplateColumns = "repeat(" + wordSearchCols + ", " + wordSearchCellSize + "px)";
+      wordSearchElement.style.gridTemplateRows = "repeat(" + wordSearchRows + ", " + wordSearchCellSize + "px)";
+
+      for (wordSearchRow = 0; wordSearchRow < wordSearchRows; wordSearchRow++) {
+        for (wordSearchCol = 0; wordSearchCol < wordSearchCols; wordSearchCol++) {
+          var wordSearchCell = document.createElement("div");
+          wordSearchCell.className = "mini-grid__cell mini-grid__cell--letter";
+          wordSearchElement.appendChild(wordSearchCell);
+        }
+      }
+
+      return wordSearchElement;
+    }
 
     for (entryIndex = 0; entryIndex < entries.length; entryIndex++) {
       entry = entries[entryIndex];
@@ -422,6 +530,7 @@
 
   function preparePuzzle(puzzle, source, fallbackIndex) {
     if (!puzzle || typeof puzzle !== "object") return null;
+    puzzle.puzzleType = normalizePuzzleType(puzzle.puzzleType || puzzle.puzzle_type);
     puzzle.source = source || puzzle.source || "practice";
     puzzle.rewardSummary = coerceRewardSummary(puzzle.rewardSummary || puzzle.reward_summary);
     ensurePuzzleKey(puzzle, puzzle.source, fallbackIndex);
@@ -433,14 +542,18 @@
     var puzzle;
 
     specification = {
-      title: rawPuzzle && typeof rawPuzzle.title === "string" ? rawPuzzle.title : "Crossword",
+      puzzle_type: rawPuzzle && typeof rawPuzzle.puzzle_type === "string" ? rawPuzzle.puzzle_type : defaultPuzzleType,
+      title: rawPuzzle && typeof rawPuzzle.title === "string" ? rawPuzzle.title : puzzleTypeLabel(rawPuzzle && rawPuzzle.puzzle_type),
       subtitle: rawPuzzle && typeof rawPuzzle.subtitle === "string" ? rawPuzzle.subtitle : emptyString,
       description: rawPuzzle && typeof rawPuzzle.description === "string" ? rawPuzzle.description : emptyString,
       items: rawPuzzle && Array.isArray(rawPuzzle.items) ? rawPuzzle.items : null,
+      layout_seed: rawPuzzle && typeof rawPuzzle.layout_seed === "string" ? rawPuzzle.layout_seed : createSpecificationSeed(rawPuzzle, "stored"),
+      layout_version: rawPuzzle && Number(rawPuzzle.layout_version) ? Number(rawPuzzle.layout_version) : 1,
+      options: rawPuzzle && rawPuzzle.options && typeof rawPuzzle.options === "object" ? rawPuzzle.options : null,
     };
 
     if (!validatePuzzleSpecification(specification)) {
-      throw new Error("Crossword specification invalid");
+      throw new Error("Puzzle specification invalid");
     }
 
     puzzle = buildPuzzleFromSpecification(specification);
@@ -540,6 +653,7 @@
 
   function createPuzzleCard(puzzle) {
     var card = document.createElement("div");
+    var badge = document.createElement("div");
     var thumb = document.createElement("div");
     var copy = document.createElement("div");
     var title = document.createElement("div");
@@ -547,11 +661,15 @@
 
     card.className = "puzzle-card";
     card.dataset.puzzleKey = puzzle.puzzleKey;
+    card.dataset.puzzleType = puzzle.puzzleType;
 
     thumb.className = "puzzle-card__thumb";
-    thumb.appendChild(renderMiniGrid(puzzle.entries));
+    thumb.appendChild(renderMiniGrid(puzzle));
 
     copy.className = "puzzle-card__copy";
+
+    badge.className = "puzzle-card__badge";
+    badge.textContent = puzzleTypeLabel(puzzle.puzzleType);
 
     title.className = "puzzle-card__title";
     title.textContent = puzzle.title;
@@ -559,6 +677,7 @@
     description.className = "puzzle-card__description";
     description.textContent = buildCardDescription(puzzle);
 
+    copy.appendChild(badge);
     copy.appendChild(title);
     copy.appendChild(description);
 
@@ -595,14 +714,14 @@
       elements.shareBtn.disabled = !token;
     }
 
-    window.dispatchEvent(new CustomEvent("crossword:share-token", {
+    window.dispatchEvent(new CustomEvent("hecate:puzzle:share-token", {
       detail: token,
     }));
   }
 
   function updatePuzzleMetadata(puzzle) {
     if (elements.titleEl) {
-      elements.titleEl.textContent = puzzle.title || "Crossword";
+      elements.titleEl.textContent = puzzle.title || puzzleTypeLabel(puzzle && puzzle.puzzleType);
     }
     if (elements.subEl) {
       elements.subEl.textContent = puzzle.subtitle || emptyString;
@@ -726,12 +845,27 @@
   }
 
   function renderPuzzle(puzzle) {
+    var activeWidget;
+    var wordSearchActive = isWordSearchPuzzle(puzzle);
+
     updatePuzzleMetadata(puzzle);
     updateRewardUI(puzzle);
     updateShareHint(puzzle);
-    widget.render(puzzle);
+    state.selectedPuzzleType = puzzle && puzzle.puzzleType ? normalizePuzzleType(puzzle.puzzleType) : state.selectedPuzzleType;
+    if (elements.acrossOl && elements.acrossOl.parentNode) {
+      elements.acrossOl.parentNode.hidden = wordSearchActive;
+    }
+    if (elements.downOl && elements.downOl.parentNode) {
+      elements.downOl.parentNode.hidden = wordSearchActive;
+    }
+    if (elements.wordSearchPanel) {
+      elements.wordSearchPanel.hidden = !wordSearchActive;
+    }
+
+    activeWidget = wordSearchActive ? wordSearchWidget : crosswordWidget;
+    activeWidget.render(puzzle);
     notifyShareToken(puzzle);
-    window.dispatchEvent(new CustomEvent("crossword:active-puzzle", {
+    window.dispatchEvent(new CustomEvent("hecate:puzzle:active", {
       detail: puzzle,
     }));
     scheduleLayoutSync();
@@ -746,10 +880,10 @@
       elements.cardList.appendChild(renderSidebarSection("Shared with you", [state.sharedPuzzle]));
     }
     if (state.loggedIn && state.ownedPuzzles.length > 0) {
-      elements.cardList.appendChild(renderSidebarSection("My Section", state.ownedPuzzles));
+      elements.cardList.appendChild(renderSidebarSection("My Puzzles", state.ownedPuzzles));
     }
     if (state.prebuiltPuzzles.length > 0) {
-      elements.cardList.appendChild(renderSidebarSection("Practice Session", state.prebuiltPuzzles));
+      elements.cardList.appendChild(renderSidebarSection("Practice Puzzles", state.prebuiltPuzzles));
     }
 
     if (state.activePuzzleKey) {
@@ -776,11 +910,13 @@
   function validatePuzzleSpecification(specification) {
     var itemIndex;
     var item;
+    var rawPuzzleType = specification && specification.puzzle_type;
 
     if (!specification || typeof specification !== "object") return false;
     if (typeof specification.title !== "string" || typeof specification.subtitle !== "string") return false;
     if (specification.description != null && typeof specification.description !== "string") return false;
     if (!Array.isArray(specification.items)) return false;
+    if (rawPuzzleType != null && rawPuzzleType !== puzzleTypeCrossword && rawPuzzleType !== puzzleTypeWordSearch) return false;
 
     for (itemIndex = 0; itemIndex < specification.items.length; itemIndex++) {
       item = specification.items[itemIndex];
@@ -793,21 +929,35 @@
   }
 
   function buildPuzzleFromSpecification(specification) {
-    function createDeterministicLayoutRandom() {
-      var state = 1;
+    var puzzleType = normalizePuzzleType(specification.puzzle_type);
+    var layoutSeed = specification.layout_seed || createSpecificationSeed(specification, puzzleType);
+    var layoutVersion = Number(specification.layout_version) || 1;
+    var options = specification.options && typeof specification.options === "object" ? specification.options : null;
+    var puzzle;
 
-      return function () {
-        state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
-        return state / 4294967296;
-      };
+    if (puzzleType === puzzleTypeWordSearch) {
+      puzzle = generateWordSearch(specification.items, {
+        title: specification.title,
+        subtitle: specification.subtitle,
+        description: typeof specification.description === "string" ? specification.description : emptyString,
+        layoutSeed: layoutSeed,
+        layoutVersion: layoutVersion,
+        options: options,
+      });
+    } else {
+      puzzle = generateCrossword(specification.items, {
+        title: specification.title,
+        subtitle: specification.subtitle,
+        description: typeof specification.description === "string" ? specification.description : emptyString,
+        random: createDeterministicRandom(layoutSeed + ":" + layoutVersion),
+      });
+      puzzle.puzzleType = puzzleTypeCrossword;
+      puzzle.layoutSeed = layoutSeed;
+      puzzle.layoutVersion = layoutVersion;
+      puzzle.options = options || {};
     }
 
-    return generateCrossword(specification.items, {
-      title: specification.title,
-      subtitle: specification.subtitle,
-      description: typeof specification.description === "string" ? specification.description : emptyString,
-      random: createDeterministicLayoutRandom(),
-    });
+    return puzzle;
   }
 
   function readSharedPuzzleToken() {
@@ -822,6 +972,7 @@
 
   function buildSharedPuzzleFromResponse(sharedPuzzle, sharedToken) {
     var specification = {
+      puzzle_type: sharedPuzzle && typeof sharedPuzzle.puzzle_type === "string" ? sharedPuzzle.puzzle_type : defaultPuzzleType,
       title:
         sharedPuzzle && typeof sharedPuzzle.title === "string" && sharedPuzzle.title.trim()
           ? sharedPuzzle.title
@@ -829,11 +980,17 @@
       subtitle: sharedPuzzle && typeof sharedPuzzle.subtitle === "string" ? sharedPuzzle.subtitle : emptyString,
       description: sharedPuzzle && typeof sharedPuzzle.description === "string" ? sharedPuzzle.description : emptyString,
       items: sharedPuzzle && Array.isArray(sharedPuzzle.items) ? sharedPuzzle.items : null,
+      layout_seed:
+        sharedPuzzle && typeof sharedPuzzle.layout_seed === "string"
+          ? sharedPuzzle.layout_seed
+          : sharedToken || createSpecificationSeed(sharedPuzzle, "shared"),
+      layout_version: sharedPuzzle && Number(sharedPuzzle.layout_version) ? Number(sharedPuzzle.layout_version) : 1,
+      options: sharedPuzzle && sharedPuzzle.options && typeof sharedPuzzle.options === "object" ? sharedPuzzle.options : null,
     };
     var puzzle;
 
     if (!validatePuzzleSpecification(specification)) {
-      throw new Error("Shared crossword specification invalid");
+      throw new Error("Shared puzzle specification invalid");
     }
 
     puzzle = buildPuzzleFromSpecification(specification);
@@ -896,13 +1053,13 @@
         var specification;
 
         if (!Array.isArray(puzzleSpecifications)) {
-          throw new Error("Crossword data must be an array");
+          throw new Error("Puzzle data must be an array");
         }
 
         for (specificationIndex = 0; specificationIndex < puzzleSpecifications.length; specificationIndex++) {
           specification = puzzleSpecifications[specificationIndex];
           if (!validatePuzzleSpecification(specification)) {
-            throw new Error("Crossword specification invalid");
+            throw new Error("Puzzle specification invalid");
           }
           builtPuzzles.push(preparePuzzle(buildPuzzleFromSpecification(specification), "prebuilt", specificationIndex));
         }
@@ -1043,9 +1200,9 @@
 
   function startLayoutObservers() {
     scheduleLayoutSync();
-    window.addEventListener("resize", scheduleLayoutSync);
-    window.addEventListener("orientationchange", scheduleLayoutSync);
-    window.addEventListener("load", scheduleLayoutSync);
+    window.addEventListener("resize", scheduleViewportRefresh);
+    window.addEventListener("orientationchange", scheduleViewportRefresh);
+    window.addEventListener("load", scheduleViewportRefresh);
 
     if (typeof ResizeObserver !== "undefined") {
       state.layoutObserver = new ResizeObserver(function () {
@@ -1112,23 +1269,42 @@
     applySidebarState();
   }
 
-  window.CrosswordApp = {
+  window.HecateApp = {
     addGeneratedPuzzle: addGeneratedPuzzle,
+    buildPuzzleFromSpecification: buildPuzzleFromSpecification,
     clearOwnedPuzzles: clearOwnedPuzzles,
     getActivePuzzle: function () {
       return findPuzzleByKey(state.activePuzzleKey);
+    },
+    getSelectedPuzzleType: function () {
+      return state.selectedPuzzleType;
     },
     isSidebarCollapsed: function () {
       return state.sidebarCollapsed;
     },
     loadOwnedPuzzles: loadOwnedPuzzles,
     loadPrebuilt: loadPrebuiltPuzzles,
+    openFirstPuzzleOfType: function (puzzleType) {
+      var normalizedPuzzleType = normalizePuzzleType(puzzleType);
+      var index;
+
+      for (index = 0; index < state.allPuzzles.length; index++) {
+        if (normalizePuzzleType(state.allPuzzles[index].puzzleType) === normalizedPuzzleType) {
+          selectPuzzleByKey(state.allPuzzles[index].puzzleKey);
+          return state.allPuzzles[index];
+        }
+      }
+      return null;
+    },
     recalculate: scheduleRecalculate,
     render: function (puzzle) {
       renderPuzzle(preparePuzzle(puzzle, puzzle && puzzle.source ? puzzle.source : "practice", 0));
     },
     renderMiniGrid: renderMiniGrid,
     setActiveCard: setActiveCard,
+    setSelectedPuzzleType: function (puzzleType) {
+      state.selectedPuzzleType = normalizePuzzleType(puzzleType);
+    },
     setSidebarCollapsed: setSidebarCollapsed,
     setViewerSession: function (sessionState) {
       state.loggedIn = !!(sessionState && sessionState.loggedIn);
@@ -1143,14 +1319,16 @@
     updatePuzzleRewardData: updatePuzzleRewardData,
   };
 
-  (window.__LLM_CROSSWORD_TEST__ || (window.__LLM_CROSSWORD_TEST__ = {})).crossword = {
+  (window.__HECATE_TEST__ || (window.__HECATE_TEST__ = {})).crossword = {
     addGeneratedPuzzle: addGeneratedPuzzle,
     applySidebarState: applySidebarState,
     buildCardDescription: buildCardDescription,
+    buildPuzzleFromSpecification: buildPuzzleFromSpecification,
     buildSharedPuzzleFromResponse: buildSharedPuzzleFromResponse,
     buildStoredPuzzleFromResponse: buildStoredPuzzleFromResponse,
     clearOwnedPuzzles: clearOwnedPuzzles,
     coerceRewardSummary: coerceRewardSummary,
+    createDeterministicRandom: createDeterministicRandom,
     createPuzzleCard: createPuzzleCard,
     ensurePuzzleKey: ensurePuzzleKey,
     handleCardListClick: handleCardListClick,
@@ -1161,6 +1339,9 @@
     renderSidebar: renderSidebar,
     selectPuzzleByKey: selectPuzzleByKey,
     setActivePuzzleByKey: setActivePuzzleByKey,
+    setSelectedPuzzleType: function (puzzleType) {
+      state.selectedPuzzleType = normalizePuzzleType(puzzleType);
+    },
     setDescriptionExpanded: setDescriptionExpanded,
     setState: function (nextState) {
       Object.assign(state, nextState || {});

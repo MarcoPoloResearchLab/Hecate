@@ -7,7 +7,7 @@ test.describe("Crossword grid interactions", () => {
   test.beforeEach(async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
   });
 

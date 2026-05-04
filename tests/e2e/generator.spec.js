@@ -8,7 +8,7 @@ test.describe("Generator — valid input", () => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
     // Wait for page to load
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
 
     // Generate a crossword in page context and render it
@@ -21,7 +21,7 @@ test.describe("Generator — valid input", () => {
         { word: "apollo", definition: "Moon program", hint: "missions" },
       ];
       var payload = generateCrossword(items, { title: "Test Grid", subtitle: "Generated in test.", random: function () { return 0.5; } });
-      window.CrosswordApp.render(payload);
+      window.HecateApp.render(payload);
     });
 
     // Grid should be rendered with clues
@@ -29,13 +29,51 @@ test.describe("Generator — valid input", () => {
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible();
     await expect(page.locator("#puzzleView").getByText("Down")).toBeVisible();
   });
+
+  test("accented crossword words transliterate without dropping letters", async ({ page }) => {
+    await setupLoggedOutRoutes(page);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
+    await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
+
+    var answers = await page.evaluate(() => {
+      var items = [
+        { word: "façade", definition: "Decorative front of a building", hint: "architectural face" },
+        { word: "café", definition: "Small place for coffee", hint: "espresso counter" },
+        { word: "face", definition: "Front side of something", hint: "visible surface" },
+        { word: "decade", definition: "Ten-year span", hint: "calendar block" },
+        { word: "cedar", definition: "Aromatic evergreen tree", hint: "wood for chests" },
+      ];
+      var payload = generateCrossword(items, { title: "Accent Test", random: function () { return 0.5; } });
+      return payload.entries.map(function (entry) { return entry.answer; });
+    });
+
+    expect(answers).toContain("FACADE");
+    expect(answers).not.toContain("FAADE");
+  });
+
+  test("accented word-search words transliterate without dropping letters", async ({ page }) => {
+    await setupLoggedOutRoutes(page);
+    await page.goto("/");
+
+    var words = await page.evaluate(() => {
+      var payload = generateWordSearch([
+        { word: "façade", definition: "Decorative front", hint: "building face" },
+        { word: "café", definition: "Coffee place", hint: "espresso counter" },
+        { word: "naïve", definition: "Overly trusting", hint: "innocent" },
+      ], { title: "Word Search Accent Test", layoutSeed: "accent-test" });
+      return payload.items.map(function (item) { return item.word; });
+    });
+
+    expect(words).toEqual(["FACADE", "NAIVE", "CAFE"]);
+  });
 });
 
 test.describe("Generator — error cases", () => {
   test("empty array throws and shows error", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
 
     // Try generating with empty array
@@ -54,7 +92,7 @@ test.describe("Generator — error cases", () => {
   test("all-invalid words throws", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
 
     var errorMsg = await page.evaluate(() => {
@@ -69,34 +107,55 @@ test.describe("Generator — error cases", () => {
     expect(errorMsg).toContain("No valid words");
   });
 
-  test("filters single-character words", async ({ page }) => {
+  test("rejects mixed invalid words instead of silently dropping them", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
 
-    // Mix of valid and single-char words
-    await page.evaluate(() => {
-      var items = [
-        { word: "a", definition: "single char", hint: "nope" },
-        { word: "orbit", definition: "Path around Earth", hint: "route" },
-        { word: "b", definition: "single char", hint: "nope" },
-        { word: "mare", definition: "Lunar sea", hint: "horse" },
-        { word: "tides", definition: "Ocean rise-and-fall", hint: "shifts" },
-        { word: "lunar", definition: "Moon-related", hint: "companion" },
-        { word: "apollo", definition: "Moon program", hint: "missions" },
-      ];
-      var payload = generateCrossword(items, { title: "Filtered", subtitle: "Should filter single chars.", random: function () { return 0.5; } });
-      window.CrosswordApp.render(payload);
+    var errorMsg = await page.evaluate(() => {
+      try {
+        generateCrossword([
+          { word: "good-word", definition: "Hyphenated word", hint: "must not merge" },
+          { word: "orbit", definition: "Path around Earth", hint: "route" },
+          { word: "mare", definition: "Lunar sea", hint: "horse" },
+          { word: "tides", definition: "Ocean rise-and-fall", hint: "shifts" },
+          { word: "lunar", definition: "Moon-related", hint: "companion" },
+          { word: "apollo", definition: "Moon program", hint: "missions" },
+        ], { title: "Invalid Mixed" });
+        return null;
+      } catch (e) {
+        return e.message;
+      }
     });
 
-    await expect(page.getByText("Filtered")).toBeVisible();
+    expect(errorMsg).toContain("Invalid word");
+  });
+
+  test("word search rejects punctuation-bearing words instead of merging them", async ({ page }) => {
+    await setupLoggedOutRoutes(page);
+    await page.goto("/");
+
+    var errorMsg = await page.evaluate(() => {
+      try {
+        generateWordSearch([
+          { word: "good-word", definition: "Hyphenated word", hint: "must not merge" },
+          { word: "forest", definition: "Wooded area", hint: "trees" },
+          { word: "river", definition: "Moving water", hint: "stream" },
+        ], { title: "Invalid Word Search" });
+        return null;
+      } catch (e) {
+        return e.message;
+      }
+    });
+
+    expect(errorMsg).toContain("Invalid word search word");
   });
 
   test("custom title and subtitle passed through", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
 
     await page.evaluate(() => {
@@ -108,7 +167,7 @@ test.describe("Generator — error cases", () => {
         { word: "apollo", definition: "Moon program", hint: "missions" },
       ];
       var payload = generateCrossword(items, { title: "Custom Title Here", subtitle: "Custom Subtitle Here", random: function () { return 0.5; } });
-      window.CrosswordApp.render(payload);
+      window.HecateApp.render(payload);
     });
 
     await expect(page.getByText("Custom Title Here")).toBeVisible();
@@ -120,7 +179,7 @@ test.describe("Generator — compactness", () => {
   test("5-word puzzle fills at least 40% of its bounding box", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
 
     var density = await page.evaluate(() => {
@@ -168,7 +227,7 @@ test.describe("Generator — compactness", () => {
   test("8-word puzzle bounding box is reasonable", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
 
     var result = await page.evaluate(() => {
@@ -207,7 +266,7 @@ test.describe("Generator — compactness", () => {
   test("generator picks the most compact layout across seed attempts", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
 
     // Run generator 5 times and verify that results are reasonably compact
@@ -254,7 +313,7 @@ test.describe("Generator — compactness", () => {
   test("generator prefers more square successful layouts when later tries improve the shape", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
 
     var result = await page.evaluate(() => {
@@ -310,7 +369,7 @@ test.describe("Generator — large puzzle stress test", () => {
 
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
 
     var result = await page.evaluate(() => {
@@ -364,7 +423,7 @@ test.describe("Generator — large puzzle stress test", () => {
   test("120-word puzzle clues stay beside grid when rendered", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
 
     // Generate and render a large puzzle
@@ -382,7 +441,7 @@ test.describe("Generator — large puzzle stress test", () => {
 
       try {
         var payload = generateCrossword(items, { title: "Large Puzzle", maxAttempts: 15000, seedTries: 30 });
-        window.CrosswordApp.render(payload);
+        window.HecateApp.render(payload);
         return { success: true, placed: payload.entries.length };
       } catch (e) {
         return { success: false, error: e.message };

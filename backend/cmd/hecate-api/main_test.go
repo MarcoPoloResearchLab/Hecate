@@ -14,8 +14,8 @@ import (
 
 func TestNewRootCommand(t *testing.T) {
 	cmd := newRootCommand()
-	if cmd.Use != "crossword-api" {
-		t.Fatalf("expected use 'crossword-api', got %q", cmd.Use)
+	if cmd.Use != "hecate-api" {
+		t.Fatalf("expected use 'hecate-api', got %q", cmd.Use)
 	}
 	if cmd.Short == "" {
 		t.Fatal("expected non-empty short description")
@@ -46,10 +46,10 @@ func TestLoadConfig_MissingRequired(t *testing.T) {
 
 func TestLoadConfig_AllSet(t *testing.T) {
 	setRequiredConfigEnv(t)
-	t.Setenv("CROSSWORDAPI_LISTEN_ADDR", ":9090")
-	t.Setenv("CROSSWORDAPI_DEFAULT_TENANT_ID", "t1")
-	t.Setenv("CROSSWORDAPI_DEFAULT_LEDGER_ID", "l1")
-	t.Setenv("CROSSWORDAPI_JWT_SIGNING_KEY", "test-key")
+	t.Setenv("HECATEAPI_LISTEN_ADDR", ":9090")
+	t.Setenv("HECATEAPI_DEFAULT_TENANT_ID", "t1")
+	t.Setenv("HECATEAPI_DEFAULT_LEDGER_ID", "l1")
+	t.Setenv("HECATEAPI_JWT_SIGNING_KEY", "test-key")
 	useTestAppConfig(t, "")
 
 	cmd := newRootCommand()
@@ -70,10 +70,10 @@ func TestLoadConfig_AllSet(t *testing.T) {
 
 func TestLoadConfig_AdminEmailsFromConfigYAML(t *testing.T) {
 	setRequiredConfigEnv(t)
-	t.Setenv("CROSSWORDAPI_LISTEN_ADDR", ":9090")
-	t.Setenv("CROSSWORDAPI_DEFAULT_TENANT_ID", "t1")
-	t.Setenv("CROSSWORDAPI_DEFAULT_LEDGER_ID", "l1")
-	t.Setenv("CROSSWORDAPI_JWT_SIGNING_KEY", "test-key")
+	t.Setenv("HECATEAPI_LISTEN_ADDR", ":9090")
+	t.Setenv("HECATEAPI_DEFAULT_TENANT_ID", "t1")
+	t.Setenv("HECATEAPI_DEFAULT_LEDGER_ID", "l1")
+	t.Setenv("HECATEAPI_JWT_SIGNING_KEY", "test-key")
 	useTestAppConfig(t, "administrators:\n  - \"admin@example.com\"\n")
 
 	cmd := newRootCommand()
@@ -88,11 +88,11 @@ func TestLoadConfig_AdminEmailsFromConfigYAML(t *testing.T) {
 
 func TestLoadConfig_AdminEmailsMergeEnvAndConfig(t *testing.T) {
 	setRequiredConfigEnv(t)
-	t.Setenv("CROSSWORDAPI_LISTEN_ADDR", ":9090")
-	t.Setenv("CROSSWORDAPI_DEFAULT_TENANT_ID", "t1")
-	t.Setenv("CROSSWORDAPI_DEFAULT_LEDGER_ID", "l1")
-	t.Setenv("CROSSWORDAPI_JWT_SIGNING_KEY", "test-key")
-	t.Setenv("CROSSWORDAPI_ADMIN_EMAILS", "env-admin@example.com")
+	t.Setenv("HECATEAPI_LISTEN_ADDR", ":9090")
+	t.Setenv("HECATEAPI_DEFAULT_TENANT_ID", "t1")
+	t.Setenv("HECATEAPI_DEFAULT_LEDGER_ID", "l1")
+	t.Setenv("HECATEAPI_JWT_SIGNING_KEY", "test-key")
+	t.Setenv("HECATEAPI_ADMIN_EMAILS", "env-admin@example.com")
 	useTestAppConfig(t, "administrators:\n  - \"file-admin@example.com\"\n")
 
 	cmd := newRootCommand()
@@ -110,10 +110,10 @@ func TestLoadConfig_AdminEmailsMergeEnvAndConfig(t *testing.T) {
 
 func TestLoadConfig_EconomyFromConfigYAML(t *testing.T) {
 	setRequiredConfigEnv(t)
-	t.Setenv("CROSSWORDAPI_LISTEN_ADDR", ":9090")
-	t.Setenv("CROSSWORDAPI_DEFAULT_TENANT_ID", "t1")
-	t.Setenv("CROSSWORDAPI_DEFAULT_LEDGER_ID", "l1")
-	t.Setenv("CROSSWORDAPI_JWT_SIGNING_KEY", "test-key")
+	t.Setenv("HECATEAPI_LISTEN_ADDR", ":9090")
+	t.Setenv("HECATEAPI_DEFAULT_TENANT_ID", "t1")
+	t.Setenv("HECATEAPI_DEFAULT_LEDGER_ID", "l1")
+	t.Setenv("HECATEAPI_JWT_SIGNING_KEY", "test-key")
 	configYAML := strings.Join([]string{
 		"economy:",
 		"  coin_value_cents: 10",
@@ -168,7 +168,7 @@ func TestRun_MissingFlags(t *testing.T) {
 func TestRun_SuccessPath(t *testing.T) {
 	// Override os.Args to pass --help so Execute() returns nil without running RunE.
 	origArgs := os.Args
-	os.Args = []string{"crossword-api", "--help"}
+	os.Args = []string{"hecate-api", "--help"}
 	defer func() { os.Args = origArgs }()
 
 	code := run()
@@ -181,12 +181,12 @@ func TestRun_RunE_WithEnvVars(t *testing.T) {
 	// Set ALL required env vars so PreRunE (loadConfig) succeeds,
 	// but use an unreachable ledger address so RunE fails with a connection error.
 	setRequiredConfigEnv(t)
-	t.Setenv("CROSSWORDAPI_LISTEN_ADDR", ":0")
-	t.Setenv("CROSSWORDAPI_LEDGER_ADDR", "127.0.0.1:1")
-	t.Setenv("CROSSWORDAPI_LEDGER_TIMEOUT", "1s")
-	t.Setenv("CROSSWORDAPI_ALLOWED_ORIGINS", "http://localhost")
-	t.Setenv("CROSSWORDAPI_JWT_SIGNING_KEY", "test-secret-key-long-enough-for-hmac")
-	t.Setenv("CROSSWORDAPI_LLM_PROXY_TIMEOUT", "1s")
+	t.Setenv("HECATEAPI_LISTEN_ADDR", ":0")
+	t.Setenv("HECATEAPI_LEDGER_ADDR", "127.0.0.1:1")
+	t.Setenv("HECATEAPI_LEDGER_TIMEOUT", "1s")
+	t.Setenv("HECATEAPI_ALLOWED_ORIGINS", "http://localhost")
+	t.Setenv("HECATEAPI_JWT_SIGNING_KEY", "test-secret-key-long-enough-for-hmac")
+	t.Setenv("HECATEAPI_LLM_PROXY_TIMEOUT", "1s")
 	useTestAppConfig(t, "")
 
 	// Use newRootCommand directly with a context that has a timeout,
@@ -242,15 +242,15 @@ func TestLoadAdminEmailsFromConfigPaths(t *testing.T) {
 
 func TestLoadConfig_ValidationError(t *testing.T) {
 	setRequiredConfigEnv(t)
-	t.Setenv("CROSSWORDAPI_LISTEN_ADDR", "   ")
-	t.Setenv("CROSSWORDAPI_DEFAULT_TENANT_ID", "t1")
-	t.Setenv("CROSSWORDAPI_DEFAULT_LEDGER_ID", "l1")
-	t.Setenv("CROSSWORDAPI_ALLOWED_ORIGINS", "http://localhost")
-	t.Setenv("CROSSWORDAPI_JWT_SIGNING_KEY", "key")
-	t.Setenv("CROSSWORDAPI_JWT_COOKIE_NAME", "sess")
-	t.Setenv("CROSSWORDAPI_TAUTH_BASE_URL", "http://localhost")
-	t.Setenv("CROSSWORDAPI_LLM_PROXY_URL", "http://localhost")
-	t.Setenv("CROSSWORDAPI_LLM_PROXY_KEY", "key")
+	t.Setenv("HECATEAPI_LISTEN_ADDR", "   ")
+	t.Setenv("HECATEAPI_DEFAULT_TENANT_ID", "t1")
+	t.Setenv("HECATEAPI_DEFAULT_LEDGER_ID", "l1")
+	t.Setenv("HECATEAPI_ALLOWED_ORIGINS", "http://localhost")
+	t.Setenv("HECATEAPI_JWT_SIGNING_KEY", "key")
+	t.Setenv("HECATEAPI_JWT_COOKIE_NAME", "sess")
+	t.Setenv("HECATEAPI_TAUTH_BASE_URL", "http://localhost")
+	t.Setenv("HECATEAPI_LLM_PROXY_URL", "http://localhost")
+	t.Setenv("HECATEAPI_LLM_PROXY_KEY", "key")
 	useTestAppConfig(t, "")
 
 	cmd := newRootCommand()

@@ -12,27 +12,27 @@ import (
 func setRequiredConfigEnv(t *testing.T) {
 	t.Helper()
 
-	t.Setenv("CROSSWORDAPI_LISTEN_ADDR", ":9090")
-	t.Setenv("CROSSWORDAPI_LEDGER_ADDR", "localhost:50051")
-	t.Setenv("CROSSWORDAPI_LEDGER_INSECURE", "true")
-	t.Setenv("CROSSWORDAPI_LEDGER_TIMEOUT", "5s")
-	t.Setenv("CROSSWORDAPI_LEDGER_SECRET_KEY", "test-secret")
-	t.Setenv("CROSSWORDAPI_DEFAULT_TENANT_ID", "tenant-1")
-	t.Setenv("CROSSWORDAPI_DEFAULT_LEDGER_ID", "ledger-1")
-	t.Setenv("CROSSWORDAPI_ALLOWED_ORIGINS", "http://localhost:8000")
-	t.Setenv("CROSSWORDAPI_JWT_SIGNING_KEY", "test-secret-key")
-	t.Setenv("CROSSWORDAPI_JWT_ISSUER", "tauth")
-	t.Setenv("CROSSWORDAPI_JWT_COOKIE_NAME", "app_session")
-	t.Setenv("CROSSWORDAPI_TAUTH_BASE_URL", "http://localhost:8080")
-	t.Setenv("CROSSWORDAPI_LLM_PROXY_URL", "http://localhost:9999")
-	t.Setenv("CROSSWORDAPI_LLM_PROXY_KEY", "secret")
-	t.Setenv("CROSSWORDAPI_LLM_PROXY_TIMEOUT", "30s")
-	t.Setenv("CROSSWORDAPI_BILLING_PROVIDER", "paddle")
-	t.Setenv("CROSSWORDAPI_PADDLE_ENVIRONMENT", "sandbox")
-	t.Setenv("CROSSWORDAPI_PADDLE_API_KEY", "test-api-key")
-	t.Setenv("CROSSWORDAPI_PADDLE_CLIENT_TOKEN", "test-client-token")
-	t.Setenv("CROSSWORDAPI_PADDLE_WEBHOOK_SECRET", "test-webhook-secret")
-	t.Setenv("CROSSWORDAPI_PADDLE_PRICE_ID_PACK_STARTER", "pri_test_starter")
+	t.Setenv("HECATEAPI_LISTEN_ADDR", ":9090")
+	t.Setenv("HECATEAPI_LEDGER_ADDR", "localhost:50051")
+	t.Setenv("HECATEAPI_LEDGER_INSECURE", "true")
+	t.Setenv("HECATEAPI_LEDGER_TIMEOUT", "5s")
+	t.Setenv("HECATEAPI_LEDGER_SECRET_KEY", "test-secret")
+	t.Setenv("HECATEAPI_DEFAULT_TENANT_ID", "tenant-1")
+	t.Setenv("HECATEAPI_DEFAULT_LEDGER_ID", "ledger-1")
+	t.Setenv("HECATEAPI_ALLOWED_ORIGINS", "http://localhost:8000")
+	t.Setenv("HECATEAPI_JWT_SIGNING_KEY", "test-secret-key")
+	t.Setenv("HECATEAPI_JWT_ISSUER", "tauth")
+	t.Setenv("HECATEAPI_JWT_COOKIE_NAME", "app_session")
+	t.Setenv("HECATEAPI_TAUTH_BASE_URL", "http://localhost:8080")
+	t.Setenv("HECATEAPI_LLM_PROXY_URL", "http://localhost:9999")
+	t.Setenv("HECATEAPI_LLM_PROXY_KEY", "secret")
+	t.Setenv("HECATEAPI_LLM_PROXY_TIMEOUT", "30s")
+	t.Setenv("HECATEAPI_BILLING_PROVIDER", "paddle")
+	t.Setenv("HECATEAPI_PADDLE_ENVIRONMENT", "sandbox")
+	t.Setenv("HECATEAPI_PADDLE_API_KEY", "test-api-key")
+	t.Setenv("HECATEAPI_PADDLE_CLIENT_TOKEN", "test-client-token")
+	t.Setenv("HECATEAPI_PADDLE_WEBHOOK_SECRET", "test-webhook-secret")
+	t.Setenv("HECATEAPI_PADDLE_PRICE_ID_PACK_STARTER", "pri_test_starter")
 }
 
 func useTestAppConfig(t *testing.T, extraYAML string) string {
@@ -69,7 +69,7 @@ func TestMain_UsesExitFunc(t *testing.T) {
 	originalExitFunc := exitFunc
 	exitCode := -1
 
-	os.Args = []string{"crossword-api", "--help"}
+	os.Args = []string{"hecate-api", "--help"}
 	exitFunc = func(code int) {
 		exitCode = code
 	}

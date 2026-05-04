@@ -10,6 +10,9 @@ Working backlog for this repository. Keep it current and small. Use @issues-md-f
 - [ ] [B001] (P1) Add server-side crossword layout validation before charging for generation.
   Generated word sets are still trusted after the LLM call, but the browser renderer can reject a saved puzzle when `generateCrossword()` cannot build a valid layout from those words. Add backend-side layout validation, or an equivalent refund path, before generation succeeds.
 
+- [ ] [B002] (P1) Validate generated puzzle words without silently deleting letters.
+  The current LLM parser deletes non-ASCII letters before saving words, so an answer like `façade` can become `FAADE`; the browser crossword and word-search generators repeat the same deletion when building layouts from specs. Add edge validation that rejects mutated spellings or applies an explicit approved transliteration before charging, saving, or rendering generated puzzles, with black-box coverage for accented and punctuation-bearing words.
+
 ## Improvements
 
 ## Maintenance

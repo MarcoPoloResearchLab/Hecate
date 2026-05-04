@@ -103,7 +103,7 @@ func TestCallLLMProxy_Success(t *testing.T) {
 	defer server.Close()
 
 	handler := newTestHandler(server)
-	result, err := handler.callLLMProxy(context.Background(), "Greek gods", 2)
+	result, err := handler.callLLMProxy(context.Background(), "Greek gods", string(puzzleTypeCrossword), 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -133,7 +133,7 @@ func TestCallPuzzleMetadataLLMProxy_Success(t *testing.T) {
 	defer server.Close()
 
 	handler := newTestHandler(server)
-	result, err := handler.callPuzzleMetadataLLMProxy(context.Background(), "Roman city", []WordItem{
+	result, err := handler.callPuzzleMetadataLLMProxy(context.Background(), "Roman city", string(puzzleTypeCrossword), []WordItem{
 		{Word: "FORUM", Definition: "Civic center", Hint: "public square"},
 	})
 	if err != nil {
@@ -207,7 +207,7 @@ func TestCallLLMProxy_WithMarkdownFences(t *testing.T) {
 	defer server.Close()
 
 	handler := newTestHandler(server)
-	result, err := handler.callLLMProxy(context.Background(), "Greek gods", 1)
+	result, err := handler.callLLMProxy(context.Background(), "Greek gods", string(puzzleTypeCrossword), 1)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestCallLLMProxy_NonOKStatus(t *testing.T) {
 	defer server.Close()
 
 	handler := newTestHandler(server)
-	_, err := handler.callLLMProxy(context.Background(), "test", 5)
+	_, err := handler.callLLMProxy(context.Background(), "test", string(puzzleTypeCrossword), 5)
 	if err == nil {
 		t.Fatal("expected error for non-OK status")
 	}
@@ -237,7 +237,7 @@ func TestCallLLMProxy_InvalidWrapperJSON(t *testing.T) {
 	defer server.Close()
 
 	handler := newTestHandler(server)
-	_, err := handler.callLLMProxy(context.Background(), "test", 5)
+	_, err := handler.callLLMProxy(context.Background(), "test", string(puzzleTypeCrossword), 5)
 	if err == nil {
 		t.Fatal("expected error for invalid wrapper JSON")
 	}
@@ -254,7 +254,7 @@ func TestCallLLMProxy_InvalidItemsJSON(t *testing.T) {
 	defer server.Close()
 
 	handler := newTestHandler(server)
-	_, err := handler.callLLMProxy(context.Background(), "test", 5)
+	_, err := handler.callLLMProxy(context.Background(), "test", string(puzzleTypeCrossword), 5)
 	if err == nil {
 		t.Fatal("expected error for invalid items JSON")
 	}
@@ -277,7 +277,7 @@ func TestCallLLMProxy_NoValidWords(t *testing.T) {
 	defer server.Close()
 
 	handler := newTestHandler(server)
-	_, err := handler.callLLMProxy(context.Background(), "test", 5)
+	_, err := handler.callLLMProxy(context.Background(), "test", string(puzzleTypeCrossword), 5)
 	if err == nil {
 		t.Fatal("expected error for no valid words")
 	}
@@ -285,10 +285,13 @@ func TestCallLLMProxy_NoValidWords(t *testing.T) {
 
 func TestCallLLMProxy_FiltersInvalidWords(t *testing.T) {
 	items := []WordItem{
-		{Word: "GOOD-WORD", Definition: "Valid def", Hint: "Valid hint"},  // hyphen stripped -> GOODWORD (valid)
-		{Word: "A", Definition: "Too short", Hint: "Too short"},           // too short
-		{Word: "VALID", Definition: "A valid word", Hint: "A valid hint"}, // valid
-		{Word: "123", Definition: "Numbers only", Hint: "Numbers"},        // no alpha left
+		{Word: "façade", Definition: "Decorative building face", Hint: "Front of a structure"},
+		{Word: "GOOD-WORD", Definition: "Hyphenated word", Hint: "Must not merge"},
+		{Word: "A", Definition: "Too short", Hint: "Too short"},
+		{Word: "   ", Definition: "Blank word", Hint: "No answer"},
+		{Word: "FACADE", Definition: "Duplicate building face", Hint: "Already present"},
+		{Word: "VALID", Definition: "A valid word", Hint: "A valid hint"},
+		{Word: "123", Definition: "Numbers only", Hint: "Numbers"},
 	}
 	wrapper := llmProxyResponse{
 		Request:  "test",
@@ -300,12 +303,15 @@ func TestCallLLMProxy_FiltersInvalidWords(t *testing.T) {
 	defer server.Close()
 
 	handler := newTestHandler(server)
-	result, err := handler.callLLMProxy(context.Background(), "test", 2)
+	result, err := handler.callLLMProxy(context.Background(), "test", string(puzzleTypeCrossword), 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if len(result) != 2 {
 		t.Fatalf("expected 2 valid items, got %d: %+v", len(result), result)
+	}
+	if result[0].Word != "FACADE" {
+		t.Fatalf("expected accented word to normalize to FACADE, got %q", result[0].Word)
 	}
 }
 
@@ -330,7 +336,7 @@ func TestCallLLMProxy_RetriesOnWordCountMismatch(t *testing.T) {
 	defer server.Close()
 
 	handler := newTestHandler(server)
-	result, err := handler.callLLMProxy(context.Background(), "Greek gods", 2)
+	result, err := handler.callLLMProxy(context.Background(), "Greek gods", string(puzzleTypeCrossword), 2)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -351,7 +357,7 @@ func TestCallLLMProxy_ContextCancelled(t *testing.T) {
 	handler := newTestHandler(server)
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately
-	_, err := handler.callLLMProxy(ctx, "test", 5)
+	_, err := handler.callLLMProxy(ctx, "test", string(puzzleTypeCrossword), 5)
 	if err == nil {
 		t.Fatal("expected error for cancelled context")
 	}
@@ -372,7 +378,7 @@ func TestCallLLMProxy_ReadBodyError(t *testing.T) {
 	handler := newTestHandler(server)
 	// Use an invalid URL scheme to trigger NewRequestWithContext error.
 	handler.cfg.LLMProxyURL = "://invalid"
-	_, err := handler.callLLMProxy(context.Background(), "test", 5)
+	_, err := handler.callLLMProxy(context.Background(), "test", string(puzzleTypeCrossword), 5)
 	if err == nil {
 		t.Fatal("expected error for invalid URL")
 	}
@@ -398,7 +404,7 @@ func TestCallLLMProxy_ReadBodyErrorViaTransport(t *testing.T) {
 		},
 	}
 
-	_, err := handler.callLLMProxy(context.Background(), "test", 5)
+	_, err := handler.callLLMProxy(context.Background(), "test", string(puzzleTypeCrossword), 5)
 	if err == nil {
 		t.Fatal("expected error for read body failure")
 	}

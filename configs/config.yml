@@ -1,6 +1,6 @@
 # Backend app config. The API loads this file for billing and economy settings.
 # Any environment-variable token is expanded by the Go backend while loading this file.
-# Keep administrator allowlists in CROSSWORDAPI_ADMIN_EMAILS, not here.
+# Keep administrator allowlists in HECATEAPI_ADMIN_EMAILS, not here.
 
 economy:
   coin_value_cents: 100

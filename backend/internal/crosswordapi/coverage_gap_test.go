@@ -62,9 +62,6 @@ func TestCoverageGapPaddleProviderDelegatesSharedHelpers(t *testing.T) {
 	if _, err := provider.BuildUserSyncEvents(context.Background(), "user@example.com"); !errors.Is(err, sharedbilling.ErrPaddleProviderClientUnavailable) {
 		t.Fatalf("expected nil shared provider sync error, got %v", err)
 	}
-	if _, _, err := provider.BuildCheckoutReconcileEvent(context.Background(), "txn_1"); !errors.Is(err, sharedbilling.ErrPaddleProviderClientUnavailable) {
-		t.Fatalf("expected nil shared provider reconcile error, got %v", err)
-	}
 	if got := provider.ResolveCheckoutEventStatus(paddleEventTypeTransactionCompleted); got != sharedbilling.CheckoutEventStatusUnknown {
 		t.Fatalf("expected unknown checkout status without shared provider, got %q", got)
 	}
@@ -72,9 +69,6 @@ func TestCoverageGapPaddleProviderDelegatesSharedHelpers(t *testing.T) {
 	provider.sharedProvider = &sharedbilling.PaddleProvider{}
 	if _, err := provider.BuildUserSyncEvents(context.Background(), "user@example.com"); !errors.Is(err, sharedbilling.ErrPaddleProviderClientUnavailable) {
 		t.Fatalf("expected delegated sync error, got %v", err)
-	}
-	if _, _, err := provider.BuildCheckoutReconcileEvent(context.Background(), "txn_1"); !errors.Is(err, sharedbilling.ErrPaddleProviderClientUnavailable) {
-		t.Fatalf("expected delegated reconcile error, got %v", err)
 	}
 	if got := provider.ResolveCheckoutEventStatus(paddleEventTypeTransactionCompleted); got != sharedbilling.CheckoutEventStatusSucceeded {
 		t.Fatalf("expected delegated checkout status to resolve completed, got %q", got)
@@ -110,45 +104,6 @@ func TestCoverageGapBillingServiceSyncBranches(t *testing.T) {
 
 	if err := service.SyncUserBillingEvents(context.Background(), "user-1", "user@example.com"); err == nil || !errors.Is(err, sharedbilling.ErrBillingUserSyncFailed) {
 		t.Fatalf("expected wrapped sync parse failure, got %v", err)
-	}
-}
-
-func TestCoverageGapBillingServiceReconcileBranches(t *testing.T) {
-	service := &billingService{
-		cfg:          validBillingConfig(),
-		ledgerClient: &mockLedgerClient{},
-		logger:       zap.NewNop(),
-		provider:     minimalBillingProvider{},
-		store:        &mockStore{},
-	}
-
-	if _, err := service.ReconcileCheckout(context.Background(), "user-1", "user@example.com", "txn_1"); !errors.Is(err, sharedbilling.ErrBillingCheckoutReconciliationUnsupported) {
-		t.Fatalf("expected unsupported reconcile error, got %v", err)
-	}
-
-	service.provider = &mockBillingProvider{code: billingProviderPaddle}
-	if _, err := service.ReconcileCheckout(context.Background(), "user-1", " ", "txn_1"); !errors.Is(err, sharedbilling.ErrBillingUserEmailInvalid) {
-		t.Fatalf("expected invalid reconcile email error, got %v", err)
-	}
-	if _, err := service.ReconcileCheckout(context.Background(), "user-1", "user@example.com", " "); !errors.Is(err, sharedbilling.ErrPaddleAPITransactionNotFound) {
-		t.Fatalf("expected blank transaction error, got %v", err)
-	}
-
-	service.provider = &mockBillingProvider{
-		code: billingProviderPaddle,
-		reconcileEvent: sharedbilling.WebhookEvent{
-			ProviderCode: billingProviderPaddle,
-			EventID:      "reconcile:txn_parse_fail",
-			EventType:    paddleEventTypeTransactionCompleted,
-			OccurredAt:   time.Date(2026, time.April, 1, 9, 5, 0, 0, time.UTC),
-			Payload:      []byte(`{"data":{}}`),
-		},
-		reconcileEmail: "user@example.com",
-		resolveStatus:  sharedbilling.CheckoutEventStatusSucceeded,
-		parseErr:       errors.New("parse failed"),
-	}
-	if _, err := service.ReconcileCheckout(context.Background(), "user-1", "user@example.com", "txn_parse_fail"); err == nil || err.Error() != "parse failed" {
-		t.Fatalf("expected reconcile parse failure, got %v", err)
 	}
 }
 
@@ -322,6 +277,11 @@ func TestCoverageGapBillingWebhookPayloadHelpers(t *testing.T) {
 	if got := resolveBillingCheckoutEventStatus(minimalBillingProvider{}, paddleEventTypeTransactionCompleted); got != sharedbilling.CheckoutEventStatusUnknown {
 		t.Fatalf("expected unknown checkout status without status provider, got %q", got)
 	}
+	if got := resolveBillingCheckoutEventStatus(&mockBillingProvider{
+		resolveStatus: sharedbilling.CheckoutEventStatusSucceeded,
+	}, paddleEventTypeTransactionCompleted); got != sharedbilling.CheckoutEventStatusSucceeded {
+		t.Fatalf("expected delegated checkout status, got %q", got)
+	}
 
 	if _, err := wrapBillingWebhookPayload(sharedbilling.WebhookEvent{Payload: []byte("not-json")}); err == nil {
 		t.Fatal("expected invalid webhook envelope error")
@@ -362,78 +322,6 @@ func TestCoverageGapServerBillingHandlers(t *testing.T) {
 		response := doRequest(router, http.MethodPost, "/api/billing/sync", `{}`)
 		if response.Code != http.StatusBadGateway {
 			t.Fatalf("expected 502 from billing sync failure, got %d", response.Code)
-		}
-	})
-
-	t.Run("billing reconcile returns internal error when provider is missing", func(t *testing.T) {
-		handler := testHandlerWithConfig(&mockLedgerClient{}, nil, &mockStore{}, validBillingConfig())
-		handler.billingService = &billingService{
-			cfg:          validBillingConfig(),
-			ledgerClient: &mockLedgerClient{},
-			logger:       zap.NewNop(),
-			store:        &mockStore{},
-		}
-		router := testRouterWithClaims(handler, testClaims())
-
-		response := doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{"transaction_id":"txn_1"}`)
-		if response.Code != http.StatusInternalServerError {
-			t.Fatalf("expected 500 from billing reconcile with missing provider, got %d", response.Code)
-		}
-	})
-
-	t.Run("billing reconcile requires an account email", func(t *testing.T) {
-		handler := testHandlerWithConfig(&mockLedgerClient{}, nil, &mockStore{}, validBillingConfig())
-		handler.billingService = &billingService{
-			cfg:          validBillingConfig(),
-			ledgerClient: &mockLedgerClient{},
-			logger:       zap.NewNop(),
-			provider:     &mockBillingProvider{code: billingProviderPaddle},
-			store:        &mockStore{},
-		}
-		claims := testClaims()
-		claims.UserEmail = " "
-		router := testRouterWithClaims(handler, claims)
-
-		response := doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{"transaction_id":"txn_1"}`)
-		if response.Code != http.StatusBadRequest {
-			t.Fatalf("expected 400 from billing reconcile without email, got %d", response.Code)
-		}
-	})
-
-	t.Run("billing reconcile reports unsupported provider capability", func(t *testing.T) {
-		handler := testHandlerWithConfig(&mockLedgerClient{}, nil, &mockStore{}, validBillingConfig())
-		handler.billingService = &billingService{
-			cfg:          validBillingConfig(),
-			ledgerClient: &mockLedgerClient{},
-			logger:       zap.NewNop(),
-			provider:     minimalBillingProvider{},
-			store:        &mockStore{},
-		}
-		router := testRouterWithClaims(handler, testClaims())
-
-		response := doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{"transaction_id":"txn_1"}`)
-		if response.Code != http.StatusServiceUnavailable {
-			t.Fatalf("expected 503 from unsupported billing reconcile provider, got %d", response.Code)
-		}
-	})
-
-	t.Run("billing reconcile returns gateway error for unexpected failures", func(t *testing.T) {
-		handler := testHandlerWithConfig(&mockLedgerClient{}, nil, &mockStore{}, validBillingConfig())
-		handler.billingService = &billingService{
-			cfg:          validBillingConfig(),
-			ledgerClient: &mockLedgerClient{},
-			logger:       zap.NewNop(),
-			provider: &mockBillingProvider{
-				code:         billingProviderPaddle,
-				reconcileErr: errors.New("reconcile exploded"),
-			},
-			store: &mockStore{},
-		}
-		router := testRouterWithClaims(handler, testClaims())
-
-		response := doRequest(router, http.MethodPost, "/api/billing/checkout/reconcile", `{"transaction_id":"txn_1"}`)
-		if response.Code != http.StatusBadGateway {
-			t.Fatalf("expected 502 from unexpected billing reconcile failure, got %d", response.Code)
 		}
 	})
 }

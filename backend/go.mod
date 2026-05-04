@@ -14,6 +14,7 @@ require (
 	github.com/tyemirov/tauth v1.0.1
 	github.com/tyemirov/utils v0.12.0
 	go.uber.org/zap v1.27.1
+	golang.org/x/text v0.35.0
 	google.golang.org/grpc v1.79.3
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/gorm v1.31.1
@@ -63,7 +64,6 @@ require (
 	golang.org/x/exp v0.0.0-20251219203646-944ab1f22d93 // indirect
 	golang.org/x/net v0.52.0 // indirect
 	golang.org/x/sys v0.42.0 // indirect
-	golang.org/x/text v0.35.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20251222181119-0a764e51fe1b // indirect
 	google.golang.org/protobuf v1.36.11 // indirect
 	modernc.org/libc v1.67.4 // indirect

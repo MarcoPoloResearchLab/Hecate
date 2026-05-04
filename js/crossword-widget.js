@@ -1,9 +1,13 @@
+// @ts-check
+
 /* crossword-widget.js - reusable CrosswordWidget class */
 (function () {
   "use strict";
 
   /** defaultCellSize stores the maximum cell dimension in pixels. */
   var defaultCellSize = 44;
+  /** minimumCellSize stores the minimum usable cell dimension in pixels. */
+  var minimumCellSize = 36;
   /** pixelUnit identifies the CSS pixel unit. */
   var pixelUnit = "px";
   /** cssCellSizeProperty identifies the CSS property for grid cell size. */
@@ -266,6 +270,12 @@
     return true;
   }
 
+  function computeBoundedCellSize(viewportWidth, columnCount, gapSize) {
+    var totalGapWidth = Math.max(0, columnCount - 1) * gapSize;
+    var fittedCellSize = Math.floor((viewportWidth - totalGapWidth) / columnCount);
+    return Math.max(minimumCellSize, Math.min(defaultCellSize, fittedCellSize));
+  }
+
   /* ── CrosswordWidget constructor ─────────────────────────────────── */
 
   function CrosswordWidget(container, options) {
@@ -448,10 +458,12 @@
     if (!this._currentColumnCount) return;
     var viewportWidth = this._gridViewport.clientWidth;
     if (viewportWidth < 1) return;
-    var computedStyles = getComputedStyle(this._gridViewport);
-    var gapSize = parseInt(computedStyles.getPropertyValue(cssGapSizeProperty), 10) || 0;
-    // Cell size is fixed — the grid viewport scrolls/pans when the grid is wider.
-    this._gridViewport.style.setProperty(cssCellSizeProperty, defaultCellSize + pixelUnit);
+    var gridStyles = getComputedStyle(this._gridEl);
+    var gapSize = parseInt(gridStyles.getPropertyValue(cssGapSizeProperty), 10) || 0;
+    this._gridViewport.style.setProperty(
+      cssCellSizeProperty,
+      computeBoundedCellSize(viewportWidth, this._currentColumnCount, gapSize) + pixelUnit
+    );
   };
 
   /* ── Drag panning ────────────────────────────────────────────────── */
@@ -656,7 +668,7 @@
     function emitCompletionIfNeeded(trigger) {
       if (solveSession.completionEmitted || solveSession.usedReveal || !isPuzzleSolved()) return;
       solveSession.completionEmitted = true;
-      dispatchWidgetEvent("crossword:completed", {
+      dispatchWidgetEvent("hecate:puzzle:completed", {
         trigger: trigger,
         usedHint: solveSession.usedHint,
         usedReveal: solveSession.usedReveal,
@@ -667,7 +679,7 @@
       if (solveSession.revealNotified) return;
       solveSession.usedReveal = true;
       solveSession.revealNotified = true;
-      dispatchWidgetEvent("crossword:reveal-used", {
+      dispatchWidgetEvent("hecate:puzzle:reveal-used", {
         usedHint: solveSession.usedHint,
         usedReveal: true,
       });
@@ -1085,6 +1097,7 @@
     validatePayload: validatePayload,
     buildModel: buildModel,
     validatePuzzleSpecification: validatePuzzleSpecification,
+    computeBoundedCellSize: computeBoundedCellSize,
   };
 
   window.CrosswordWidget = CrosswordWidget;

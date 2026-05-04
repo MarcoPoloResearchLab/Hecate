@@ -1,4 +1,6 @@
-/* app.js — auth-aware orchestration for LLM crossword generation */
+// @ts-check
+
+/* app.js — auth-aware orchestration for Hecate puzzle generation */
 (function () {
   "use strict";
 
@@ -8,7 +10,10 @@
   var balanceStatusReady = "ready";
   var balanceStatusLoading = "loading";
   var creditPopoverHideDelayMs = 140;
-  var services = window.LLMCrosswordServices || null;
+  var defaultPuzzleType = "crossword";
+  var puzzleTypeCrossword = "crossword";
+  var puzzleTypeWordSearch = "word_search";
+  var services = window.HecateServices || null;
   var nativeFetch = window.fetch.bind(window);
   var _fetch = nativeFetch;
   var rootElement = document.documentElement;
@@ -24,6 +29,14 @@
       return services.buildApiUrl(path);
     }
     return path;
+  }
+
+  function normalizePuzzleType(value) {
+    return value === puzzleTypeWordSearch ? puzzleTypeWordSearch : puzzleTypeCrossword;
+  }
+
+  function puzzleTypeLabel(value) {
+    return normalizePuzzleType(value) === puzzleTypeWordSearch ? "Word Search" : "Crossword";
   }
 
   function requireElement(id) {
@@ -107,11 +120,13 @@
     generateBuyCreditsButton: document.getElementById("generateBuyCreditsButton"),
     generatePanel: requireElement("generatePanel"),
     generateStatus: requireElement("generateStatus"),
+    generateTypeButtons: document.querySelectorAll("[data-generate-puzzle-type]"),
     puzzleToolbar: document.getElementById("puzzleToolbar"),
     landingPage: requireElement("landingPage"),
     landingSignIn: requireElement("landingSignIn"),
+    landingTypeButtons: document.querySelectorAll("[data-landing-puzzle-type]"),
     landingTryBtn: requireElement("landingTryPrebuilt"),
-    newCrosswordCard: requireElement("newCrosswordCard"),
+    newPuzzleCard: requireElement("newPuzzleCard"),
     puzzleControls: null,
     puzzleInfoButton: document.getElementById("puzzleInfoButton"),
     puzzleInfoContent: document.getElementById("puzzleInfoContent"),
@@ -142,6 +157,7 @@
     generationCostCredits: defaultGenerationCostCredits,
     loggedIn: false,
     pendingCompletionKey: null,
+    selectedPuzzleType: defaultPuzzleType,
   };
 
   function getGenerationCostCredits() {
@@ -152,8 +168,8 @@
     return state.balanceStatus === balanceStatusReady;
   }
 
-  function createGenerateRequestFingerprint(topic, wordCount) {
-    return topic + "|" + String(wordCount);
+  function createGenerateRequestFingerprint(topic, puzzleType, wordCount) {
+    return topic + "|" + normalizePuzzleType(puzzleType) + "|" + String(wordCount);
   }
 
   function createGenerateRequestID() {
@@ -207,6 +223,35 @@
     applyAuthCheckState();
   }
 
+  function updatePuzzleTypeButtons(buttons, selectedPuzzleType, selectedClassName) {
+    var index;
+    var button;
+    var isSelected;
+
+    for (index = 0; index < buttons.length; index++) {
+      button = buttons[index];
+      isSelected = normalizePuzzleType(button.getAttribute("data-puzzle-type")) === selectedPuzzleType;
+      button.setAttribute("aria-pressed", isSelected ? "true" : "false");
+      button.classList.toggle(selectedClassName, isSelected);
+    }
+  }
+
+  function syncPuzzleTypeUI() {
+    updatePuzzleTypeButtons(elements.landingTypeButtons, state.selectedPuzzleType, "landing__type-card--selected");
+    updatePuzzleTypeButtons(elements.generateTypeButtons, state.selectedPuzzleType, "puzzle-type-switch__button--active");
+  }
+
+  function setSelectedPuzzleType(puzzleType) {
+    state.selectedPuzzleType = normalizePuzzleType(puzzleType);
+    syncPuzzleTypeUI();
+    if (window.HecateApp && typeof window.HecateApp.setSelectedPuzzleType === "function") {
+      window.HecateApp.setSelectedPuzzleType(state.selectedPuzzleType);
+    }
+    window.dispatchEvent(new CustomEvent("hecate:puzzle-type-selected", {
+      detail: state.selectedPuzzleType,
+    }));
+  }
+
   function applyView() {
     var showLandingView = state.currentView === "landing";
     elements.landingPage.style.display = showLandingView ? "" : "none";
@@ -237,8 +282,8 @@
     applyView();
     requestAnimationFrame(function () {
       requestAnimationFrame(function () {
-        if (window.CrosswordApp && window.CrosswordApp.recalculate) {
-          window.CrosswordApp.recalculate();
+        if (window.HecateApp && window.HecateApp.recalculate) {
+          window.HecateApp.recalculate();
         }
       });
     });
@@ -252,8 +297,8 @@
     elements.generatePanel.style.display = "";
     syncPuzzleToolbarVisibility();
     setPuzzleContentVisible(false);
-    elements.title.textContent = "Generate a New Crossword";
-    elements.subtitle.textContent = "Enter a topic and choose the number of words.";
+    elements.title.textContent = "Generate a New Puzzle";
+    elements.subtitle.textContent = "Choose crossword or word search, then enter a topic.";
     if (rewardStrip) {
       rewardStrip.hidden = true;
     }
@@ -269,9 +314,10 @@
       elements.descriptionContent.textContent = "";
     }
     syncPuzzleInfoButton();
-    if (window.CrosswordApp && window.CrosswordApp.setActiveCard) {
-      window.CrosswordApp.setActiveCard(elements.newCrosswordCard);
+    if (window.HecateApp && window.HecateApp.setActiveCard) {
+      window.HecateApp.setActiveCard(elements.newPuzzleCard);
     }
+    setSelectedPuzzleType(state.selectedPuzzleType);
     elements.topicInput.focus();
   }
 
@@ -305,10 +351,10 @@
   }
 
   function openBillingDrawer(source, message) {
-    if (!window.CrosswordBilling || typeof window.CrosswordBilling.openAccountBilling !== "function") {
+    if (!window.HecateBilling || typeof window.HecateBilling.openAccountBilling !== "function") {
       return;
     }
-    window.CrosswordBilling.openAccountBilling({
+    window.HecateBilling.openAccountBilling({
       force: true,
       message: message || "",
       source: source || "app",
@@ -405,8 +451,8 @@
     }
 
     return [{
-      title: "Generate new crosswords",
-      body: "Each new crossword costs " + getGenerationCostCredits() + " credits.",
+      title: "Generate new puzzles",
+      body: "Each new puzzle costs " + getGenerationCostCredits() + " credits.",
     }];
   }
 
@@ -502,8 +548,8 @@
   }
 
   function syncShareTokenFromActivePuzzle() {
-    var activePuzzle = window.CrosswordApp && window.CrosswordApp.getActivePuzzle
-      ? window.CrosswordApp.getActivePuzzle()
+    var activePuzzle = window.HecateApp && window.HecateApp.getActivePuzzle
+      ? window.HecateApp.getActivePuzzle()
       : null;
     setShareToken(activePuzzle && activePuzzle.shareToken ? activePuzzle.shareToken : null);
   }
@@ -515,8 +561,8 @@
   }
 
   function setViewerSessionState() {
-    if (!window.CrosswordApp || !window.CrosswordApp.setViewerSession) return;
-    window.CrosswordApp.setViewerSession({
+    if (!window.HecateApp || !window.HecateApp.setViewerSession) return;
+    window.HecateApp.setViewerSession({
       loggedIn: state.loggedIn,
     });
   }
@@ -670,8 +716,8 @@
 
   function updatePuzzleRewardSummary(puzzle, result) {
     if (!puzzle || !puzzle.id || !result || !result.reward_summary) return;
-    if (window.CrosswordApp && window.CrosswordApp.updatePuzzleRewardData) {
-      window.CrosswordApp.updatePuzzleRewardData(puzzle.id, result.reward_summary);
+    if (window.HecateApp && window.HecateApp.updatePuzzleRewardData) {
+      window.HecateApp.updatePuzzleRewardData(puzzle.id, result.reward_summary);
     }
   }
 
@@ -723,8 +769,8 @@
   }
 
   function submitPuzzleCompletion(detail) {
-    var activePuzzle = window.CrosswordApp && window.CrosswordApp.getActivePuzzle
-      ? window.CrosswordApp.getActivePuzzle()
+    var activePuzzle = window.HecateApp && window.HecateApp.getActivePuzzle
+      ? window.HecateApp.getActivePuzzle()
       : null;
     var endpoint = getCompletionEndpoint(activePuzzle);
     var requestKey;
@@ -786,8 +832,8 @@
     updateAuthUI();
     setViewerSessionState();
     showPuzzle();
-    if (window.CrosswordBilling && typeof window.CrosswordBilling.setLoggedIn === "function") {
-      window.CrosswordBilling.setLoggedIn(true).catch(function () {});
+    if (window.HecateBilling && typeof window.HecateBilling.setLoggedIn === "function") {
+      window.HecateBilling.setLoggedIn(true).catch(function () {});
     }
 
     _fetch(buildApiUrl("/api/bootstrap"), { method: "POST", credentials: "include" })
@@ -821,8 +867,8 @@
         console.warn("bootstrap failed:", err);
       })
       .then(function () {
-        if (window.CrosswordApp && window.CrosswordApp.loadOwnedPuzzles) {
-          return window.CrosswordApp.loadOwnedPuzzles();
+        if (window.HecateApp && window.HecateApp.loadOwnedPuzzles) {
+          return window.HecateApp.loadOwnedPuzzles();
         }
         return null;
       });
@@ -837,11 +883,11 @@
     setAuthCheckPending(false);
     updateAuthUI();
     setViewerSessionState();
-    if (window.CrosswordBilling && typeof window.CrosswordBilling.setLoggedIn === "function") {
-      window.CrosswordBilling.setLoggedIn(false);
+    if (window.HecateBilling && typeof window.HecateBilling.setLoggedIn === "function") {
+      window.HecateBilling.setLoggedIn(false);
     }
-    if (window.CrosswordApp && window.CrosswordApp.clearOwnedPuzzles) {
-      window.CrosswordApp.clearOwnedPuzzles();
+    if (window.HecateApp && window.HecateApp.clearOwnedPuzzles) {
+      window.HecateApp.clearOwnedPuzzles();
     }
     hideCompletionModal();
     showLanding();
@@ -856,8 +902,8 @@
     setAuthCheckPending(false);
     updateAuthUI();
     setViewerSessionState();
-    if (window.CrosswordApp && window.CrosswordApp.clearOwnedPuzzles) {
-      window.CrosswordApp.clearOwnedPuzzles();
+    if (window.HecateApp && window.HecateApp.clearOwnedPuzzles) {
+      window.HecateApp.clearOwnedPuzzles();
     }
 
     if (shouldRestoreLanding) {
@@ -868,7 +914,8 @@
     applyView();
   }
 
-  elements.newCrosswordCard.addEventListener("click", function () {
+  elements.newPuzzleCard.addEventListener("click", function () {
+    setSelectedPuzzleType(state.selectedPuzzleType);
     if (state.balanceStatus === balanceStatusLoading) {
       showGenerateForm();
       elements.generateBtn.disabled = true;
@@ -897,8 +944,29 @@
     clearGenerateStatus();
   });
 
+  Array.prototype.forEach.call(elements.landingTypeButtons, function (button) {
+    button.addEventListener("click", function () {
+      setSelectedPuzzleType(button.getAttribute("data-puzzle-type"));
+    });
+  });
+
+  Array.prototype.forEach.call(elements.generateTypeButtons, function (button) {
+    button.addEventListener("click", function () {
+      setSelectedPuzzleType(button.getAttribute("data-puzzle-type"));
+    });
+  });
+
   elements.landingTryBtn.addEventListener("click", function () {
+    var targetPuzzleType = state.selectedPuzzleType;
+
     showPuzzle();
+    if (window.HecateApp && typeof window.HecateApp.loadPrebuilt === "function") {
+      window.HecateApp.loadPrebuilt().then(function () {
+        if (window.HecateApp && typeof window.HecateApp.openFirstPuzzleOfType === "function") {
+          window.HecateApp.openFirstPuzzleOfType(targetPuzzleType);
+        }
+      }).catch(function () {});
+    }
   });
 
   elements.landingSignIn.addEventListener("click", function () {
@@ -906,6 +974,7 @@
 
     if (state.loggedIn) {
       showPuzzle();
+      showGenerateForm();
       return;
     }
 
@@ -955,6 +1024,7 @@
   elements.generateBtn.addEventListener("click", function () {
     var topic = elements.topicInput.value.trim();
     var selectedWordCount = Number(elements.wordCountSelect.value);
+    var selectedPuzzleType = state.selectedPuzzleType;
     var requestFingerprint;
     var requestID;
 
@@ -977,11 +1047,11 @@
       return;
     }
 
-    requestFingerprint = createGenerateRequestFingerprint(topic, selectedWordCount);
+    requestFingerprint = createGenerateRequestFingerprint(topic, selectedPuzzleType, selectedWordCount);
     requestID = getOrCreateGenerateRequestID(requestFingerprint);
 
     elements.generateBtn.disabled = true;
-    elements.generateStatus.textContent = "Generating crossword...";
+    elements.generateStatus.textContent = "Generating " + puzzleTypeLabel(selectedPuzzleType).toLowerCase() + "...";
     elements.generateStatus.classList.add("loading");
 
     _fetch(buildApiUrl("/api/generate"), {
@@ -991,6 +1061,7 @@
       body: JSON.stringify({
         request_id: requestID,
         topic: topic,
+        puzzle_type: selectedPuzzleType,
         word_count: selectedWordCount,
       }),
     })
@@ -1040,12 +1111,28 @@
         if (result.data.balance) updateBalance(result.data.balance);
 
         setShareToken(result.data.share_token || null);
+        var payload;
+        var responsePuzzleType = normalizePuzzleType(result.data.puzzle_type || selectedPuzzleType);
 
-        var payload = generateCrossword(result.data.items, {
-          title: result.data.title || topic,
-          subtitle: result.data.subtitle || "",
-          description: result.data.description || "",
-        });
+        if (window.HecateApp && typeof window.HecateApp.buildPuzzleFromSpecification === "function") {
+          payload = window.HecateApp.buildPuzzleFromSpecification({
+            puzzle_type: responsePuzzleType,
+            title: result.data.title || topic,
+            subtitle: result.data.subtitle || "",
+            description: result.data.description || "",
+            items: result.data.items || [],
+            layout_seed: result.data.layout_seed || ("generated:" + requestID),
+            layout_version: result.data.layout_version || 1,
+            options: result.data.options || null,
+          });
+        } else {
+          payload = generateCrossword(result.data.items, {
+            title: result.data.title || topic,
+            subtitle: result.data.subtitle || "",
+            description: result.data.description || "",
+          });
+          payload.puzzleType = responsePuzzleType;
+        }
 
         setPuzzleContentVisible(true);
         payload.id = result.data.id ? String(result.data.id) : null;
@@ -1053,10 +1140,10 @@
         payload.source = result.data.source || "owned";
         payload.rewardSummary = result.data.reward_summary || null;
 
-        if (window.CrosswordApp && window.CrosswordApp.addGeneratedPuzzle) {
-          window.CrosswordApp.addGeneratedPuzzle(payload);
-        } else if (window.CrosswordApp && window.CrosswordApp.render) {
-          window.CrosswordApp.render(payload);
+        if (window.HecateApp && window.HecateApp.addGeneratedPuzzle) {
+          window.HecateApp.addGeneratedPuzzle(payload);
+        } else if (window.HecateApp && window.HecateApp.render) {
+          window.HecateApp.render(payload);
         }
 
         elements.generatePanel.style.display = "none";
@@ -1073,11 +1160,11 @@
       });
   });
 
-  window.addEventListener("crossword:share-token", function (e) {
+  window.addEventListener("hecate:puzzle:share-token", function (e) {
     setShareToken(e.detail);
   });
 
-  window.addEventListener("crossword:active-puzzle", function (event) {
+  window.addEventListener("hecate:puzzle:active", function (event) {
     var puzzle = event && event.detail ? event.detail : null;
     setShareToken(puzzle && puzzle.shareToken ? puzzle.shareToken : null);
     syncPuzzleInfoButton();
@@ -1085,11 +1172,11 @@
     positionCreditPopover();
   });
 
-  window.addEventListener("crossword:completed", function (event) {
+  window.addEventListener("hecate:puzzle:completed", function (event) {
     submitPuzzleCompletion(event.detail);
   });
 
-  window.addEventListener("crossword:reveal-used", function (event) {
+  window.addEventListener("hecate:puzzle:reveal-used", function (event) {
     submitPuzzleCompletion(event.detail);
   });
 
@@ -1239,7 +1326,7 @@
     }
   });
 
-  window.addEventListener("llm-crossword:billing-summary", function (event) {
+  window.addEventListener("hecate:billing-summary", function (event) {
     var summary = event && event.detail ? event.detail : null;
 
     if (summary && summary.balance) {
@@ -1248,11 +1335,13 @@
   });
 
   updateAuthUI();
+  syncPuzzleTypeUI();
+  setSelectedPuzzleType(state.selectedPuzzleType);
   setViewerSessionState();
   syncShareTokenFromActivePuzzle();
   applyView();
 
-  (window.__LLM_CROSSWORD_TEST__ || (window.__LLM_CROSSWORD_TEST__ = {})).app = {
+  (window.__HECATE_TEST__ || (window.__HECATE_TEST__ = {})).app = {
     describeCompletionReason: describeCompletionReason,
     getCompletionEndpoint: getCompletionEndpoint,
     getState: function () {
@@ -1267,6 +1356,7 @@
         pendingCompletionKey: state.pendingCompletionKey,
         balanceStatus: state.balanceStatus,
         activeGenerateRequestId: state.activeGenerateRequestId,
+        selectedPuzzleType: state.selectedPuzzleType,
       };
     },
     openBillingDrawer: openBillingDrawer,
@@ -1275,6 +1365,7 @@
     setState: function (nextState) {
       Object.assign(state, nextState || {});
     },
+    setSelectedPuzzleType: setSelectedPuzzleType,
     setLoggedIn: function (value) {
       state.loggedIn = !!value;
       updateAuthUI();

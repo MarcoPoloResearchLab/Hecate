@@ -17,13 +17,13 @@ RUN expected_go_version="$(awk '/^go / { print $2; exit }' go.mod | cut -d. -f1,
 	|| (echo "go.mod requires Go ${expected_go_version}, but Dockerfile GO_VERSION=${GO_VERSION}" >&2; exit 1)
 RUN go mod download
 COPY . .
-RUN GOOS="${TARGETOS:-$(go env GOOS)}" GOARCH="${TARGETARCH:-$(go env GOARCH)}" go build -o /out/crossword-api ./cmd/crossword-api
+RUN GOOS="${TARGETOS:-$(go env GOOS)}" GOARCH="${TARGETARCH:-$(go env GOARCH)}" go build -o /out/hecate-api ./cmd/hecate-api
 
 FROM alpine:3.21
 
 RUN apk add --no-cache ca-certificates
-COPY --from=build /out/crossword-api /usr/local/bin/crossword-api
+COPY --from=build /out/hecate-api /usr/local/bin/hecate-api
 
-ENV CROSSWORDAPI_LISTEN_ADDR=:9090
+ENV HECATEAPI_LISTEN_ADDR=:9090
 
-ENTRYPOINT ["/usr/local/bin/crossword-api"]
+ENTRYPOINT ["/usr/local/bin/hecate-api"]

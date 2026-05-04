@@ -15,16 +15,16 @@ test.describe("Landing page", () => {
   });
 
   test("shows the hero title", async ({ page }) => {
-    await expect(page.getByText("Create crossword puzzles with AI")).toBeVisible();
+    await expect(page.getByText("Create crosswords and word searches with AI")).toBeVisible();
   });
 
   test("shows the landing page brand logo", async ({ page }) => {
-    await expect(page.getByAltText("LLM Crossword logo")).toBeVisible();
+    await expect(page.getByAltText("Hecate logo")).toBeVisible();
   });
 
   test("shows the hero subtitle describing the product", async ({ page }) => {
     await expect(
-      page.getByText("Enter any topic and let a large language model"),
+      page.getByText("Choose a puzzle type, generate it from any topic"),
     ).toBeVisible();
   });
 
@@ -34,8 +34,8 @@ test.describe("Landing page", () => {
     await expect(page.locator('link[rel="shortcut icon"]')).toHaveAttribute("href", "/assets/img/llm_crossword_favicon.ico");
   });
 
-  test("shows the 'Try a pre-built puzzle' button", async ({ page }) => {
-    await expect(page.getByRole("button", { name: "Try a pre-built puzzle" })).toBeVisible();
+  test("shows the 'Try a sample puzzle' button", async ({ page }) => {
+    await expect(page.getByRole("button", { name: "Try a sample puzzle" })).toBeVisible();
   });
 
   test("shows the 'Sign in to generate' button", async ({ page }) => {
@@ -58,27 +58,27 @@ test.describe("Landing page", () => {
     await expect(page.locator("#puzzleView")).toBeHidden();
   });
 
-  test("clicking 'Try a pre-built puzzle' navigates to puzzle view", async ({ page }) => {
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+  test("clicking 'Try a sample puzzle' navigates to puzzle view", async ({ page }) => {
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView")).toBeVisible();
     await expect(page.locator("#landingPage")).toBeHidden();
   });
 
   test("puzzle view shows puzzle cards in sidebar after clicking try", async ({ page }) => {
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     // Sidebar with puzzle cards is shown
     await expect(page.locator("#puzzleSidebar")).toBeVisible();
     await expect(page.locator("#puzzleCardList .puzzle-card").first()).toBeVisible();
   });
 
   test("puzzle view no longer shows a back button", async ({ page }) => {
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView")).toBeVisible();
     await expect(page.getByRole("button", { name: "Back" })).toHaveCount(0);
   });
 
   test("page title is set", async ({ page }) => {
-    await expect(page).toHaveTitle(/LLM Crossword/);
+    await expect(page).toHaveTitle(/Hecate/);
   });
 
   test("shows a sample crossword puzzle below the feature cards", async ({ page }) => {

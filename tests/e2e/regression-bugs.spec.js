@@ -30,9 +30,9 @@ test.describe("Session persistence on refresh", () => {
     await setupLoggedInRoutes(page, { puzzles: puzzlePayload });
     await page.goto("/");
 
-    // Verify logged-in state: puzzle view visible, click New Crossword to check generate button
+    // Verify logged-in state: puzzle view visible, click New Puzzle to check generate button
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     const genBtn = page.locator("#generateBtn");
     await expect(genBtn).toBeEnabled({ timeout: 5000 });
     await expect(genBtn).toContainText("(4 credits)");
@@ -42,7 +42,7 @@ test.describe("Session persistence on refresh", () => {
 
     // After reload, user must STILL be logged in
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(genBtn).toBeEnabled({ timeout: 5000 });
     await expect(genBtn).toContainText("(4 credits)");
   });
@@ -87,7 +87,7 @@ test.describe("Session persistence on refresh", () => {
     await page.reload();
 
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
   });
 
@@ -156,7 +156,7 @@ test.describe("Session persistence on refresh", () => {
     await page.goto("/?puzzle=shared-ok");
     await expect(page.locator(".landing__title")).toHaveText("Shared Space");
 
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
 
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
     await expect(page.locator("#title")).toHaveText("Shared Space");
@@ -174,7 +174,7 @@ test.describe("Grid cell dimensions", () => {
     await page.goto("/");
 
     // Navigate to puzzle view
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
 
     // Wait for grid to render
     const firstCell = page.locator("#puzzleView .cell").first();
@@ -192,7 +192,7 @@ test.describe("Grid cell dimensions", () => {
   test("all cells have consistent size", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: puzzlePayload });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
 
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 5000 });
 
@@ -221,7 +221,7 @@ test.describe("Layout — no excessive empty space", () => {
   test("crossword grid starts within 250px of the controls above it", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: puzzlePayload });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
 
     // Wait for grid
     const firstCell = page.locator("#puzzleView .cell").first();
@@ -255,7 +255,7 @@ test.describe("Layout — no excessive empty space", () => {
   test("puzzle view does not have a fixed height taller than its content", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: puzzlePayload });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
 
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 5000 });
 
@@ -276,7 +276,7 @@ test.describe("Layout — no excessive empty space", () => {
   test("puzzle view spans full viewport width (no container-in-a-page)", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: puzzlePayload });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 5000 });
 
     const layout = await page.evaluate(() => {
@@ -294,7 +294,7 @@ test.describe("Layout — no excessive empty space", () => {
   test("solver toolbar stays inside the clue rail and above the clue list", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: puzzlePayload });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 5000 });
 
     const layout = await page.evaluate(() => {
@@ -330,7 +330,7 @@ test.describe("Layout — no excessive empty space", () => {
     await page.setViewportSize({ width: 2048, height: 300 });
     await setupLoggedOutRoutes(page, { puzzles: puzzlePayload });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 5000 });
     await page.waitForTimeout(500);
 
@@ -393,7 +393,7 @@ test.describe("Clue visibility", () => {
   test("clue text is not truncated", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: puzzlePayload });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 5000 });
 
     // Check that clue list items are not overflowing/truncated
@@ -417,7 +417,7 @@ test.describe("Clue visibility", () => {
   test("hint buttons are visible on clue items", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: puzzlePayload });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 5000 });
 
     // The hint button (H) should be visible on at least one clue
@@ -466,7 +466,7 @@ test.describe("Clue visibility — long clues (class: content never clipped)", (
   test("long clue text is fully visible, not truncated", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: longCluePuzzle });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 10000 });
 
     // Check every clue <li> — scrollWidth must not exceed clientWidth
@@ -488,7 +488,7 @@ test.describe("Clue visibility — long clues (class: content never clipped)", (
   test("hint buttons are visible on every clue with long text", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: longCluePuzzle });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 10000 });
 
     const hintButtons = page.locator("#puzzleView li .hintButton");
@@ -508,7 +508,7 @@ test.describe("Clue visibility — long clues (class: content never clipped)", (
   test("clues container does not use text-overflow ellipsis", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: longCluePuzzle });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 10000 });
 
     const hasEllipsis = await page.evaluate(() => {
@@ -528,7 +528,7 @@ test.describe("Clue visibility — long clues (class: content never clipped)", (
   test("clues are positioned to the right of the grid, not below", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: longCluePuzzle });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 10000 });
 
     const layout = await page.evaluate(() => {
@@ -557,7 +557,7 @@ test.describe("Clue visibility — long clues (class: content never clipped)", (
   test("clues container is at least 250px wide", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: longCluePuzzle });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 10000 });
 
     const clueWidth = await page.evaluate(() => {
@@ -574,7 +574,7 @@ test.describe("Clue visibility — long clues (class: content never clipped)", (
   test("no scrollbar artifact (black bar) inside grid viewport", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: longCluePuzzle });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 10000 });
 
     const scrollInfo = await page.evaluate(() => {
@@ -604,20 +604,20 @@ test.describe("Generate panel visibility (class: view state correctness)", () =>
   test("generate form is hidden when viewing pre-built puzzle as logged-out user", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: puzzlePayload });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 5000 });
 
     await expect(page.locator("#generatePanel")).toBeHidden();
   });
 
-  test("generate form is visible after clicking New Crossword when logged in", async ({ page }) => {
+  test("generate form is visible after clicking New Puzzle when logged in", async ({ page }) => {
     await setupLoggedInRoutes(page, { puzzles: puzzlePayload });
     await page.goto("/");
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
 
-    // Generate panel is hidden until New Crossword card is clicked
+    // Generate panel is hidden until New Puzzle card is clicked
     await expect(page.locator("#generatePanel")).toBeHidden();
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generatePanel")).toBeVisible();
   });
 });
@@ -652,7 +652,7 @@ test.describe("Grid scrollbar", () => {
   test("no extraneous scrollbar or black bar inside the grid viewport", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: puzzlePayload });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await page.locator("#puzzleView .cell").first().waitFor({ timeout: 5000 });
 
     const viewport = await page.evaluate(() => {

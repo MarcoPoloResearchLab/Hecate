@@ -11,7 +11,7 @@ const { createFrontendConfig, setupLoggedInRoutes, setupLoggedOutRoutes, json, t
 
 // Navigate to puzzle view and wait for it to appear
 async function goToPuzzle(page) {
-  await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+  await page.getByRole("button", { name: "Try a sample puzzle" }).click();
   await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
 }
 
@@ -97,10 +97,10 @@ test.describe("Admin — billing helper fallbacks", () => {
       };
     });
     await loadScript(page, "admin.js");
-    await page.waitForFunction(() => window.__LLM_CROSSWORD_TEST__ && window.__LLM_CROSSWORD_TEST__.admin);
+    await page.waitForFunction(() => window.__HECATE_TEST__ && window.__HECATE_TEST__.admin);
 
     const result = await page.evaluate(() => {
-      var admin = window.__LLM_CROSSWORD_TEST__.admin;
+      var admin = window.__HECATE_TEST__.admin;
       return {
         defaultCoinValue: admin.getCoinValueCents(null),
         flooredCoinValue: admin.getCoinValueCents({ coin_value_cents: 40.9 }),
@@ -146,9 +146,9 @@ test.describe("App — bootstrap non-ok response (line 114)", () => {
       },
     });
     await page.goto("/");
-    // Logged-in user sees puzzle view; click New Crossword to show generate form
+    // Logged-in user sees puzzle view; click New Puzzle to show generate form
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeDisabled({ timeout: 5000 });
     await expect(page.locator("#generateStatus")).toContainText(
       "couldn't load your credit balance",
@@ -161,9 +161,9 @@ test.describe("App — generate while not logged in (lines 149-150)", () => {
   test("shows 'Please log in first' when generating while logged out via event", async ({ page }) => {
     await setupLoggedInRoutes(page, { coins: 10 });
     await page.goto("/");
-    // Logged-in user sees puzzle view; click New Crossword to show generate form
+    // Logged-in user sees puzzle view; click New Puzzle to show generate form
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
     // Now log out via event
     await page.evaluate(() => {
@@ -179,7 +179,7 @@ test.describe("App — generate while not logged in (lines 149-150)", () => {
     // After logout settles, reopen the generator through the public test
     // surface so the handler can be exercised without racing onLogout().
     await page.evaluate(() => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       app.showPuzzle();
       app.showGenerateForm();
       document.getElementById("generateBtn").disabled = false;
@@ -199,9 +199,9 @@ test.describe("App — generic generate error message (line 176)", () => {
       },
     });
     await page.goto("/");
-    // Logged-in user sees puzzle view; click New Crossword to show generate form
+    // Logged-in user sees puzzle view; click New Puzzle to show generate form
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
     await page.fill("#topicInput", "planets");
     await page.locator("#generateBtn").click();
@@ -216,9 +216,9 @@ test.describe("App — generic generate error message (line 176)", () => {
       },
     });
     await page.goto("/");
-    // Logged-in user sees puzzle view; click New Crossword to show generate form
+    // Logged-in user sees puzzle view; click New Puzzle to show generate form
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
     await page.fill("#topicInput", "planets");
     await page.locator("#generateBtn").click();
@@ -230,9 +230,9 @@ test.describe("App — Enter key on topic input (lines 206-208)", () => {
   test("pressing Enter in topic input triggers generate", async ({ page }) => {
     await setupLoggedInRoutes(page, { coins: 10 });
     await page.goto("/");
-    // Logged-in user sees puzzle view; click New Crossword to show generate form
+    // Logged-in user sees puzzle view; click New Puzzle to show generate form
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
     // Leave topic empty and press Enter — should show "Please enter a topic."
     await page.locator("#topicInput").focus();
@@ -259,7 +259,7 @@ test.describe("App — updateBalance with available_cents", () => {
       generationCostCoins: "bad-cost",
     });
     await page.goto("/");
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toContainText("(4 credits)", { timeout: 5000 });
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
   });
@@ -269,7 +269,7 @@ test.describe("App — updateBalance with available_cents", () => {
     await page.goto("/");
 
     const result = await page.evaluate(() => {
-      var app = window.__LLM_CROSSWORD_TEST__.app;
+      var app = window.__HECATE_TEST__.app;
       app.updateBalance({
         available_cents: 1000,
         coin_value_cents: 40.9,
@@ -385,7 +385,7 @@ test.describe("Crossword — reward label pluralization", () => {
     await goToPuzzleWithGrid(page);
 
     const rewardMeta = await page.evaluate((puzzle) => {
-      var crossword = window.__LLM_CROSSWORD_TEST__.crossword;
+      var crossword = window.__HECATE_TEST__.crossword;
       var sharedPuzzle = crossword.buildStoredPuzzleFromResponse(Object.assign({}, puzzle, {
         reward_summary: {
           reward_policy: {
@@ -395,8 +395,8 @@ test.describe("Crossword — reward label pluralization", () => {
         source: "shared",
       }), "shared", 0);
 
-      window.CrosswordApp.setViewerSession({ loggedIn: true });
-      window.CrosswordApp.render(sharedPuzzle);
+      window.HecateApp.setViewerSession({ loggedIn: true });
+      window.HecateApp.render(sharedPuzzle);
       return document.getElementById("rewardStripMeta").textContent;
     }, defaultPuzzles[0]);
 
@@ -702,7 +702,7 @@ test.describe("Crossword — validation edge cases", () => {
     // This exercises the catch block in render or the error path.
     var err = await page.evaluate(() => {
       try {
-        window.CrosswordApp.render(null);
+        window.HecateApp.render(null);
         return null;
       } catch (e) {
         return e.message;
@@ -714,7 +714,7 @@ test.describe("Crossword — validation edge cases", () => {
 
   test("payload with empty entries shows error", async ({ page }) => {
     await page.evaluate(() => {
-      window.CrosswordApp.render({ title: "X", subtitle: "Y", entries: [], overlaps: [] });
+      window.HecateApp.render({ title: "X", subtitle: "Y", entries: [], overlaps: [] });
     });
     await expect(page.locator("#errorBox")).toBeVisible();
     await expect(page.locator("#errorBox")).toContainText("entries[]");
@@ -722,7 +722,7 @@ test.describe("Crossword — validation edge cases", () => {
 
   test("missing overlaps shows error", async ({ page }) => {
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         title: "Test",
         subtitle: "",
         entries: [{ id: "W0", dir: "across", row: 0, col: 0, answer: "AB", clue: "test", hint: "h" }],
@@ -734,7 +734,7 @@ test.describe("Crossword — validation edge cases", () => {
 
   test("entry missing required field shows error", async ({ page }) => {
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         title: "Test",
         subtitle: "",
         entries: [{ id: "W0", dir: "across", row: 0, col: 0, answer: "AB" }],
@@ -747,7 +747,7 @@ test.describe("Crossword — validation edge cases", () => {
 
   test("non-alpha answer shows error", async ({ page }) => {
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         title: "Test",
         subtitle: "",
         entries: [{ id: "W0", dir: "across", row: 0, col: 0, answer: "A1B", clue: "test", hint: "h" }],
@@ -760,7 +760,7 @@ test.describe("Crossword — validation edge cases", () => {
 
   test("overlap with unknown id shows error", async ({ page }) => {
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         title: "Test",
         subtitle: "",
         entries: [
@@ -775,7 +775,7 @@ test.describe("Crossword — validation edge cases", () => {
 
   test("overlap with mismatched coords shows error", async ({ page }) => {
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         title: "Test",
         subtitle: "",
         entries: [
@@ -791,7 +791,7 @@ test.describe("Crossword — validation edge cases", () => {
 
   test("overlap with mismatched letters shows error", async ({ page }) => {
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         title: "Test",
         subtitle: "",
         entries: [
@@ -807,7 +807,7 @@ test.describe("Crossword — validation edge cases", () => {
 
   test("bad overlap with null fields shows error", async ({ page }) => {
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         title: "Test",
         subtitle: "",
         entries: [
@@ -822,7 +822,7 @@ test.describe("Crossword — validation edge cases", () => {
 
   test("placement conflict shows error", async ({ page }) => {
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         title: "Conflict",
         subtitle: "",
         entries: [
@@ -850,19 +850,19 @@ test.describe("Crossword — loadAndRenderPuzzles error paths", () => {
   test("non-array data shows error", async ({ page }) => {
     await setupLoggedOutRoutes(page, {
       extra: {
-        "**/crosswords.json": (route) =>
+        "**/assets/data/puzzles.json": (route) =>
           route.fulfill(json(200, "not an array")),
       },
     });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#errorBox")).toContainText("array", { timeout: 10000 });
   });
 
   test("invalid puzzle specification shows error", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: [{ title: 123 }] });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#errorBox")).toContainText("invalid", { timeout: 10000 });
   });
 
@@ -873,18 +873,18 @@ test.describe("Crossword — loadAndRenderPuzzles error paths", () => {
       }],
     });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#errorBox")).toContainText("invalid", { timeout: 10000 });
   });
 
   test("fetch failure shows error in errorBox", async ({ page }) => {
     await setupLoggedOutRoutes(page, {
       extra: {
-        "**/crosswords.json": (route) => route.abort("connectionrefused"),
+        "**/assets/data/puzzles.json": (route) => route.abort("connectionrefused"),
       },
     });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#errorBox")).toContainText("fetch", { timeout: 10000 });
   });
 });
@@ -956,7 +956,7 @@ test.describe("Generator — computeGridSize with empty entries", () => {
 
     // Render a valid payload with down entries to test computeGridSize down branch
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         title: "Down Test",
         subtitle: "Test down entries",
         entries: [
@@ -987,9 +987,9 @@ test.describe("App — generate with title/subtitle defaults", () => {
       },
     });
     await page.goto("/");
-    // Logged-in user sees puzzle view; click New Crossword to show generate form
+    // Logged-in user sees puzzle view; click New Puzzle to show generate form
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
     await page.fill("#topicInput", "space");
     await page.locator("#generateBtn").click();
@@ -1080,9 +1080,9 @@ test.describe("App — updateBalance falsy guard", () => {
       },
     });
     await page.goto("/");
-    // Logged-in user sees puzzle view; click New Crossword to show generate form
+    // Logged-in user sees puzzle view; click New Puzzle to show generate form
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     // Should not crash — no balance in bootstrap response
     await expect(page.locator("#generateBtn")).toBeDisabled({ timeout: 5000 });
     await expect(page.locator("#generateStatus")).toContainText(
@@ -1250,7 +1250,7 @@ test.describe("Crossword — computeGridSize empty entries branch", () => {
       // computeGridSize is not exported, but we can test it indirectly
       // by calling render with entries that would produce specific grid sizes
       try {
-        window.CrosswordApp.render({
+        window.HecateApp.render({
           title: "Small",
           subtitle: "Single entry",
           entries: [
@@ -1281,7 +1281,7 @@ test.describe("Crossword — buildModel letter conflict", () => {
     // validatePayload passes because overlaps is empty.
     // But buildModel throws because cell gets 'A' then 'X' at same position.
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         title: "Conflict",
         subtitle: "",
         entries: [
@@ -1309,7 +1309,7 @@ test.describe("Crossword — additional validation branches", () => {
 
   test("null overlaps shows error", async ({ page }) => {
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         title: "Test",
         subtitle: "",
         entries: [{ id: "W0", dir: "across", row: 0, col: 0, answer: "AB", clue: "c", hint: "h" }],
@@ -1322,7 +1322,7 @@ test.describe("Crossword — additional validation branches", () => {
 
   test("overlap with down entry renders correctly", async ({ page }) => {
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         title: "Down Overlap",
         subtitle: "sub",
         entries: [
@@ -1438,7 +1438,7 @@ test.describe("Config — missing header element", () => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
     // Page should still load
-    await expect(page.getByText("Create crossword puzzles with AI")).toBeVisible();
+    await expect(page.getByText("Create crosswords and word searches with AI")).toBeVisible();
   });
 });
 
@@ -1541,7 +1541,7 @@ test.describe("Crossword — validatePuzzleSpecification branches", () => {
       }],
     });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#errorBox")).toContainText("invalid", { timeout: 10000 });
   });
 
@@ -1552,7 +1552,7 @@ test.describe("Crossword — validatePuzzleSpecification branches", () => {
       }],
     });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#errorBox")).toContainText("invalid", { timeout: 10000 });
   });
 });
@@ -1582,27 +1582,30 @@ test.describe("Generator — additional branch coverage", () => {
         subtitle: "Test",
         random: function(){ return 0.5; },
       });
-      window.CrosswordApp.render(payload);
+      window.HecateApp.render(payload);
     });
     await expect(page.locator("#title")).toContainText("No Hints");
   });
 
-  test("generator handles words with special characters stripped", async ({ page }) => {
-    await page.evaluate(() => {
-      var items = [
-        { word: "or-bit", definition: "d1", hint: "h1" },
-        { word: "ma.re", definition: "d2", hint: "h2" },
-        { word: "ti des", definition: "d3", hint: "h3" },
-        { word: "LU'NAR", definition: "d4", hint: "h4" },
-        { word: "apollo!", definition: "d5", hint: "h5" },
-      ];
-      var payload = generateCrossword(items, {
-        title: "Special Chars",
-        random: function(){ return 0.5; },
-      });
-      window.CrosswordApp.render(payload);
+  test("generator rejects words with special characters", async ({ page }) => {
+    var result = await page.evaluate(() => {
+      try {
+        generateCrossword([
+          { word: "or-bit", definition: "d1", hint: "h1" },
+          { word: "mare", definition: "d2", hint: "h2" },
+          { word: "tides", definition: "d3", hint: "h3" },
+          { word: "lunar", definition: "d4", hint: "h4" },
+          { word: "apollo", definition: "d5", hint: "h5" },
+        ], {
+          title: "Special Chars",
+          random: function(){ return 0.5; },
+        });
+        return "ok";
+      } catch (e) {
+        return e.message;
+      }
     });
-    await expect(page.locator("#title")).toContainText("Special Chars");
+    expect(result).toContain("Invalid word");
   });
 
   test("generator with no opts uses defaults", async ({ page }) => {
@@ -1616,7 +1619,7 @@ test.describe("Generator — additional branch coverage", () => {
       ];
       // Call with no opts to exercise default-arg branch
       var payload = generateCrossword(items);
-      window.CrosswordApp.render(payload);
+      window.HecateApp.render(payload);
     });
     await expect(page.locator("#title")).toContainText("Mini Crossword");
   });
@@ -1638,7 +1641,7 @@ test.describe("Generator — additional branch coverage", () => {
         return "error:" + e.message;
       }
     });
-    expect(result).toBe("Null Fields");
+    expect(result).toBe("error:Invalid word (need length 3-12, A-Z).");
   });
 
   test("generator exercise bboxAfter first-is-true branch", async ({ page }) => {
@@ -1655,7 +1658,7 @@ test.describe("Generator — additional branch coverage", () => {
         { word: "era", definition: "d5", hint: "h5" },
       ];
       var payload = generateCrossword(items, { title: "BBox", random: function(){ return 0.5; } });
-      window.CrosswordApp.render(payload);
+      window.HecateApp.render(payload);
     });
     await expect(page.locator("#title")).toContainText("BBox");
   });
@@ -1672,7 +1675,7 @@ test.describe("Crossword — render with defaults", () => {
     await goToPuzzleWithGrid(page);
 
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         entries: [
           { id: "W0", dir: "across", row: 0, col: 0, answer: "AB", clue: "c", hint: "h" },
           { id: "W1", dir: "down", row: 0, col: 1, answer: "BC", clue: "c2", hint: "h2" },
@@ -1886,6 +1889,6 @@ test.describe("App — /me fetch failure", () => {
       },
     });
     await page.goto("/");
-    await expect(page.getByText("Create crossword puzzles with AI")).toBeVisible();
+    await expect(page.getByText("Create crosswords and word searches with AI")).toBeVisible();
   });
 });
