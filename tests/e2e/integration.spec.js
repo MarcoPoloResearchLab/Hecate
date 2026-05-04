@@ -10,8 +10,8 @@ const INTEGRATION_ORIGIN = (process.env.INTEGRATION_URL || "http://localhost:800
 test.describe("Landing page", () => {
   test("renders hero, CTAs, and feature cards", async ({ page }) => {
     await page.goto("/");
-    await expect(page.getByText("Create crossword puzzles with AI")).toBeVisible();
-    await expect(page.getByRole("button", { name: "Try a pre-built puzzle" })).toBeVisible();
+    await expect(page.getByText("Create crosswords and word searches with AI")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Try a sample puzzle" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Sign in to generate" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Any topic" })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Instant generation" })).toBeVisible();
@@ -24,15 +24,15 @@ test.describe("Header and footer", () => {
   test("header has brand on the left", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
     await page.waitForTimeout(3000);
-    await expect(page.getByRole("link", { name: "LLM Crossword" })).toBeVisible();
+    await expect(page.getByRole("link", { name: "Hecate" })).toBeVisible();
     await expect(page).toHaveScreenshot("header-footer.png", { maxDiffPixelRatio: 0.05 });
   });
 });
 
 test.describe("Pre-built puzzle", () => {
-  test("clicking 'Try a pre-built puzzle' shows crossword", async ({ page }) => {
+  test("clicking 'Try a sample puzzle' shows crossword", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     // Wait for puzzle to render.
     await page.waitForTimeout(3000);
     await expect(page).toHaveScreenshot("after-try-prebuilt-click.png", { maxDiffPixelRatio: 0.05 });
@@ -42,24 +42,24 @@ test.describe("Pre-built puzzle", () => {
 test.describe("Generate flow — unauthenticated", () => {
   test("shows the generator form with a disabled generate button when logged out", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
-    await page.locator("#newCrosswordCard").click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
+    await page.locator("#newPuzzleCard").click();
 
     await expect(page.locator("#generatePanel")).toBeVisible({ timeout: 5000 });
     await expect(page.locator("#generateBtn")).toBeDisabled();
-    await expect(page.locator("#title")).toContainText("Generate a New Crossword");
+    await expect(page.locator("#title")).toContainText("Generate a New Puzzle");
     await expect(page.locator("#landingSignIn")).toContainText("Sign in to generate");
   });
 });
 
 test.describe("Landing page buttons", () => {
-  test("'Try a pre-built puzzle' hides landing and shows puzzle view", async ({ page }) => {
+  test("'Try a sample puzzle' hides landing and shows puzzle view", async ({ page }) => {
     await page.goto("/");
     // Landing should be visible initially
     await expect(page.locator("#landingPage")).toBeVisible();
     await expect(page.locator("#puzzleView")).toBeHidden();
     // Click the button
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     // Puzzle view should appear, landing should hide
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
     await expect(page.locator("#landingPage")).toBeHidden();
@@ -82,7 +82,7 @@ test.describe("Landing page buttons", () => {
 test.describe("Crossword grid layout", () => {
   test("grid cells are square (not stretched)", async ({ page }) => {
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     // Wait for puzzle to render — crosswords.json fetch + generator can take time
     var cell = page.locator("#puzzleView .cell:not(.blk)").first();
     await expect(cell).toBeVisible({ timeout: 15000 });
@@ -96,7 +96,7 @@ test.describe("Crossword grid layout", () => {
 
   test("no giant empty space above the crossword grid", async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
     // Wait for puzzle to render
     var cell = page.locator("#puzzleView .cell:not(.blk)").first();
@@ -154,7 +154,7 @@ test.describe("Deterministic login", () => {
     await expect(page.locator("#landingPage")).toBeHidden();
     await expect(page.locator("#headerCreditBadge")).toContainText("credits", { timeout: 10000 });
 
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
     await expect(page.locator("#landingSignIn")).toContainText("Go to generator");
   });
@@ -191,7 +191,7 @@ test.describe("Deterministic login", () => {
 test.describe("Real puzzle — clue layout (class: content always readable)", () => {
   test.beforeEach(async ({ page }) => {
     await page.goto("/", { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     // Wait for puzzle cells to render
     await expect(page.locator("#puzzleView .cell:not(.blk)").first()).toBeVisible({ timeout: 15000 });
   });

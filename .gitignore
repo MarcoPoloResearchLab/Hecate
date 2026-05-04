@@ -7,6 +7,9 @@
 .env.tauth.production
 .env.postgres
 tauth.config.production.yaml
+configs/.env.hecateapi
+configs/.env.*.local
+configs/.env.*.production
 
 # Build artifacts
 backend/crossword-api
@@ -25,6 +28,7 @@ playwright-report/
 # Coverage output
 .nyc_output/
 coverage/
+coverage-json/
 
 # Tooling
 tools/

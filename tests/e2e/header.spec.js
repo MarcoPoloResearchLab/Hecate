@@ -6,7 +6,7 @@ const { setupLoggedOutRoutes } = require("./route-helpers");
 test.describe("Header — rendered content", () => {
   test.beforeEach(async ({ page }) => {
     await setupLoggedOutRoutes(page);
-    await page.goto("/", { waitUntil: "networkidle" });
+    await page.goto("/");
     // Wait for mpr-ui orchestration to complete.
     await page.waitForTimeout(2000);
   });
@@ -16,8 +16,8 @@ test.describe("Header — rendered content", () => {
     await expect(rendered).toBeVisible();
   });
 
-  test("header contains the brand text 'LLM Crossword' as a clickable link", async ({ page }) => {
-    var brandLink = page.locator("header.mpr-header a").filter({ hasText: "LLM Crossword" });
+  test("header contains the brand text 'Hecate' as a clickable link", async ({ page }) => {
+    var brandLink = page.locator("header.mpr-header a").filter({ hasText: "Hecate" });
     await expect(brandLink).toBeVisible();
   });
 
@@ -46,7 +46,7 @@ test.describe("Header — rendered content", () => {
 
   test("header persists across landing and puzzle views", async ({ page }) => {
     await expect(page.locator("header.mpr-header")).toBeVisible();
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("header.mpr-header")).toBeVisible();
   });
 });
@@ -54,7 +54,7 @@ test.describe("Header — rendered content", () => {
 test.describe("Footer — rendered content", () => {
   test.beforeEach(async ({ page }) => {
     await setupLoggedOutRoutes(page);
-    await page.goto("/", { waitUntil: "networkidle" });
+    await page.goto("/");
     await page.waitForTimeout(2000);
   });
 
@@ -88,7 +88,7 @@ test.describe("Footer — rendered content", () => {
 
   test("footer persists across landing and puzzle views", async ({ page }) => {
     await expect(page.locator("footer.mpr-footer")).toBeVisible();
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("footer.mpr-footer")).toBeVisible();
   });
 });
@@ -100,13 +100,13 @@ test.describe("Legal pages", () => {
 
   test("privacy policy page loads and identifies the LLC operator", async ({ page }) => {
     await page.goto("/privacy.html", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "Privacy Policy — LLM Crossword" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Privacy Policy — Hecate" })).toBeVisible();
     await expect(page.locator("main")).toContainText("Marco Polo Research Lab LLC");
   });
 
   test("terms page loads refund policy and LLC operator text", async ({ page }) => {
     await page.goto("/tos.html", { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "Terms of Service — LLM Crossword" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Terms of Service — Hecate" })).toBeVisible();
     await expect(page.locator("#refund-policy")).toBeVisible();
     await expect(page.locator("main")).toContainText("Marco Polo Research Lab LLC");
   });

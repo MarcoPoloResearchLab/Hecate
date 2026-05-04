@@ -19,7 +19,7 @@ test.describe("App auth — logged in state", () => {
     await page.goto("/");
     await expect(page.locator("#landingPage")).toBeHidden({ timeout: 5000 });
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     var genBtn = page.locator("#generateBtn");
     await expect(genBtn).toBeEnabled({ timeout: 5000 });
     await expect(genBtn).toContainText("(4 credits)");
@@ -55,7 +55,7 @@ test.describe("App auth — logged in state", () => {
     await page.goto("/");
     await expect(page.locator("#landingPage")).toBeHidden({ timeout: 5000 });
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
     await expect(page.locator("#generateStatus")).toHaveText("");
 
@@ -76,7 +76,7 @@ test.describe("App auth — logged in state", () => {
     await page.goto("/");
     await expect(page.locator("#landingPage")).toBeHidden({ timeout: 5000 });
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
 
     await expect(page.locator("#generateBtn")).toBeDisabled({ timeout: 5000 });
     await expect(page.locator("#generateBtn")).toContainText("(6 credits)");
@@ -186,14 +186,14 @@ test.describe("App auth — logged out state", () => {
     await expect(genBtn).toBeDisabled();
   });
 
-  test("generate form appears after clicking New Crossword", async ({ page }) => {
+  test("generate form appears after clicking New Puzzle", async ({ page }) => {
     await setupLoggedInRoutes(page);
     await page.goto("/");
     // Logged-in user sees puzzle view with sidebar
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    // Generate panel is hidden until New Crossword card is clicked
+    // Generate panel is hidden until New Puzzle card is clicked
     await expect(page.locator("#generatePanel")).toBeHidden();
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generatePanel")).toBeVisible({ timeout: 5000 });
   });
 
@@ -209,7 +209,7 @@ test.describe("App auth — logged out state", () => {
     const meResponse = page.waitForResponse((response) => response.url().includes("/me"));
 
     await page.goto("/", { waitUntil: "domcontentloaded" });
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
 
     await expect(page.locator("#puzzleView")).toBeVisible();
     await expect(page.locator("#landingPage")).toBeHidden();
@@ -250,7 +250,7 @@ test.describe("App auth — bootstrap failure", () => {
     await page.goto("/");
     // onLogin() auto-navigates to puzzle view
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeDisabled({ timeout: 5000 });
     await expect(page.locator("#generateStatus")).toContainText("couldn't load your credit balance", { timeout: 5000 });
     expect(warnings.some((text) => text.includes("bootstrap failed"))).toBeTruthy();
@@ -277,7 +277,7 @@ test.describe("App auth — bootstrap loading gate", () => {
     await page.goto("/", { waitUntil: "domcontentloaded" });
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
 
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeDisabled();
     await expect(page.locator("#generateStatus")).toContainText("Loading your credit balance", { timeout: 5000 });
 
@@ -307,9 +307,9 @@ test.describe("App auth — generate success", () => {
       )
     );
     await page.goto("/");
-    // Logged-in user sees puzzle view; click New Crossword to show generate form
+    // Logged-in user sees puzzle view; click New Puzzle to show generate form
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
     await page.fill("#topicInput", "moon");
     await page.locator("#generateBtn").click();
@@ -330,9 +330,9 @@ test.describe("App auth — generate insufficient credits", () => {
       )
     );
     await page.goto("/");
-    // Logged-in user sees puzzle view; click New Crossword to show generate form
+    // Logged-in user sees puzzle view; click New Puzzle to show generate form
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     // With only 2 credits, generate button should be disabled and message shown immediately
     await expect(page.locator("#generateBtn")).toBeDisabled({ timeout: 5000 });
     await expect(page.getByText("Not enough credits")).toBeVisible({ timeout: 5000 });
@@ -345,9 +345,9 @@ test.describe("App auth — generate network error", () => {
     // Add generate route that aborts with a network error
     await page.route("**/api/generate", (route) => route.abort("failed"));
     await page.goto("/");
-    // Logged-in user sees puzzle view; click New Crossword to show generate form
+    // Logged-in user sees puzzle view; click New Puzzle to show generate form
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
     await page.fill("#topicInput", "moon");
     await page.locator("#generateBtn").click();
@@ -359,9 +359,9 @@ test.describe("App auth — empty topic", () => {
   test("shows 'Please enter a topic.' when topic is empty", async ({ page }) => {
     await setupLoggedInRoutes(page);
     await page.goto("/");
-    // Logged-in user sees puzzle view; click New Crossword to show generate form
+    // Logged-in user sees puzzle view; click New Puzzle to show generate form
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
     await page.locator("#generateBtn").click();
     await expect(page.getByText("Please enter a topic.")).toBeVisible();

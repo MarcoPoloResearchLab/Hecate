@@ -1,5 +1,7 @@
 :root {
-    --cell-size: 44px;
+    --cell-size-max: 44px;
+    --cell-size-min: 36px;
+    --cell-size: var(--cell-size-max);
     --clues-panel-offset: 0px;
     --controls-dock-height: 0px;
     --footer-height: 40px;
@@ -303,6 +305,19 @@ body {
     display: flex;
     flex-direction: column;
     gap: 4px;
+}
+
+.puzzle-card__badge {
+    align-self: flex-start;
+    padding: 3px 8px;
+    border-radius: 999px;
+    background: rgba(59, 130, 246, .16);
+    border: 1px solid rgba(59, 130, 246, .26);
+    color: var(--cw-text-muted);
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .08em;
+    text-transform: uppercase;
 }
 
 .puzzle-card__description {
@@ -674,6 +689,118 @@ select {
     margin-bottom: calc(-1 * var(--clues-panel-offset));
 }
 
+.word-search-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.word-search-panel[hidden] {
+    display: none !important;
+}
+
+.word-search-panel__header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+}
+
+.word-search-panel__title {
+    margin: 0;
+    font-size: 16px;
+}
+
+.word-search-panel__progress {
+    font-size: 12px;
+    color: var(--cw-text-muted);
+}
+
+.word-search-panel__hint {
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(245, 158, 11, .3);
+    background: rgba(245, 158, 11, .08);
+    font-size: 13px;
+    line-height: 1.5;
+}
+
+.word-search-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 8px;
+}
+
+.word-search-word {
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid var(--cw-clue-border);
+    background: var(--cw-clue-bg);
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.word-search-word--found {
+    color: var(--cw-text-muted);
+    text-decoration: line-through;
+    border-color: rgba(52, 211, 153, .42);
+    background: rgba(52, 211, 153, .09);
+}
+
+.word-search-grid {
+    --gap-size: 6px;
+    gap: var(--gap-size);
+}
+
+.word-search-cell {
+    width: var(--cell-size);
+    height: var(--cell-size);
+    border-radius: 8px;
+    border: 1px solid var(--cw-cell-border);
+    background: var(--cw-cell-bg);
+    color: var(--cw-cell-input);
+    font: 800 18px/1.1 system-ui;
+    text-transform: uppercase;
+    display: grid;
+    place-items: center;
+    transition: transform .12s ease, border-color .12s ease, background .12s ease, box-shadow .12s ease;
+}
+
+.word-search-cell:hover {
+    transform: translateY(-1px);
+}
+
+.word-search-cell--selected {
+    border-color: rgba(96, 165, 250, .72);
+    background: rgba(59, 130, 246, .12);
+}
+
+.word-search-cell--found,
+.word-search-cell--revealed {
+    border-color: rgba(52, 211, 153, .6);
+    background: rgba(52, 211, 153, .16);
+    box-shadow: inset 0 0 0 1px rgba(52, 211, 153, .36);
+}
+
+.word-search-cell--revealed {
+    border-color: rgba(245, 158, 11, .65);
+    background: rgba(245, 158, 11, .16);
+}
+
+.word-search-cell--hinted {
+    animation: word-search-pulse 0.7s ease-in-out 2;
+}
+
+@keyframes word-search-pulse {
+    0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, .3); }
+    50% { transform: scale(1.04); box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+    100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
 @media (max-width: 800px) {
     .reward-strip {
         grid-template-columns: 1fr;
@@ -699,7 +826,7 @@ select {
     .gridViewport {
         flex: 0 0 auto;
         height: auto;
-        overflow: visible;
+        overflow: auto;
     }
 
     .clues {
@@ -1017,6 +1144,31 @@ button:disabled {
     gap: 10px;
     align-items: center;
     flex-wrap: wrap;
+}
+
+.puzzle-type-switch {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px;
+    border-radius: 14px;
+    border: 1px solid var(--cw-wrap-border);
+    background: rgba(255, 255, 255, .04);
+}
+
+.puzzle-type-switch__button {
+    min-width: 128px;
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: transparent;
+    color: var(--cw-text-muted);
+    border: 1px solid transparent;
+}
+
+.puzzle-type-switch__button--active {
+    background: rgba(59, 130, 246, .14);
+    border-color: rgba(59, 130, 246, .28);
+    color: var(--cw-text);
 }
 
 .generate-form input[type="text"] {
@@ -2111,6 +2263,47 @@ body {
     line-height: 1.6;
 }
 
+.landing__type-grid {
+    width: min(720px, 100%);
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 14px;
+    margin: 0 0 28px;
+}
+
+.landing__type-card {
+    padding: 18px;
+    text-align: left;
+    border-radius: 18px;
+    border: 1px solid var(--cw-wrap-border);
+    background: var(--cw-wrap-bg);
+    color: var(--cw-text);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-shadow: 0 14px 28px rgba(15, 23, 42, .12);
+}
+
+.landing__type-card:hover {
+    transform: translateY(-2px);
+}
+
+.landing__type-card--selected {
+    border-color: rgba(59, 130, 246, .55);
+    background: linear-gradient(180deg, rgba(59, 130, 246, .16) 0%, rgba(59, 130, 246, .08) 100%);
+}
+
+.landing__type-label {
+    font-size: 18px;
+    font-weight: 800;
+}
+
+.landing__type-desc {
+    font-size: 14px;
+    line-height: 1.5;
+    color: var(--cw-text-muted);
+}
+
 .landing__actions {
     display: flex;
     gap: 12px;
@@ -2137,6 +2330,10 @@ body {
     border: 1px solid var(--cw-wrap-border);
     border-radius: 16px;
     backdrop-filter: blur(6px);
+}
+
+.landing__sample-body {
+    display: block;
 }
 
 .landing__sample-title {
@@ -2280,6 +2477,21 @@ body {
     .landing__features {
         grid-template-columns: 1fr;
     }
+
+    .landing__type-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .puzzle-type-switch {
+        width: 100%;
+        justify-content: stretch;
+    }
+
+    .puzzle-type-switch__button {
+        flex: 1 1 0;
+        min-width: 0;
+    }
+
     .settings-billing__header {
         flex-direction: column;
         align-items: stretch;

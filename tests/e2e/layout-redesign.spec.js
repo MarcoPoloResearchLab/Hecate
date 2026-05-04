@@ -3,7 +3,7 @@
 // 1. No container-in-a-page — content fills full page width
 // 2. Sidebar and clues each take about a quarter of the page width
 // 3. Crossword grid is centered within its middle track
-// 4. Cell size never changes (always --cell-size = 44px)
+// 4. Cell size is bounded: 44px max, 36px min, then panning
 // 5. Clue text wraps — never truncated
 
 const { test, expect } = require("./coverage-fixture");
@@ -31,9 +31,79 @@ const puzzlePayload = [
 async function goToPuzzle(page) {
   await setupLoggedOutRoutes(page, { puzzles: puzzlePayload });
   await page.goto("/");
-  await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+  await page.getByRole("button", { name: "Try a sample puzzle" }).click();
   await expect(page.locator("#puzzleView")).toBeVisible();
   await expect(page.locator("#puzzleView .cell:not(.blk)").first()).toBeVisible();
+}
+
+async function renderSingleRowCrossword(page, letterCount) {
+  await page.evaluate((count) => {
+    var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    var answer = "";
+    var index;
+
+    for (index = 0; index < count; index++) {
+      answer += alphabet[index % alphabet.length];
+    }
+
+    window.HecateApp.render({
+      title: "Wide Layout",
+      subtitle: "Sizing test",
+      entries: [
+        { id: "wide", row: 0, col: 0, dir: "across", clue: "Wide entry", answer: answer, hint: "wide" },
+      ],
+      overlaps: [],
+    });
+  }, letterCount);
+  await expect(page.locator("#puzzleView .cell:not(.blk)")).toHaveCount(letterCount);
+}
+
+async function renderWordSearch(page, size) {
+  await page.evaluate((gridSize) => {
+    var alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+    var grid = [];
+    var rowIndex;
+    var columnIndex;
+    var row;
+
+    for (rowIndex = 0; rowIndex < gridSize; rowIndex++) {
+      row = [];
+      for (columnIndex = 0; columnIndex < gridSize; columnIndex++) {
+        row.push(alphabet[(rowIndex + columnIndex) % alphabet.length]);
+      }
+      grid.push(row);
+    }
+
+    window.HecateApp.render({
+      puzzleType: "word_search",
+      title: "Wide Word Search",
+      subtitle: "Sizing test",
+      size: gridSize,
+      grid: grid,
+      items: [],
+      placements: [],
+    });
+  }, size);
+  await expect(page.locator("#puzzleView .word-search-cell")).toHaveCount(size * size);
+}
+
+async function readGridMetrics(page, cellSelector) {
+  return page.evaluate((selector) => {
+    var puzzleView = document.getElementById("puzzleView");
+    var gridViewport = puzzleView ? puzzleView.querySelector(".gridViewport") : null;
+    var grid = puzzleView ? puzzleView.querySelector(".grid") : null;
+    var cell = puzzleView ? puzzleView.querySelector(selector) : null;
+    if (!gridViewport || !grid || !cell) return null;
+    var cellRect = cell.getBoundingClientRect();
+    return {
+      cellHeight: cellRect.height,
+      cellWidth: cellRect.width,
+      clientWidth: gridViewport.clientWidth,
+      gridWidth: grid.getBoundingClientRect().width,
+      scrollLeft: gridViewport.scrollLeft,
+      scrollWidth: gridViewport.scrollWidth,
+    };
+  }, cellSelector);
 }
 
 test.describe("Layout — no container-in-a-page", () => {
@@ -142,15 +212,63 @@ test.describe("Layout — clues always on the right at 25%", () => {
   });
 });
 
-test.describe("Layout — cell size invariant", () => {
-  test("cells are exactly --cell-size (44px) wide and tall", async ({ page }) => {
+test.describe("Layout — bounded dynamic cell sizing", () => {
+  test("cells stay at the 44px maximum when space allows", async ({ page }) => {
     await goToPuzzle(page);
 
     var cellBox = await page.locator("#puzzleView .cell:not(.blk)").first().boundingBox();
     expect(cellBox).not.toBeNull();
-    // Cells must be 44px (the --cell-size default), tolerance of 2px
     expect(Math.abs(cellBox.width - 44)).toBeLessThanOrEqual(2);
     expect(Math.abs(cellBox.height - 44)).toBeLessThanOrEqual(2);
+  });
+
+  test("crossword cells shrink within the usable bounds when width is tight", async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 720 });
+    await goToPuzzle(page);
+    await renderSingleRowCrossword(page, 10);
+
+    var metrics = await readGridMetrics(page, ".cell:not(.blk)");
+
+    expect(metrics).not.toBeNull();
+    expect(metrics.cellWidth).toBeLessThan(44);
+    expect(metrics.cellWidth).toBeGreaterThanOrEqual(36);
+    expect(Math.abs(metrics.cellWidth - metrics.cellHeight)).toBeLessThanOrEqual(2);
+  });
+
+  test("oversized crossword grids stop at 36px and remain pannable", async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 720 });
+    await goToPuzzle(page);
+    await renderSingleRowCrossword(page, 24);
+
+    var before = await readGridMetrics(page, ".cell:not(.blk)");
+    var viewport = page.locator("#gridViewport");
+    var box = await viewport.boundingBox();
+
+    expect(before).not.toBeNull();
+    expect(Math.abs(before.cellWidth - 36)).toBeLessThanOrEqual(2);
+    expect(before.scrollWidth).toBeGreaterThan(before.clientWidth + 5);
+    expect(box).not.toBeNull();
+
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 - 120, box.y + box.height / 2);
+    await page.mouse.up();
+
+    var after = await readGridMetrics(page, ".cell:not(.blk)");
+    expect(after.scrollLeft).toBeGreaterThan(before.scrollLeft);
+  });
+
+  test("word-search cells use the same bounded sizing policy", async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 720 });
+    await goToPuzzle(page);
+    await renderWordSearch(page, 10);
+
+    var metrics = await readGridMetrics(page, ".word-search-cell");
+
+    expect(metrics).not.toBeNull();
+    expect(metrics.cellWidth).toBeLessThan(44);
+    expect(metrics.cellWidth).toBeGreaterThanOrEqual(36);
+    expect(Math.abs(metrics.cellWidth - metrics.cellHeight)).toBeLessThanOrEqual(2);
   });
 
   test("cells are square", async ({ page }) => {

@@ -6,10 +6,10 @@ func TestLoadPaddlePackPriceIDsFromEnvCoverage(t *testing.T) {
 	result := loadPaddlePackPriceIDsFromEnv([]string{
 		"MALFORMED",
 		"OTHER_ENV=value",
-		"CROSSWORDAPI_PADDLE_PRICE_ID_PACK_=ignored",
-		"CROSSWORDAPI_PADDLE_PRICE_ID_PACK_STARTER= pri_starter ",
-		"CROSSWORDAPI_PADDLE_PRICE_ID_PACK_PRO__PLUS=pri_pro_plus",
-		"CROSSWORDAPI_PADDLE_PRICE_ID_PACK_TEAM_PACK=pri_team_pack",
+		"HECATEAPI_PADDLE_PRICE_ID_PACK_=ignored",
+		"HECATEAPI_PADDLE_PRICE_ID_PACK_STARTER= pri_starter ",
+		"HECATEAPI_PADDLE_PRICE_ID_PACK_PRO__PLUS=pri_pro_plus",
+		"HECATEAPI_PADDLE_PRICE_ID_PACK_TEAM_PACK=pri_team_pack",
 	})
 
 	if len(result) != 3 {

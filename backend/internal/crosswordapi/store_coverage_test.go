@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -18,7 +19,7 @@ func openRawStoreDB(t *testing.T, dsn string) *gorm.DB {
 	if err != nil {
 		t.Fatalf("gorm.Open(%q): %v", dsn, err)
 	}
-	if err := db.AutoMigrate(&Puzzle{}, &PuzzleWord{}, &UserProfile{}, &AdminGrantRecord{}); err != nil {
+	if err := db.AutoMigrate(&Puzzle{}, &PuzzleItem{}, &UserProfile{}, &AdminGrantRecord{}); err != nil {
 		t.Fatalf("AutoMigrate(%q): %v", dsn, err)
 	}
 	return db
@@ -74,6 +75,155 @@ func TestOpenDatabase_BackfillsMissingShareToken(t *testing.T) {
 	if persisted.ShareToken == "" {
 		t.Fatal("expected share token backfill")
 	}
+}
+
+func TestOpenDatabase_BackfillsPuzzleMetadataDefaults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "legacy-metadata.db")
+	setupDB := openRawStoreDB(t, path)
+
+	crosswordLegacy := Puzzle{
+		ID:            "legacy-crossword",
+		UserID:        "user-1",
+		Title:         "Legacy Crossword",
+		ShareToken:    "shared-crossword",
+		PuzzleType:    "",
+		LayoutSeed:    "",
+		LayoutVersion: 0,
+		OptionsJSON:   "",
+	}
+	wordSearchLegacy := Puzzle{
+		ID:            "legacy-word-search",
+		UserID:        "user-2",
+		Title:         "Legacy Word Search",
+		ShareToken:    "shared-word-search",
+		PuzzleType:    puzzleTypeWordSearch,
+		LayoutSeed:    "",
+		LayoutVersion: 0,
+		OptionsJSON:   "",
+	}
+
+	if err := setupDB.Create(&crosswordLegacy).Error; err != nil {
+		t.Fatalf("create legacy crossword: %v", err)
+	}
+	if err := setupDB.Create(&wordSearchLegacy).Error; err != nil {
+		t.Fatalf("create legacy word search: %v", err)
+	}
+	if err := setupDB.Exec(
+		`UPDATE puzzles SET share_token = ?, puzzle_type = '', layout_seed = '', layout_version = 0, options_json = '' WHERE id = ?`,
+		crosswordLegacy.ShareToken,
+		crosswordLegacy.ID,
+	).Error; err != nil {
+		t.Fatalf("downgrade legacy crossword fields: %v", err)
+	}
+	if err := setupDB.Exec(
+		`UPDATE puzzles SET share_token = ?, puzzle_type = ?, layout_seed = '', layout_version = 0, options_json = '' WHERE id = ?`,
+		wordSearchLegacy.ShareToken,
+		string(puzzleTypeWordSearch),
+		wordSearchLegacy.ID,
+	).Error; err != nil {
+		t.Fatalf("downgrade legacy word search fields: %v", err)
+	}
+
+	store, err := OpenDatabase(path)
+	if err != nil {
+		t.Fatalf("OpenDatabase(%q): %v", path, err)
+	}
+
+	persistedStore := store.(*gormStore)
+	var persistedCrossword Puzzle
+	if err := persistedStore.db.First(&persistedCrossword, "id = ?", crosswordLegacy.ID).Error; err != nil {
+		t.Fatalf("query persisted crossword: %v", err)
+	}
+	if persistedCrossword.PuzzleType != puzzleTypeCrossword {
+		t.Fatalf("expected crossword puzzle type, got %q", persistedCrossword.PuzzleType)
+	}
+	if persistedCrossword.LayoutVersion != currentLayoutVersion {
+		t.Fatalf("expected layout version %d, got %d", currentLayoutVersion, persistedCrossword.LayoutVersion)
+	}
+	if persistedCrossword.LayoutSeed != crosswordLegacy.ShareToken {
+		t.Fatalf("expected layout seed %q, got %q", crosswordLegacy.ShareToken, persistedCrossword.LayoutSeed)
+	}
+	if persistedCrossword.OptionsJSON != "{}" {
+		t.Fatalf("expected crossword options {}, got %q", persistedCrossword.OptionsJSON)
+	}
+
+	var persistedWordSearch Puzzle
+	if err := persistedStore.db.First(&persistedWordSearch, "id = ?", wordSearchLegacy.ID).Error; err != nil {
+		t.Fatalf("query persisted word search: %v", err)
+	}
+	if persistedWordSearch.LayoutSeed != wordSearchLegacy.ShareToken {
+		t.Fatalf("expected word-search layout seed %q, got %q", wordSearchLegacy.ShareToken, persistedWordSearch.LayoutSeed)
+	}
+	if persistedWordSearch.LayoutVersion != currentLayoutVersion {
+		t.Fatalf("expected word-search layout version %d, got %d", currentLayoutVersion, persistedWordSearch.LayoutVersion)
+	}
+	if !strings.Contains(persistedWordSearch.OptionsJSON, `"directions"`) {
+		t.Fatalf("expected word-search options JSON with directions, got %q", persistedWordSearch.OptionsJSON)
+	}
+}
+
+func TestPuzzlePersistenceDefaults(t *testing.T) {
+	t.Run("apply runtime defaults uses share token and id fallbacks", func(t *testing.T) {
+		puzzle := &Puzzle{
+			ID:            "puzzle-id",
+			ShareToken:    "",
+			PuzzleType:    "",
+			LayoutSeed:    "",
+			LayoutVersion: 0,
+			OptionsJSON:   "",
+		}
+
+		applyPuzzleRuntimeDefaults(puzzle)
+
+		if puzzle.PuzzleType != puzzleTypeCrossword {
+			t.Fatalf("expected crossword default type, got %q", puzzle.PuzzleType)
+		}
+		if puzzle.LayoutSeed != "puzzle-id" {
+			t.Fatalf("expected id fallback layout seed, got %q", puzzle.LayoutSeed)
+		}
+		if puzzle.LayoutVersion != currentLayoutVersion {
+			t.Fatalf("expected layout version %d, got %d", currentLayoutVersion, puzzle.LayoutVersion)
+		}
+		if puzzle.OptionsJSON != "{}" {
+			t.Fatalf("expected default options json, got %q", puzzle.OptionsJSON)
+		}
+	})
+
+	t.Run("prepare puzzle for persist applies defaults and preserves provided values", func(t *testing.T) {
+		crossword := &Puzzle{}
+		preparePuzzleForPersist(crossword)
+		if crossword.PuzzleType != puzzleTypeCrossword {
+			t.Fatalf("expected crossword default type, got %q", crossword.PuzzleType)
+		}
+		if crossword.LayoutSeed == "" {
+			t.Fatal("expected generated layout seed")
+		}
+		if crossword.LayoutVersion != currentLayoutVersion {
+			t.Fatalf("expected crossword layout version %d, got %d", currentLayoutVersion, crossword.LayoutVersion)
+		}
+		if crossword.OptionsJSON != "{}" {
+			t.Fatalf("expected crossword options {}, got %q", crossword.OptionsJSON)
+		}
+
+		wordSearch := &Puzzle{
+			PuzzleType:    puzzleTypeWordSearch,
+			LayoutSeed:    "provided-seed",
+			LayoutVersion: 7,
+			Options: map[string]any{
+				"directions": []string{"E", "S"},
+			},
+		}
+		preparePuzzleForPersist(wordSearch)
+		if wordSearch.LayoutSeed != "provided-seed" {
+			t.Fatalf("expected provided layout seed, got %q", wordSearch.LayoutSeed)
+		}
+		if wordSearch.LayoutVersion != 7 {
+			t.Fatalf("expected preserved layout version, got %d", wordSearch.LayoutVersion)
+		}
+		if !strings.Contains(wordSearch.OptionsJSON, `"directions":["E","S"]`) {
+			t.Fatalf("expected serialized directions, got %q", wordSearch.OptionsJSON)
+		}
+	})
 }
 
 func TestUpsertUserProfile_NilAndEmptyUserID(t *testing.T) {
@@ -225,13 +375,13 @@ func TestDeletePuzzle_DeleteWordFailure(t *testing.T) {
 	puzzle := &Puzzle{
 		UserID: "user-1",
 		Title:  "Delete word failure",
-		Words:  []PuzzleWord{{Word: "TOKEN", Clue: "Word", Hint: "Hint"}},
+		Items:  []PuzzleItem{{Word: "TOKEN", Clue: "Word", Hint: "Hint"}},
 	}
 	if err := store.CreatePuzzle(puzzle); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
 	}
-	if err := store.db.Migrator().DropTable(&PuzzleWord{}); err != nil {
-		t.Fatalf("DropTable(PuzzleWord): %v", err)
+	if err := store.db.Migrator().DropTable(&PuzzleItem{}); err != nil {
+		t.Fatalf("DropTable(PuzzleItem): %v", err)
 	}
 
 	err := store.DeletePuzzle(puzzle.ID, "user-1")

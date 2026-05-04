@@ -4,8 +4,8 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 readonly runtime_config_path="${RUNTIME_AUTH_CONFIG_PATH:-js/runtime-auth-config.js}"
-readonly default_local_crosswordapi_env_file="configs/.env.crosswordapi.local"
-readonly default_hosted_crosswordapi_env_file="configs/.env.crosswordapi.production"
+readonly default_local_hecateapi_env_file="configs/.env.hecateapi.local"
+readonly default_hosted_hecateapi_env_file="configs/.env.hecateapi.production"
 readonly default_frontend_config_url="/configs/frontend-config.yml"
 readonly default_tauth_script_url="https://cdn.jsdelivr.net/gh/tyemirov/TAuth@v1.0.1/web/tauth.js"
 readonly default_hosted_api_base_url="https://llm-crossword-api.mprlab.com"
@@ -22,22 +22,22 @@ read_env_file_value() {
   sed -n "s/^${variable_name}=//p" "$env_file_path" | head -n 1 | tr -d '\r'
 }
 
-resolve_local_crosswordapi_env_file() {
-  printf '%s' "${LOCAL_CROSSWORDAPI_ENV_FILE:-$default_local_crosswordapi_env_file}"
+resolve_local_hecateapi_env_file() {
+  printf '%s' "${LOCAL_HECATEAPI_ENV_FILE:-$default_local_hecateapi_env_file}"
 }
 
-resolve_hosted_crosswordapi_env_file() {
-  if [ -n "${HOSTED_CROSSWORDAPI_ENV_FILE:-}" ]; then
-    printf '%s' "$HOSTED_CROSSWORDAPI_ENV_FILE"
+resolve_hosted_hecateapi_env_file() {
+  if [ -n "${HOSTED_HECATEAPI_ENV_FILE:-}" ]; then
+    printf '%s' "$HOSTED_HECATEAPI_ENV_FILE"
     return 0
   fi
 
-  if [ -n "${CROSSWORDAPI_ENV_FILE:-}" ]; then
-    printf '%s' "$CROSSWORDAPI_ENV_FILE"
+  if [ -n "${HECATEAPI_ENV_FILE:-}" ]; then
+    printf '%s' "$HECATEAPI_ENV_FILE"
     return 0
   fi
 
-  printf '%s' "$default_hosted_crosswordapi_env_file"
+  printf '%s' "$default_hosted_hecateapi_env_file"
 }
 
 resolve_profile_env_value() {
@@ -154,7 +154,7 @@ render_runtime_auth_config() {
     },
   });
 
-  globalScope.LLMCrosswordRuntimeConfig = isLoopbackHostname(globalScope.location.hostname.toLowerCase())
+  globalScope.HecateRuntimeConfig = isLoopbackHostname(globalScope.location.hostname.toLowerCase())
     ? localhostConfig
     : hostedConfig;
 })(window);
@@ -162,8 +162,8 @@ EOF
 }
 
 main() {
-  local local_crosswordapi_env_file
-  local hosted_crosswordapi_env_file
+  local local_hecateapi_env_file
+  local hosted_hecateapi_env_file
   local local_billing_provider
   local local_paddle_environment
   local local_paddle_client_token
@@ -179,24 +179,24 @@ main() {
   local hosted_config_url
   local hosted_tauth_script_url
 
-  local_crosswordapi_env_file="$(resolve_local_crosswordapi_env_file)"
-  hosted_crosswordapi_env_file="$(resolve_hosted_crosswordapi_env_file)"
+  local_hecateapi_env_file="$(resolve_local_hecateapi_env_file)"
+  hosted_hecateapi_env_file="$(resolve_hosted_hecateapi_env_file)"
 
-  local_billing_provider="$(resolve_profile_env_value "$local_crosswordapi_env_file" "CROSSWORDAPI_BILLING_PROVIDER")"
-  local_paddle_environment="$(resolve_profile_env_value "$local_crosswordapi_env_file" "CROSSWORDAPI_PADDLE_ENVIRONMENT")"
-  local_paddle_client_token="$(resolve_profile_env_value "$local_crosswordapi_env_file" "CROSSWORDAPI_PADDLE_CLIENT_TOKEN")"
-  local_api_base_url="$(resolve_profile_runtime_value "" "LOCAL_LLM_CROSSWORD_API_BASE_URL")"
-  local_auth_base_url="$(resolve_profile_runtime_value "" "LOCAL_LLM_CROSSWORD_AUTH_BASE_URL")"
-  local_config_url="$(resolve_profile_runtime_value "$default_frontend_config_url" "LOCAL_LLM_CROSSWORD_CONFIG_URL")"
-  local_tauth_script_url="$(resolve_profile_runtime_value "$default_tauth_script_url" "LOCAL_LLM_CROSSWORD_TAUTH_SCRIPT_URL")"
+  local_billing_provider="$(resolve_profile_env_value "$local_hecateapi_env_file" "HECATEAPI_BILLING_PROVIDER")"
+  local_paddle_environment="$(resolve_profile_env_value "$local_hecateapi_env_file" "HECATEAPI_PADDLE_ENVIRONMENT")"
+  local_paddle_client_token="$(resolve_profile_env_value "$local_hecateapi_env_file" "HECATEAPI_PADDLE_CLIENT_TOKEN")"
+  local_api_base_url="$(resolve_profile_runtime_value "" "LOCAL_HECATE_API_BASE_URL")"
+  local_auth_base_url="$(resolve_profile_runtime_value "" "LOCAL_HECATE_AUTH_BASE_URL")"
+  local_config_url="$(resolve_profile_runtime_value "$default_frontend_config_url" "LOCAL_HECATE_CONFIG_URL")"
+  local_tauth_script_url="$(resolve_profile_runtime_value "$default_tauth_script_url" "LOCAL_HECATE_TAUTH_SCRIPT_URL")"
 
-  hosted_billing_provider="$(resolve_profile_env_value "$hosted_crosswordapi_env_file" "CROSSWORDAPI_BILLING_PROVIDER")"
-  hosted_paddle_environment="$(resolve_profile_env_value "$hosted_crosswordapi_env_file" "CROSSWORDAPI_PADDLE_ENVIRONMENT")"
-  hosted_paddle_client_token="$(resolve_profile_env_value "$hosted_crosswordapi_env_file" "CROSSWORDAPI_PADDLE_CLIENT_TOKEN")"
-  hosted_api_base_url="$(resolve_profile_runtime_value "$default_hosted_api_base_url" "HOSTED_LLM_CROSSWORD_API_BASE_URL" "LLM_CROSSWORD_API_BASE_URL")"
-  hosted_auth_base_url="$(resolve_profile_runtime_value "$default_hosted_auth_base_url" "HOSTED_LLM_CROSSWORD_AUTH_BASE_URL" "LLM_CROSSWORD_AUTH_BASE_URL")"
-  hosted_config_url="$(resolve_profile_runtime_value "$default_frontend_config_url" "HOSTED_LLM_CROSSWORD_CONFIG_URL" "LLM_CROSSWORD_CONFIG_URL")"
-  hosted_tauth_script_url="$(resolve_profile_runtime_value "$default_tauth_script_url" "HOSTED_LLM_CROSSWORD_TAUTH_SCRIPT_URL" "LLM_CROSSWORD_TAUTH_SCRIPT_URL")"
+  hosted_billing_provider="$(resolve_profile_env_value "$hosted_hecateapi_env_file" "HECATEAPI_BILLING_PROVIDER")"
+  hosted_paddle_environment="$(resolve_profile_env_value "$hosted_hecateapi_env_file" "HECATEAPI_PADDLE_ENVIRONMENT")"
+  hosted_paddle_client_token="$(resolve_profile_env_value "$hosted_hecateapi_env_file" "HECATEAPI_PADDLE_CLIENT_TOKEN")"
+  hosted_api_base_url="$(resolve_profile_runtime_value "$default_hosted_api_base_url" "HOSTED_HECATE_API_BASE_URL" "HECATE_API_BASE_URL")"
+  hosted_auth_base_url="$(resolve_profile_runtime_value "$default_hosted_auth_base_url" "HOSTED_HECATE_AUTH_BASE_URL" "HECATE_AUTH_BASE_URL")"
+  hosted_config_url="$(resolve_profile_runtime_value "$default_frontend_config_url" "HOSTED_HECATE_CONFIG_URL" "HECATE_CONFIG_URL")"
+  hosted_tauth_script_url="$(resolve_profile_runtime_value "$default_tauth_script_url" "HOSTED_HECATE_TAUTH_SCRIPT_URL" "HECATE_TAUTH_SCRIPT_URL")"
 
   render_runtime_auth_config \
     "$(escape_js_string "$local_billing_provider")" \

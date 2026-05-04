@@ -165,7 +165,7 @@ func Run(ctx context.Context, cfg Config, opts ...RunOption) error {
 
 	errCh := make(chan error, 1)
 	go func() {
-		logger.Info("crossword-api listening", zap.String("addr", cfg.ListenAddr))
+		logger.Info("hecate-api listening", zap.String("addr", cfg.ListenAddr))
 		errCh <- server.ListenAndServe()
 	}()
 
@@ -533,9 +533,10 @@ func (handler *httpHandler) handleBillingWebhook(ctx *gin.Context) {
 }
 
 type generateRequest struct {
-	RequestID string `json:"request_id"`
-	Topic     string `json:"topic"`
-	WordCount int    `json:"word_count"`
+	RequestID  string `json:"request_id"`
+	Topic      string `json:"topic"`
+	PuzzleType string `json:"puzzle_type"`
+	WordCount  int    `json:"word_count"`
 }
 
 const maxGenerateRequestIDLength = 128
@@ -575,7 +576,7 @@ func generationFailureResponse(record *GenerationRequestRecord) (int, string, st
 	}
 }
 
-func wordItemsFromPuzzleWords(words []PuzzleWord) []WordItem {
+func wordItemsFromPuzzleWords(words []PuzzleItem) []WordItem {
 	items := make([]WordItem, 0, len(words))
 	for _, word := range words {
 		items = append(items, WordItem{
@@ -590,18 +591,26 @@ func wordItemsFromPuzzleWords(words []PuzzleWord) []WordItem {
 func buildGenerateSuccessResponse(puzzle *Puzzle, balance *balanceResponse) gin.H {
 	if puzzle == nil {
 		return gin.H{
-			"balance": balance,
-			"items":   []WordItem{},
+			"balance":        balance,
+			"items":          []WordItem{},
+			"puzzle_type":    string(puzzleTypeCrossword),
+			"layout_seed":    "",
+			"layout_version": currentLayoutVersion,
+			"options":        defaultOptionsForPuzzleType(puzzleTypeCrossword),
 		}
 	}
 
 	return gin.H{
-		"items":          wordItemsFromPuzzleWords(puzzle.Words),
+		"items":          wordItemsFromPuzzleWords(puzzle.Items),
 		"title":          puzzle.Title,
 		"subtitle":       puzzle.Subtitle,
 		"description":    puzzle.Description,
 		"balance":        balance,
 		"id":             puzzle.ID,
+		"puzzle_type":    string(puzzle.PuzzleType),
+		"layout_seed":    puzzle.LayoutSeed,
+		"layout_version": puzzle.LayoutVersion,
+		"options":        puzzle.Options,
 		"share_token":    puzzle.ShareToken,
 		"source":         puzzle.Source,
 		"reward_summary": puzzle.RewardSummary,
@@ -665,19 +674,19 @@ func (handler *httpHandler) loadStoredGenerationResponse(ctx context.Context, us
 	return buildGenerateSuccessResponse(puzzle, balance), nil
 }
 
-func generationRequestMatchesPayload(record *GenerationRequestRecord, topic string, wordCount int) bool {
+func generationRequestMatchesPayload(record *GenerationRequestRecord, topic string, puzzleType string, wordCount int) bool {
 	if record == nil {
 		return false
 	}
-	return record.Topic == topic && record.WordCount == wordCount
+	return record.Topic == topic && record.PuzzleType == puzzleType && record.WordCount == wordCount
 }
 
-func (handler *httpHandler) respondToExistingGenerationRequest(ctx *gin.Context, userID string, record *GenerationRequestRecord, topic string, wordCount int) bool {
+func (handler *httpHandler) respondToExistingGenerationRequest(ctx *gin.Context, userID string, record *GenerationRequestRecord, topic string, puzzleType string, wordCount int) bool {
 	if handler == nil || ctx == nil || record == nil {
 		return false
 	}
-	if !generationRequestMatchesPayload(record, topic, wordCount) {
-		ctx.JSON(http.StatusConflict, errorResponse("request_id_conflict", "request_id must be reused with the same topic and word_count"))
+	if !generationRequestMatchesPayload(record, topic, puzzleType, wordCount) {
+		ctx.JSON(http.StatusConflict, errorResponse("request_id_conflict", "request_id must be reused with the same topic, puzzle_type, and word_count"))
 		return true
 	}
 
@@ -742,6 +751,13 @@ func (handler *httpHandler) handleGenerate(ctx *gin.Context) {
 		return
 	}
 
+	puzzleType := strings.TrimSpace(req.PuzzleType)
+	if !puzzleTypeSupported(puzzleType) {
+		ctx.JSON(http.StatusBadRequest, errorResponse("invalid_puzzle_type", "puzzle_type must be crossword or word_search"))
+		return
+	}
+	puzzleType = string(normalizePuzzleType(puzzleType))
+
 	wordCount := req.WordCount
 	if wordCount < 5 {
 		wordCount = 8
@@ -760,21 +776,22 @@ func (handler *httpHandler) handleGenerate(ctx *gin.Context) {
 		ctx.JSON(http.StatusInternalServerError, errorResponse("generation_failed", "generation request could not be prepared"))
 		return
 	}
-	if existingRequest != nil && handler.respondToExistingGenerationRequest(ctx, claims.GetUserID(), existingRequest, topic, wordCount) {
+	if existingRequest != nil && handler.respondToExistingGenerationRequest(ctx, claims.GetUserID(), existingRequest, topic, puzzleType, wordCount) {
 		return
 	}
 
 	generationRequest := &GenerationRequestRecord{
-		UserID:    claims.GetUserID(),
-		RequestID: requestID,
-		Topic:     topic,
-		WordCount: wordCount,
-		Status:    generationRequestStatusPending,
+		UserID:     claims.GetUserID(),
+		RequestID:  requestID,
+		Topic:      topic,
+		PuzzleType: puzzleType,
+		WordCount:  wordCount,
+		Status:     generationRequestStatusPending,
 	}
 	if err := handler.store.CreateGenerationRequest(generationRequest); err != nil {
 		if isUniqueConstraintError(err) {
 			existingRequest, lookupErr := handler.store.GetGenerationRequest(claims.GetUserID(), requestID)
-			if lookupErr == nil && existingRequest != nil && handler.respondToExistingGenerationRequest(ctx, claims.GetUserID(), existingRequest, topic, wordCount) {
+			if lookupErr == nil && existingRequest != nil && handler.respondToExistingGenerationRequest(ctx, claims.GetUserID(), existingRequest, topic, puzzleType, wordCount) {
 				return
 			}
 			ctx.JSON(http.StatusConflict, errorResponse("generation_in_progress", "generation request is already in progress"))
@@ -821,7 +838,7 @@ func (handler *httpHandler) handleGenerate(ctx *gin.Context) {
 	llmCtx, llmCancel := context.WithTimeout(ctx.Request.Context(), handler.cfg.LLMProxyTimeout)
 	defer llmCancel()
 
-	items, llmErr := handler.callLLMProxy(llmCtx, topic, wordCount)
+	items, llmErr := handler.callLLMProxy(llmCtx, topic, puzzleType, wordCount)
 	if llmErr != nil {
 		handler.logger.Error("llm proxy call failed", zap.Error(llmErr), zap.String("topic", topic))
 
@@ -847,7 +864,7 @@ func (handler *httpHandler) handleGenerate(ctx *gin.Context) {
 		return
 	}
 
-	metadata, metadataErr := handler.generatePuzzleMetadata(ctx.Request.Context(), topic, items)
+	metadata, metadataErr := handler.generatePuzzleMetadata(ctx.Request.Context(), topic, puzzleType, items)
 	if metadataErr != nil {
 		handler.logger.Warn("puzzle metadata generation failed", zap.Error(metadataErr), zap.String("topic", topic))
 		metadata = fallbackPuzzleMetadata(topic)
@@ -855,14 +872,18 @@ func (handler *httpHandler) handleGenerate(ctx *gin.Context) {
 
 	// Save puzzle to database.
 	puzzle := &Puzzle{
-		UserID:      claims.GetUserID(),
-		Title:       metadata.Title,
-		Subtitle:    metadata.Subtitle,
-		Description: metadata.Description,
-		Topic:       topic,
+		UserID:        claims.GetUserID(),
+		Title:         metadata.Title,
+		Subtitle:      metadata.Subtitle,
+		Description:   metadata.Description,
+		Topic:         topic,
+		PuzzleType:    normalizePuzzleType(puzzleType),
+		LayoutSeed:    uuid.NewString(),
+		LayoutVersion: currentLayoutVersion,
+		Options:       defaultOptionsForPuzzleType(normalizePuzzleType(puzzleType)),
 	}
 	for _, item := range items {
-		puzzle.Words = append(puzzle.Words, PuzzleWord{
+		puzzle.Items = append(puzzle.Items, PuzzleItem{
 			Word: item.Word,
 			Clue: item.Definition,
 			Hint: item.Hint,
@@ -890,13 +911,13 @@ func (handler *httpHandler) handleGenerate(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, buildGenerateSuccessResponse(puzzle, balance))
 }
 
-func (handler *httpHandler) generatePuzzleMetadata(ctx context.Context, topic string, items []WordItem) (*PuzzleMetadata, error) {
+func (handler *httpHandler) generatePuzzleMetadata(ctx context.Context, topic string, puzzleType string, items []WordItem) (*PuzzleMetadata, error) {
 	return retryVerifiedLLMCall(
 		llmVerificationRetryAttempts,
 		func() (*PuzzleMetadata, error) {
 			metadataCtx, metadataCancel := context.WithTimeout(ctx, handler.cfg.LLMProxyTimeout)
 			defer metadataCancel()
-			return handler.callPuzzleMetadataLLMProxy(metadataCtx, topic, items)
+			return handler.callPuzzleMetadataLLMProxy(metadataCtx, topic, puzzleType, items)
 		},
 		nil,
 	)

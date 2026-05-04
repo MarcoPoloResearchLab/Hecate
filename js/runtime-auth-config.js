@@ -54,7 +54,7 @@
     },
   });
 
-  globalScope.LLMCrosswordRuntimeConfig = isLoopbackHostname(globalScope.location.hostname.toLowerCase())
+  globalScope.HecateRuntimeConfig = isLoopbackHostname(globalScope.location.hostname.toLowerCase())
     ? localhostConfig
     : hostedConfig;
 })(window);

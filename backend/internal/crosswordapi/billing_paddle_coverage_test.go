@@ -322,7 +322,7 @@ func TestPaddleParseWebhookEventCoverage(t *testing.T) {
 	      "email_address": "fallback@example.com"
 	    },
 	    "custom_data": {
-	      "crossword_user_id": "user-123"
+	      "hecate_user_id": "user-123"
 	    },
 	    "items": [
 	      {
@@ -406,7 +406,7 @@ func TestPaddleParseWebhookEventLegacyCoverage(t *testing.T) {
 	      "email": "legacy@example.com"
 	    },
 	    "custom_data": {
-	      "crossword_user_id": "legacy-user",
+	      "hecate_user_id": "legacy-user",
 	      "pack_code": "starter",
 	      "credits": "20"
 	    },

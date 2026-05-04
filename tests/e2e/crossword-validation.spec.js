@@ -7,13 +7,13 @@ test.describe("Crossword validation — edge cases", () => {
   test.beforeEach(async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
   });
 
   test("missing entries shows error", async ({ page }) => {
     await page.evaluate(() => {
-      window.CrosswordApp.render({ title: "Bad", subtitle: "", entries: [], overlaps: [] });
+      window.HecateApp.render({ title: "Bad", subtitle: "", entries: [], overlaps: [] });
     });
     var errorBox = page.locator("#errorBox");
     await expect(errorBox).toBeVisible();
@@ -22,7 +22,7 @@ test.describe("Crossword validation — edge cases", () => {
 
   test("duplicate id shows error", async ({ page }) => {
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         title: "Dup",
         subtitle: "",
         entries: [
@@ -39,7 +39,7 @@ test.describe("Crossword validation — edge cases", () => {
 
   test("invalid dir shows error", async ({ page }) => {
     await page.evaluate(() => {
-      window.CrosswordApp.render({
+      window.HecateApp.render({
         title: "Bad Dir",
         subtitle: "",
         entries: [

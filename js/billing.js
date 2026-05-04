@@ -3,7 +3,7 @@
 (function () {
   "use strict";
 
-  var services = window.LLMCrosswordServices || null;
+  var services = window.HecateServices || null;
   var billingProviderPaddle = "paddle";
   var billingCheckoutModeOverlay = "overlay";
   var completedTransactionEventType = "transaction.completed";
@@ -62,7 +62,7 @@
   }
 
   function dispatchBillingEvent(name, detail) {
-    window.dispatchEvent(new CustomEvent("llm-crossword:" + name, {
+    window.dispatchEvent(new CustomEvent("hecate:" + name, {
       detail: detail || {},
     }));
   }
@@ -676,7 +676,7 @@
       });
   }
 
-  window.CrosswordBilling = Object.freeze({
+  window.HecateBilling = Object.freeze({
     getState: function () {
       return {
         eventSource: state.eventSource,
@@ -692,7 +692,7 @@
     setLoggedIn: setLoggedIn,
   });
 
-  (window.__LLM_CROSSWORD_TEST__ || (window.__LLM_CROSSWORD_TEST__ = {})).billing = {
+  (window.__HECATE_TEST__ || (window.__HECATE_TEST__ = {})).billing = {
     applySummary: applySummary,
     closeBillingEventStream: closeBillingEventStream,
     connectBillingEventStream: connectBillingEventStream,

@@ -36,7 +36,7 @@ func TestCreateAndListPuzzles(t *testing.T) {
 		Subtitle:    "A test.",
 		Description: "A longer stored description.",
 		Topic:       "testing",
-		Words: []PuzzleWord{
+		Items: []PuzzleItem{
 			{Word: "HELLO", Clue: "A greeting", Hint: "what you say when you meet someone"},
 			{Word: "WORLD", Clue: "The planet", Hint: "Earth"},
 		},
@@ -49,7 +49,7 @@ func TestCreateAndListPuzzles(t *testing.T) {
 	if puzzle.ID == "" {
 		t.Error("expected puzzle ID to be set")
 	}
-	for _, w := range puzzle.Words {
+	for _, w := range puzzle.Items {
 		if w.ID == "" {
 			t.Error("expected word ID to be set")
 		}
@@ -71,8 +71,8 @@ func TestCreateAndListPuzzles(t *testing.T) {
 	if puzzles[0].Description != "A longer stored description." {
 		t.Errorf("expected description to persist, got %q", puzzles[0].Description)
 	}
-	if len(puzzles[0].Words) != 2 {
-		t.Errorf("expected 2 words, got %d", len(puzzles[0].Words))
+	if len(puzzles[0].Items) != 2 {
+		t.Errorf("expected 2 items, got %d", len(puzzles[0].Items))
 	}
 }
 
@@ -94,7 +94,7 @@ func TestListPuzzlesByUser_ScopedToUser(t *testing.T) {
 	if err := s.CreatePuzzle(&Puzzle{
 		UserID: "user-a",
 		Title:  "A's puzzle",
-		Words:  []PuzzleWord{{Word: "ALPHA", Clue: "First", Hint: "beginning"}},
+		Items:  []PuzzleItem{{Word: "ALPHA", Clue: "First", Hint: "beginning"}},
 	}); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
 	}
@@ -102,7 +102,7 @@ func TestListPuzzlesByUser_ScopedToUser(t *testing.T) {
 	if err := s.CreatePuzzle(&Puzzle{
 		UserID: "user-b",
 		Title:  "B's puzzle",
-		Words:  []PuzzleWord{{Word: "BETA", Clue: "Second", Hint: "after alpha"}},
+		Items:  []PuzzleItem{{Word: "BETA", Clue: "Second", Hint: "after alpha"}},
 	}); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
 	}
@@ -125,7 +125,7 @@ func TestGetPuzzle(t *testing.T) {
 	puzzle := &Puzzle{
 		UserID: "user-1",
 		Title:  "Get Me",
-		Words:  []PuzzleWord{{Word: "TEST", Clue: "A trial", Hint: "exam"}},
+		Items:  []PuzzleItem{{Word: "TEST", Clue: "A trial", Hint: "exam"}},
 	}
 	if err := s.CreatePuzzle(puzzle); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
@@ -138,8 +138,8 @@ func TestGetPuzzle(t *testing.T) {
 	if got.Title != "Get Me" {
 		t.Errorf("expected title 'Get Me', got %q", got.Title)
 	}
-	if len(got.Words) != 1 {
-		t.Errorf("expected 1 word, got %d", len(got.Words))
+	if len(got.Items) != 1 {
+		t.Errorf("expected 1 item, got %d", len(got.Items))
 	}
 }
 
@@ -149,7 +149,7 @@ func TestGetPuzzle_WrongUser(t *testing.T) {
 	puzzle := &Puzzle{
 		UserID: "user-1",
 		Title:  "Private",
-		Words:  []PuzzleWord{{Word: "SECRET", Clue: "Hidden", Hint: "not public"}},
+		Items:  []PuzzleItem{{Word: "SECRET", Clue: "Hidden", Hint: "not public"}},
 	}
 	if err := s.CreatePuzzle(puzzle); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
@@ -176,7 +176,7 @@ func TestDeletePuzzle(t *testing.T) {
 	puzzle := &Puzzle{
 		UserID: "user-1",
 		Title:  "Delete Me",
-		Words:  []PuzzleWord{{Word: "GONE", Clue: "Removed", Hint: "vanished"}},
+		Items:  []PuzzleItem{{Word: "GONE", Clue: "Removed", Hint: "vanished"}},
 	}
 	if err := s.CreatePuzzle(puzzle); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
@@ -207,7 +207,7 @@ func TestDeletePuzzle_WrongUser(t *testing.T) {
 	puzzle := &Puzzle{
 		UserID: "user-1",
 		Title:  "Not Yours",
-		Words:  []PuzzleWord{{Word: "MINE", Clue: "Belonging to me", Hint: "possessive"}},
+		Items:  []PuzzleItem{{Word: "MINE", Clue: "Belonging to me", Hint: "possessive"}},
 	}
 	if err := s.CreatePuzzle(puzzle); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
@@ -243,7 +243,7 @@ func TestListPuzzlesByUser_OrderedByCreatedAtDesc(t *testing.T) {
 	if err := s.CreatePuzzle(&Puzzle{
 		UserID: "user-1",
 		Title:  "First",
-		Words:  []PuzzleWord{{Word: "ONE", Clue: "Number", Hint: "1"}},
+		Items:  []PuzzleItem{{Word: "ONE", Clue: "Number", Hint: "1"}},
 	}); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
 	}
@@ -251,7 +251,7 @@ func TestListPuzzlesByUser_OrderedByCreatedAtDesc(t *testing.T) {
 	if err := s.CreatePuzzle(&Puzzle{
 		UserID: "user-1",
 		Title:  "Second",
-		Words:  []PuzzleWord{{Word: "TWO", Clue: "Number", Hint: "2"}},
+		Items:  []PuzzleItem{{Word: "TWO", Clue: "Number", Hint: "2"}},
 	}); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
 	}
@@ -274,7 +274,7 @@ func TestCreatePuzzle_SetsShareToken(t *testing.T) {
 	puzzle := &Puzzle{
 		UserID: "user-1",
 		Title:  "Token Test",
-		Words:  []PuzzleWord{{Word: "HELLO", Clue: "A greeting", Hint: "hi"}},
+		Items:  []PuzzleItem{{Word: "HELLO", Clue: "A greeting", Hint: "hi"}},
 	}
 	if err := s.CreatePuzzle(puzzle); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
@@ -296,8 +296,8 @@ func TestCreatePuzzle_SetsShareToken(t *testing.T) {
 func TestCreatePuzzle_UniqueShareTokens(t *testing.T) {
 	s := testStore(t)
 
-	p1 := &Puzzle{UserID: "user-1", Title: "One", Words: []PuzzleWord{{Word: "A", Clue: "c", Hint: "h"}}}
-	p2 := &Puzzle{UserID: "user-1", Title: "Two", Words: []PuzzleWord{{Word: "B", Clue: "c", Hint: "h"}}}
+	p1 := &Puzzle{UserID: "user-1", Title: "One", Items: []PuzzleItem{{Word: "A", Clue: "c", Hint: "h"}}}
+	p2 := &Puzzle{UserID: "user-1", Title: "Two", Items: []PuzzleItem{{Word: "B", Clue: "c", Hint: "h"}}}
 	if err := s.CreatePuzzle(p1); err != nil {
 		t.Fatalf("CreatePuzzle p1: %v", err)
 	}
@@ -315,7 +315,7 @@ func TestGetPuzzleByShareToken_Success(t *testing.T) {
 	puzzle := &Puzzle{
 		UserID: "user-1",
 		Title:  "Shared Puzzle",
-		Words:  []PuzzleWord{{Word: "SHARE", Clue: "Give to others", Hint: "distribute"}},
+		Items:  []PuzzleItem{{Word: "SHARE", Clue: "Give to others", Hint: "distribute"}},
 	}
 	if err := s.CreatePuzzle(puzzle); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
@@ -328,8 +328,8 @@ func TestGetPuzzleByShareToken_Success(t *testing.T) {
 	if got.Title != "Shared Puzzle" {
 		t.Errorf("expected title 'Shared Puzzle', got %q", got.Title)
 	}
-	if len(got.Words) != 1 {
-		t.Errorf("expected 1 word, got %d", len(got.Words))
+	if len(got.Items) != 1 {
+		t.Errorf("expected 1 item, got %d", len(got.Items))
 	}
 }
 
@@ -374,7 +374,7 @@ func TestListAdminUsers_ExcludesLegacyPuzzleUsersWithoutEmails(t *testing.T) {
 	if err := s.CreatePuzzle(&Puzzle{
 		UserID: "google:legacy",
 		Title:  "Legacy",
-		Words:  []PuzzleWord{{Word: "OLD", Clue: "Older", Hint: "before"}},
+		Items:  []PuzzleItem{{Word: "OLD", Clue: "Older", Hint: "before"}},
 	}); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
 	}
@@ -423,7 +423,7 @@ func TestPuzzleSolveRecords_RoundTripAndStats(t *testing.T) {
 	ownerPuzzle := &Puzzle{
 		UserID: "owner-1",
 		Title:  "Rewarded",
-		Words:  []PuzzleWord{{Word: "ORBIT", Clue: "Path", Hint: "ellipse"}},
+		Items:  []PuzzleItem{{Word: "ORBIT", Clue: "Path", Hint: "ellipse"}},
 	}
 	if err := s.CreatePuzzle(ownerPuzzle); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
@@ -497,7 +497,7 @@ func TestPuzzleSolveRecords_EnforceUniquePuzzleSolver(t *testing.T) {
 	puzzle := &Puzzle{
 		UserID: "owner-1",
 		Title:  "Unique",
-		Words:  []PuzzleWord{{Word: "ATOM", Clue: "Particle", Hint: "matter"}},
+		Items:  []PuzzleItem{{Word: "ATOM", Clue: "Particle", Hint: "matter"}},
 	}
 	if err := s.CreatePuzzle(puzzle); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)

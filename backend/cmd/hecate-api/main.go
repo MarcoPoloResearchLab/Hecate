@@ -37,7 +37,7 @@ const (
 	flagPaddleAPIBase   = "paddle-api-base-url"
 	flagPaddleClientTok = "paddle-client-token"
 	flagPaddleWebhook   = "paddle-webhook-secret"
-	envPrefix           = "CROSSWORDAPI"
+	envPrefix           = "HECATEAPI"
 )
 
 var defaultAppConfigPaths = []string{
@@ -51,7 +51,7 @@ var exitFunc = os.Exit
 func run() int {
 	rootCmd := newRootCommand()
 	if err := rootCmd.Execute(); err != nil {
-		fmt.Fprintf(os.Stderr, "crossword-api: %v\n", err)
+		fmt.Fprintf(os.Stderr, "hecate-api: %v\n", err)
 		return 1
 	}
 	return 0
@@ -64,8 +64,8 @@ func main() {
 func newRootCommand() *cobra.Command {
 	cfg := crosswordapi.Config{}
 	cmd := &cobra.Command{
-		Use:           "crossword-api",
-		Short:         "HTTP API for LLM crossword generation",
+		Use:           "hecate-api",
+		Short:         "HTTP API for Hecate puzzle generation",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PreRunE: func(cmd *cobra.Command, args []string) error {
@@ -205,7 +205,7 @@ func loadAdminEmailsFromConfigPaths(paths []string) ([]string, error) {
 }
 
 func loadPaddlePackPriceIDsFromEnv(environment []string) map[string]string {
-	const envPrefixPackPriceID = "CROSSWORDAPI_PADDLE_PRICE_ID_PACK_"
+	const envPrefixPackPriceID = "HECATEAPI_PADDLE_PRICE_ID_PACK_"
 
 	packPriceIDs := make(map[string]string)
 	for _, rawEntry := range environment {

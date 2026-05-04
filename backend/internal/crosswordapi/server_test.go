@@ -570,6 +570,23 @@ func TestHandleGenerate_TopicTooLong(t *testing.T) {
 	}
 }
 
+func TestHandleGenerate_InvalidPuzzleType(t *testing.T) {
+	handler := testHandler(&mockLedgerClient{}, nil)
+	router := testRouterWithClaims(handler, testClaims())
+	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"test","puzzle_type":"mystery","word_count":8}`)
+	if w.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var body map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if body["error"] != "invalid_puzzle_type" {
+		t.Fatalf("expected invalid_puzzle_type, got %v", body["error"])
+	}
+}
+
 func TestHandleGenerate_InsufficientCredits(t *testing.T) {
 	ledger := &mockLedgerClient{
 		spendFunc: func(ctx context.Context, in *creditv1.SpendRequest, opts ...grpc.CallOption) (*creditv1.Empty, error) {
@@ -578,7 +595,7 @@ func TestHandleGenerate_InsufficientCredits(t *testing.T) {
 	}
 	handler := testHandler(ledger, nil)
 	router := testRouterWithClaims(handler, testClaims())
-	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Greek gods","word_count":8}`)
+	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Greek gods","puzzle_type":"crossword","word_count":8}`)
 	if w.Code != http.StatusPaymentRequired {
 		t.Fatalf("expected 402, got %d", w.Code)
 	}
@@ -592,7 +609,7 @@ func TestHandleGenerate_SpendError(t *testing.T) {
 	}
 	handler := testHandler(ledger, nil)
 	router := testRouterWithClaims(handler, testClaims())
-	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Greek gods","word_count":8}`)
+	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Greek gods","puzzle_type":"crossword","word_count":8}`)
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d", w.Code)
 	}
@@ -608,7 +625,7 @@ func TestHandleGenerate_LLMError(t *testing.T) {
 
 	handler := testHandler(ledger, llmServer)
 	router := testRouterWithClaims(handler, testClaims())
-	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Greek gods","word_count":8}`)
+	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Greek gods","puzzle_type":"crossword","word_count":8}`)
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d", w.Code)
 	}
@@ -627,7 +644,7 @@ func TestHandleGenerate_Success(t *testing.T) {
 
 	handler := testHandler(ledger, llmServer)
 	router := testRouterWithClaims(handler, testClaims())
-	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Greek gods","word_count":8}`)
+	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Greek gods","puzzle_type":"crossword","word_count":8}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -655,6 +672,85 @@ func TestHandleGenerate_Success(t *testing.T) {
 	}
 }
 
+func TestHandleGenerate_WordSearchSuccess(t *testing.T) {
+	ledger := &mockLedgerClient{}
+	items := makeWordItems(6)
+	metadata := PuzzleMetadata{
+		Title:       "Forest Finds",
+		Subtitle:    "A compact set of woodland words hidden in one grid.",
+		Description: "This word search groups familiar forest terms into a quick themed puzzle.",
+	}
+	llmServer := testLLMResponseServer(t, mustMarshalJSON(items), mustMarshalJSON(metadata))
+	defer llmServer.Close()
+
+	handler := testHandler(ledger, llmServer)
+	router := testRouterWithClaims(handler, testClaims())
+	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-word-search","topic":"forest","puzzle_type":"word_search","word_count":6}`)
+	if w.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	if resp["puzzle_type"] != string(puzzleTypeWordSearch) {
+		t.Fatalf("expected puzzle_type %q, got %v", puzzleTypeWordSearch, resp["puzzle_type"])
+	}
+	if resp["layout_version"].(float64) != float64(currentLayoutVersion) {
+		t.Fatalf("expected layout_version %d, got %v", currentLayoutVersion, resp["layout_version"])
+	}
+	options, ok := resp["options"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected options map, got %T", resp["options"])
+	}
+	directions, ok := options["directions"].([]any)
+	if !ok || len(directions) != len(wordSearchDirections) {
+		t.Fatalf("expected default word-search directions, got %#v", options["directions"])
+	}
+	if resp["title"] != metadata.Title {
+		t.Fatalf("expected title %q, got %v", metadata.Title, resp["title"])
+	}
+}
+
+func TestHandleGenerate_RetriesInvalidGeneratedWordsAndNormalizesAccents(t *testing.T) {
+	ledger := &mockLedgerClient{}
+	invalidItems := makeWordItems(8)
+	invalidItems[0].Word = "GOOD-WORD"
+	validItems := makeWordItems(8)
+	validItems[0].Word = "façade"
+	metadata := PuzzleMetadata{
+		Title:       "Readable Building Terms",
+		Subtitle:    "Facade and related words define a clean generated puzzle.",
+		Description: "This puzzle keeps the generated words valid while preserving common English spellings.",
+	}
+	llmServer := testLLMResponseServer(t, mustMarshalJSON(invalidItems), mustMarshalJSON(validItems), mustMarshalJSON(metadata))
+	defer llmServer.Close()
+
+	handler := testHandler(ledger, llmServer)
+	router := testRouterWithClaims(handler, testClaims())
+	response := doRequest(router, "POST", "/api/generate", `{"request_id":"req-accent","topic":"architecture","puzzle_type":"crossword","word_count":8}`)
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var payload map[string]any
+	if err := json.Unmarshal(response.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("Unmarshal: %v", err)
+	}
+	itemsPayload, ok := payload["items"].([]any)
+	if !ok || len(itemsPayload) != 8 {
+		t.Fatalf("expected 8 generated items, got %#v", payload["items"])
+	}
+	firstItem, ok := itemsPayload[0].(map[string]any)
+	if !ok {
+		t.Fatalf("expected item object, got %#v", itemsPayload[0])
+	}
+	if firstItem["word"] != "FACADE" {
+		t.Fatalf("expected FACADE after accent normalization, got %#v", firstItem["word"])
+	}
+}
+
 func TestHandleGenerate_UsesStableSpendIdempotencyKey(t *testing.T) {
 	var capturedKey string
 
@@ -672,7 +768,7 @@ func TestHandleGenerate_UsesStableSpendIdempotencyKey(t *testing.T) {
 
 	handler := testHandler(ledger, llmServer)
 	router := testRouterWithClaims(handler, testClaims())
-	response := doRequest(router, "POST", "/api/generate", `{"request_id":"stable-request","topic":"Greek gods","word_count":8}`)
+	response := doRequest(router, "POST", "/api/generate", `{"request_id":"stable-request","topic":"Greek gods","puzzle_type":"crossword","word_count":8}`)
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
 	}
@@ -693,7 +789,7 @@ func TestHandleGenerate_MetadataRetrySucceeds(t *testing.T) {
 
 	handler := testHandler(&mockLedgerClient{}, llmServer)
 	router := testRouterWithClaims(handler, testClaims())
-	resp := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Roman city","word_count":8}`)
+	resp := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Roman city","puzzle_type":"crossword","word_count":8}`)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
 	}
@@ -722,7 +818,7 @@ func TestHandleGenerate_MetadataFailureFallsBackWithoutRefund(t *testing.T) {
 
 	handler := testHandler(ledger, llmServer)
 	router := testRouterWithClaims(handler, testClaims())
-	resp := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Crossword city","word_count":8}`)
+	resp := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Crossword city","puzzle_type":"crossword","word_count":8}`)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
 	}
@@ -771,7 +867,7 @@ func TestHandleGenerate_WordCountClamping(t *testing.T) {
 
 			handler := testHandler(ledger, llmServer)
 			router := testRouterWithClaims(handler, testClaims())
-			body := fmt.Sprintf(`{"request_id":"req-1","topic":"test","word_count":%d}`, tt.wordCount)
+			body := fmt.Sprintf(`{"request_id":"req-1","topic":"test","puzzle_type":"crossword","word_count":%d}`, tt.wordCount)
 			w := doRequest(router, "POST", "/api/generate", body)
 			if w.Code != http.StatusOK {
 				t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -795,7 +891,7 @@ func TestHandleGenerate_BalanceFetchFailsGracefully(t *testing.T) {
 
 	handler := testHandler(ledger, llmServer)
 	router := testRouterWithClaims(handler, testClaims())
-	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"test","word_count":8}`)
+	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"test","puzzle_type":"crossword","word_count":8}`)
 	// Should still succeed even if balance fetch fails.
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
@@ -809,7 +905,7 @@ func TestHandleListAndGetPuzzle_IncludeRewardSummary(t *testing.T) {
 		Title:       "Owned puzzle",
 		Subtitle:    "Stored",
 		Description: "Stored puzzle description",
-		Words: []PuzzleWord{
+		Items: []PuzzleItem{
 			{Word: "ORBIT", Clue: "Path", Hint: "ellipse"},
 		},
 	}
@@ -2202,7 +2298,7 @@ func TestHandleListPuzzles_Empty(t *testing.T) {
 func TestHandleListPuzzles_WithPuzzles(t *testing.T) {
 	s := &mockStore{
 		listFunc: func(userID string) ([]Puzzle, error) {
-			return []Puzzle{{ID: "p1", Title: "Test", Description: "Stored detail", Words: []PuzzleWord{{Word: "HI", Clue: "Greeting", Hint: "hey"}}}}, nil
+			return []Puzzle{{ID: "p1", Title: "Test", Description: "Stored detail", Items: []PuzzleItem{{Word: "HI", Clue: "Greeting", Hint: "hey"}}}}, nil
 		},
 	}
 	handler := testHandlerWithStore(&mockLedgerClient{}, nil, s)
@@ -2468,7 +2564,7 @@ func TestHandleGenerate_SavesPuzzle(t *testing.T) {
 	}
 	handler := testHandlerWithStore(ledger, llmServer, s)
 	router := testRouterWithClaims(handler, testClaims())
-	resp := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"cats","word_count":5}`)
+	resp := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"cats","puzzle_type":"crossword","word_count":5}`)
 	if resp.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", resp.Code, resp.Body.String())
 	}
@@ -2487,8 +2583,8 @@ func TestHandleGenerate_SavesPuzzle(t *testing.T) {
 	if savedPuzzle.Description != metadata.Description {
 		t.Errorf("expected description %q, got %q", metadata.Description, savedPuzzle.Description)
 	}
-	if len(savedPuzzle.Words) != 5 {
-		t.Errorf("expected 5 words, got %d", len(savedPuzzle.Words))
+	if len(savedPuzzle.Items) != 5 {
+		t.Errorf("expected 5 items, got %d", len(savedPuzzle.Items))
 	}
 	var body map[string]any
 	json.Unmarshal(resp.Body.Bytes(), &body)
@@ -2509,7 +2605,7 @@ func TestHandleGetSharedPuzzle_Success(t *testing.T) {
 		UserID:      "user-1",
 		Title:       "Shared Test",
 		Description: "Shared detail",
-		Words:       []PuzzleWord{{Word: "SHARE", Clue: "Give", Hint: "distribute"}},
+		Items:       []PuzzleItem{{Word: "SHARE", Clue: "Give", Hint: "distribute"}},
 	}
 	if err := s.CreatePuzzle(puzzle); err != nil {
 		t.Fatalf("CreatePuzzle: %v", err)
@@ -2529,8 +2625,8 @@ func TestHandleGetSharedPuzzle_Success(t *testing.T) {
 	if resp.Description != "Shared detail" {
 		t.Errorf("expected description 'Shared detail', got %q", resp.Description)
 	}
-	if len(resp.Words) != 1 {
-		t.Errorf("expected 1 word, got %d", len(resp.Words))
+	if len(resp.Items) != 1 {
+		t.Errorf("expected 1 item, got %d", len(resp.Items))
 	}
 }
 
@@ -2548,7 +2644,7 @@ func TestHandleGetSharedPuzzle_NoAuthRequired(t *testing.T) {
 	puzzle := &Puzzle{
 		UserID: "user-1",
 		Title:  "Public",
-		Words:  []PuzzleWord{{Word: "OPEN", Clue: "Not closed", Hint: "accessible"}},
+		Items:  []PuzzleItem{{Word: "OPEN", Clue: "Not closed", Hint: "accessible"}},
 	}
 	s.CreatePuzzle(puzzle)
 
@@ -2571,7 +2667,7 @@ func TestHandleGenerate_IncludesShareToken(t *testing.T) {
 
 	handler := testHandler(ledger, llmServer)
 	router := testRouterWithClaims(handler, testClaims())
-	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"test","word_count":8}`)
+	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"test","puzzle_type":"crossword","word_count":8}`)
 	if w.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", w.Code, w.Body.String())
 	}
@@ -2601,11 +2697,11 @@ func TestHandleGenerate_ReplaysSucceededRequestWithoutSecondSpend(t *testing.T) 
 
 	handler := testHandlerWithStore(ledger, llmServer, s)
 	router := testRouterWithClaims(handler, testClaims())
-	firstResponse := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"test","word_count":8}`)
+	firstResponse := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"test","puzzle_type":"crossword","word_count":8}`)
 	if firstResponse.Code != http.StatusOK {
 		t.Fatalf("expected first response 200, got %d: %s", firstResponse.Code, firstResponse.Body.String())
 	}
-	secondResponse := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"test","word_count":8}`)
+	secondResponse := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"test","puzzle_type":"crossword","word_count":8}`)
 	if secondResponse.Code != http.StatusOK {
 		t.Fatalf("expected second response 200, got %d: %s", secondResponse.Code, secondResponse.Body.String())
 	}
@@ -2646,12 +2742,12 @@ func TestHandleGenerate_RejectsRequestIDReuseForDifferentPayload(t *testing.T) {
 
 	handler := testHandlerWithStore(ledger, llmServer, s)
 	router := testRouterWithClaims(handler, testClaims())
-	firstResponse := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"test","word_count":8}`)
+	firstResponse := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"test","puzzle_type":"crossword","word_count":8}`)
 	if firstResponse.Code != http.StatusOK {
 		t.Fatalf("expected first response 200, got %d: %s", firstResponse.Code, firstResponse.Body.String())
 	}
 
-	conflictResponse := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"different","word_count":8}`)
+	conflictResponse := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"different","puzzle_type":"crossword","word_count":8}`)
 	if conflictResponse.Code != http.StatusConflict {
 		t.Fatalf("expected 409, got %d: %s", conflictResponse.Code, conflictResponse.Body.String())
 	}
@@ -2700,7 +2796,7 @@ func TestHandleGenerate_SaveFailureRefundsAndFails(t *testing.T) {
 	}
 	handler := testHandlerWithStore(ledger, llmServer, s)
 	router := testRouterWithClaims(handler, testClaims())
-	resp := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"dogs","word_count":5}`)
+	resp := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"dogs","puzzle_type":"crossword","word_count":5}`)
 	if resp.Code != http.StatusInternalServerError {
 		t.Fatalf("expected 500, got %d: %s", resp.Code, resp.Body.String())
 	}
@@ -3139,7 +3235,7 @@ func TestHandleGenerate_LLMError_RefundsCredits(t *testing.T) {
 
 	handler := testHandler(ledger, llmServer)
 	router := testRouterWithClaims(handler, testClaims())
-	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Greek gods","word_count":8}`)
+	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Greek gods","puzzle_type":"crossword","word_count":8}`)
 	if w.Code != http.StatusBadGateway {
 		t.Fatalf("expected 502, got %d", w.Code)
 	}
@@ -3163,7 +3259,7 @@ func TestHandleGenerate_LLMTimeout_Returns504(t *testing.T) {
 
 	handler := testHandler(ledger, llmServer)
 	router := testRouterWithClaims(handler, testClaims())
-	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Greek gods","word_count":8}`)
+	w := doRequest(router, "POST", "/api/generate", `{"request_id":"req-1","topic":"Greek gods","puzzle_type":"crossword","word_count":8}`)
 	if w.Code != http.StatusGatewayTimeout {
 		t.Fatalf("expected 504, got %d: %s", w.Code, w.Body.String())
 	}

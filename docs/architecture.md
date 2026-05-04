@@ -1,12 +1,12 @@
-# LLM Crossword Architecture
+# Hecate Architecture
 
 ## System Overview
 
-LLM Crossword is a split-origin browser application backed by the Go `crossword-api`, TAuth for authentication, Ledger for credits, and Paddle for payment processing. Billing is a required subsystem, not an optional integration.
+Hecate is a split-origin browser application backed by the Go `hecate-api`, TAuth for authentication, Ledger for credits, and Paddle for payment processing. Billing is a required subsystem, not an optional integration.
 
 ## Startup Contract
 
-`crossword-api` must complete this sequence before it can accept traffic:
+`hecate-api` must complete this sequence before it can accept traffic:
 
 1. Load config and validate the required billing provider, pack definitions, and Paddle credentials.
 2. Construct the billing service and provider.

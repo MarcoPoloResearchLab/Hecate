@@ -18,6 +18,7 @@ type GenerationRequestRecord struct {
 	UserID       string `gorm:"not null;type:text;uniqueIndex:idx_generation_request_user_request"`
 	RequestID    string `gorm:"not null;type:text;uniqueIndex:idx_generation_request_user_request"`
 	Topic        string `gorm:"type:text"`
+	PuzzleType   string `gorm:"column:puzzle_type;type:text;not null;default:crossword"`
 	WordCount    int    `gorm:"not null"`
 	Status       string `gorm:"not null;type:text;index"`
 	PuzzleID     string `gorm:"type:text;index"`

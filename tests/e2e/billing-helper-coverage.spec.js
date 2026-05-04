@@ -12,7 +12,7 @@ test.describe("Billing helper coverage", () => {
     await loadBillingScript(page);
 
     const result = await page.evaluate(async () => {
-      var billing = window.__LLM_CROSSWORD_TEST__.billing;
+      var billing = window.__HECATE_TEST__.billing;
       var completionMessages = [];
       var statusMessages = [];
       var closedCount = 0;
@@ -55,10 +55,10 @@ test.describe("Billing helper coverage", () => {
       var loggedInSummaryProvider = "";
       var streamClosedOnError = 0;
 
-      window.addEventListener("llm-crossword:billing-status", function (event) {
+      window.addEventListener("hecate:billing-status", function (event) {
         statusMessages.push((event && event.detail && event.detail.message) || "");
       });
-      window.addEventListener("llm-crossword:billing-transaction-complete", function (event) {
+      window.addEventListener("hecate:billing-transaction-complete", function (event) {
         completionMessages.push((event && event.detail && event.detail.status) || "");
       });
 
@@ -392,7 +392,7 @@ test.describe("Billing helper coverage", () => {
     await loadBillingScript(page);
 
     const result = await page.evaluate(async () => {
-      var billing = window.__LLM_CROSSWORD_TEST__.billing;
+      var billing = window.__HECATE_TEST__.billing;
       var appendedScripts = [];
       var initCalls = 0;
       var envSetCalls = [];
@@ -450,10 +450,10 @@ test.describe("Billing helper coverage", () => {
         return node;
       };
 
-      window.addEventListener("llm-crossword:custom-event", function (event) {
+      window.addEventListener("hecate:custom-event", function (event) {
         customEventDetail = event.detail;
       });
-      window.addEventListener("llm-crossword:billing-status", function (event) {
+      window.addEventListener("hecate:billing-status", function (event) {
         statusMessages.push((event && event.detail && event.detail.message) || "");
       });
 
@@ -827,7 +827,7 @@ test.describe("Billing helper coverage", () => {
     await loadBillingScript(page);
 
     const result = await page.evaluate(async () => {
-      var billing = window.__LLM_CROSSWORD_TEST__.billing;
+      var billing = window.__HECATE_TEST__.billing;
       var statusMessages = [];
       var completedTransactionID = "";
       var activeFallbackTransactionID = "";
@@ -848,7 +848,7 @@ test.describe("Billing helper coverage", () => {
         };
       }
 
-      window.addEventListener("llm-crossword:billing-status", function (event) {
+      window.addEventListener("hecate:billing-status", function (event) {
         statusMessages.push((event && event.detail && event.detail.message) || "");
       });
 

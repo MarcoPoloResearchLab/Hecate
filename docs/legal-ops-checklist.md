@@ -1,6 +1,6 @@
-# LLM Crossword Legal And Ops Checklist
+# Hecate Legal And Ops Checklist
 
-This is an operational checklist for reducing founder-personal exposure while running LLM Crossword through Marco Polo Research Lab LLC.
+This is an operational checklist for reducing founder-personal exposure while running Hecate through Marco Polo Research Lab LLC.
 
 ## Public Product Surface
 
@@ -13,7 +13,7 @@ This is an operational checklist for reducing founder-personal exposure while ru
 ## OAuth And Google Identity
 
 - In the Google Cloud OAuth consent screen, use the LLC-controlled product identity:
-  - App name: `LLM Crossword`
+  - App name: `Hecate`
   - Support email: LLC-controlled mailbox
   - Homepage: `https://llm-crossword.mprlab.com/`
   - Privacy Policy: `https://llm-crossword.mprlab.com/privacy.html`
@@ -33,7 +33,7 @@ This is an operational checklist for reducing founder-personal exposure while ru
 ## Admin And Internal Access
 
 - Do not put administrator emails in `configs/config.yml`; expose admin allowlists only through server-side configuration.
-- Set admin allowlists through `CROSSWORDAPI_ADMIN_EMAILS` in `configs/.env.crosswordapi.local`, `configs/.env.crosswordapi.production`, or another server-side secret source.
+- Set admin allowlists through `HECATEAPI_ADMIN_EMAILS` in `configs/.env.hecateapi.local`, `configs/.env.hecateapi.production`, or another server-side secret source.
 - Prefer role-based admin assignment in TAuth or a shared company mailbox/group over one personal Gmail account.
 
 ## Infrastructure Ownership
@@ -51,6 +51,6 @@ This is an operational checklist for reducing founder-personal exposure while ru
 
 ## Repo Hygiene
 
-- Keep `configs/.env.crosswordapi.local`, `configs/.env.crosswordapi.production`, `configs/.env.tauth.local`, `configs/.env.tauth.production`, and any credential exports untracked.
+- Keep `configs/.env.hecateapi.local`, `configs/.env.hecateapi.production`, `configs/.env.tauth.local`, `configs/.env.tauth.production`, and any credential exports untracked.
 - Rotate any OAuth client secret that has ever lived in a served directory or been copied to a deployed machine image.
 - Review public config and static files before deploy for personal emails, home addresses, personal phone numbers, and personal usernames.

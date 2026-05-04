@@ -39,7 +39,7 @@ test.describe("Login flow — puzzle view", () => {
   test.beforeEach(async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
   });
 
   test("puzzle view shows puzzle sidebar with cards", async ({ page }) => {
@@ -63,7 +63,7 @@ test.describe("Login flow — pre-built puzzles", () => {
   test("pre-built puzzle loads and shows crossword grid", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     // Wait for crossword to load.
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
     await expect(page.locator("#puzzleView").getByText("Down")).toBeVisible();
@@ -72,7 +72,7 @@ test.describe("Login flow — pre-built puzzles", () => {
   test("pre-built puzzle shows Check and Reveal buttons in the puzzle toolbar", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.getByRole("button", { name: "Check" })).toBeVisible({ timeout: 10000 });
     await expect(page.locator("#puzzleToolbar")).toBeVisible();
     await expect(page.locator("#reveal")).toHaveText("Reveal");
@@ -81,7 +81,7 @@ test.describe("Login flow — pre-built puzzles", () => {
   test("puzzle sidebar has cards populated", async ({ page }) => {
     await setupLoggedOutRoutes(page);
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     // Wait for puzzles to load.
     await page.waitForTimeout(3000);
     var cards = page.locator("#puzzleCardList .puzzle-card");

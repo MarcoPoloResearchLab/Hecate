@@ -2,12 +2,12 @@
 
 ## Purpose
 
-Use this runbook when configuring Paddle for one-time LLM Crossword credit packs.
+Use this runbook when configuring Paddle for one-time Hecate credit packs.
 
 The app expects:
 
 - one active billing provider: `paddle`
-- one approved Paddle default payment link URL on the crossword domain
+- one approved Paddle default payment link URL on the Hecate domain
 - browser checkout opened directly from the app by transaction id
 - webhook-driven credit settlement only
 
@@ -32,21 +32,21 @@ The app expects:
 
 ## Required Env Vars
 
-Set these in the crossword API profile file you are using, typically [configs/.env.crosswordapi.local](/Users/tyemirov/Development/llm_crossword/configs/.env.crosswordapi.local) for local work or [configs/.env.crosswordapi.production](/Users/tyemirov/Development/llm_crossword/configs/.env.crosswordapi.production) for production:
+Set these in the Hecate API profile file you are using, typically [configs/.env.hecateapi.local](/Users/tyemirov/Development/llm_crossword/configs/.env.hecateapi.local) for local work or [configs/.env.hecateapi.production](/Users/tyemirov/Development/llm_crossword/configs/.env.hecateapi.production) for production:
 
-- `CROSSWORDAPI_BILLING_PROVIDER=paddle`
-- `CROSSWORDAPI_PADDLE_ENVIRONMENT=sandbox|production`
-- `CROSSWORDAPI_PADDLE_API_KEY`
-- `CROSSWORDAPI_PADDLE_CLIENT_TOKEN`
-- `CROSSWORDAPI_PADDLE_WEBHOOK_SECRET`
+- `HECATEAPI_BILLING_PROVIDER=paddle`
+- `HECATEAPI_PADDLE_ENVIRONMENT=sandbox|production`
+- `HECATEAPI_PADDLE_API_KEY`
+- `HECATEAPI_PADDLE_CLIENT_TOKEN`
+- `HECATEAPI_PADDLE_WEBHOOK_SECRET`
 - These must be Paddle `price IDs`, not Paddle product IDs:
-- `CROSSWORDAPI_PADDLE_PRICE_ID_PACK_STARTER`
-- `CROSSWORDAPI_PADDLE_PRICE_ID_PACK_CREATOR`
-- `CROSSWORDAPI_PADDLE_PRICE_ID_PACK_PUBLISHER`
+- `HECATEAPI_PADDLE_PRICE_ID_PACK_STARTER`
+- `HECATEAPI_PADDLE_PRICE_ID_PACK_CREATOR`
+- `HECATEAPI_PADDLE_PRICE_ID_PACK_PUBLISHER`
 
 ## Startup Validation
 
-`crossword-api` always validates the configured Paddle pack catalog during startup using live Paddle API calls. There is no supported deployment mode without live billing.
+`hecate-api` always validates the configured Paddle pack catalog during startup using live Paddle API calls. There is no supported deployment mode without live billing.
 
 Startup fails if:
 
@@ -79,7 +79,7 @@ The generated file contains localhost and hosted profiles, and the browser selec
 
 ## Local Sandbox
 
-1. Start the crossword stack with sandbox billing env vars.
+1. Start the Hecate stack with sandbox billing env vars.
 2. If `BILLING_CALLBACK_PUBLIC_URL` is unset, `make up` will start an `ngrok` tunnel for the local site and write the resolved public callback origin to `.runtime/ports.env`.
 3. If you do not want automatic tunneling, set `BILLING_CALLBACK_PUBLIC_URL=https://<your-public-host>` yourself before `make up`.
 4. Point Paddle sandbox webhook delivery at `<callback-origin>/api/billing/paddle/webhook`.
@@ -90,7 +90,7 @@ The generated file contains localhost and hosted profiles, and the browser selec
 1. Sign in and open the generator.
 2. Click the header credit badge or exhaust credits and click `Buy credits`.
 3. Confirm Settings -> Account shows pack cards and billing activity.
-4. Start checkout and verify the app stays on the crossword page while the Paddle overlay opens.
+4. Start checkout and verify the app stays on the Hecate page while the Paddle overlay opens.
 5. Complete a sandbox payment.
 6. Verify the header badge and Settings activity update after the webhook lands.
 
@@ -99,8 +99,8 @@ The generated file contains localhost and hosted profiles, and the browser selec
 | Symptom | Likely cause | Fix |
 | --- | --- | --- |
 | Checkout fails with `transaction_default_checkout_url_not_set` | Paddle default payment link is missing | Configure any approved default payment link URL in Paddle Checkout settings. |
-| Webhook returns `401` | wrong webhook secret or wrong environment | Match `CROSSWORDAPI_PADDLE_ENVIRONMENT` and the environment-specific webhook secret. |
+| Webhook returns `401` | wrong webhook secret or wrong environment | Match `HECATEAPI_PADDLE_ENVIRONMENT` and the environment-specific webhook secret. |
 | Credits never arrive after payment | webhook destination is not public HTTPS or not subscribed to `transaction.completed` | Fix the destination URL and enabled events. |
-| API fails during startup with a catalog validation error | Paddle price IDs or amounts do not match the configured packs | Fix the Paddle catalog or the configured `CROSSWORDAPI_PADDLE_PRICE_ID_PACK_*` values, then restart. |
+| API fails during startup with a catalog validation error | Paddle price IDs or amounts do not match the configured packs | Fix the Paddle catalog or the configured `HECATEAPI_PADDLE_PRICE_ID_PACK_*` values, then restart. |
 | The app shows packs but no Paddle modal opens | missing client token, wrong sandbox/production runtime config, or unsupported local callback/payment-link setup | Re-run `./scripts/render-runtime-auth-config.sh` with the correct env vars, confirm `GET /api/billing/summary` returns `client_token` plus `environment`, and confirm local sandbox has a public HTTPS callback/default-link origin. |
 | Paddle overlay opens and immediately shows an error | the transaction was rejected upstream or the environment/token pair does not match | Confirm the live runtime config, the transaction environment, and the Paddle account settings match. |

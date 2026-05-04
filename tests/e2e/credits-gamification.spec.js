@@ -43,25 +43,25 @@ const customRewardPolicy = {
 
 async function openOwnedPuzzle(page) {
   await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-  await expect(page.locator("text=My Section")).toBeVisible({ timeout: 5000 });
+  await expect(page.locator("text=My Puzzles")).toBeVisible({ timeout: 5000 });
   await page.locator('[data-puzzle-key="owned-1"]').click();
   await expect(page.locator("#title")).toContainText("Owned Puzzle", { timeout: 5000 });
 }
 
 test.describe("Credits gamification", () => {
-  test("loads My Section after login and keeps it after reload", async ({ page }) => {
+  test("loads My Puzzles after login and keeps it after reload", async ({ page }) => {
     await setupLoggedInRoutes(page, {
       ownedPuzzles: [ownedPuzzle],
     });
 
     await page.goto("/");
-    await expect(page.locator("text=My Section")).toBeVisible({ timeout: 5000 });
-    await expect(page.locator("text=Practice Session")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("text=My Puzzles")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("text=Practice Puzzles")).toBeVisible({ timeout: 5000 });
     await expect(page.locator('[data-puzzle-key="owned-1"]')).toBeVisible();
     await expect(page.locator('[data-puzzle-key="owned-1"] .puzzle-card__description')).toContainText("Stored rewardable puzzle");
 
     await page.reload();
-    await expect(page.locator("text=My Section")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("text=My Puzzles")).toBeVisible({ timeout: 5000 });
     await expect(page.locator('[data-puzzle-key="owned-1"]')).toBeVisible();
   });
 
@@ -112,7 +112,7 @@ test.describe("Credits gamification", () => {
     });
 
     await page.goto("/?puzzle=shared-token");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#title")).toContainText("Shared Puzzle", { timeout: 5000 });
     await expect(page.locator("#headerCreditBadge")).toBeHidden();
     await expect(page.locator("#rewardStrip")).toBeHidden();
@@ -145,7 +145,7 @@ test.describe("Credits gamification", () => {
     await page.goto("/");
     await openOwnedPuzzle(page);
     await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent("crossword:completed", {
+      window.dispatchEvent(new CustomEvent("hecate:puzzle:completed", {
         detail: { usedHint: false, usedReveal: false },
       }));
     });
@@ -182,7 +182,7 @@ test.describe("Credits gamification", () => {
     await expect(page.locator("#headerCreditBadge")).toContainText("15 credits");
 
     await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent("crossword:completed", {
+      window.dispatchEvent(new CustomEvent("hecate:puzzle:completed", {
         detail: { usedHint: false, usedReveal: false },
       }));
     });
@@ -221,7 +221,7 @@ test.describe("Credits gamification", () => {
     await page.goto("/");
     await openOwnedPuzzle(page);
     await page.evaluate(() => {
-      window.dispatchEvent(new CustomEvent("crossword:reveal-used", {
+      window.dispatchEvent(new CustomEvent("hecate:puzzle:reveal-used", {
         detail: { usedHint: false, usedReveal: true },
       }));
     });

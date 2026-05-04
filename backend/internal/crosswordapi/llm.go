@@ -10,16 +10,19 @@ import (
 	"net/url"
 	"regexp"
 	"strings"
+	"unicode"
+
+	"golang.org/x/text/unicode/norm"
 )
 
-// WordItem represents a single crossword word with its clue and hint.
+// WordItem represents a single generated puzzle item with clue-like metadata.
 type WordItem struct {
 	Word       string `json:"word"`
 	Definition string `json:"definition"`
 	Hint       string `json:"hint"`
 }
 
-// PuzzleMetadata represents generated UI copy for a crossword puzzle.
+// PuzzleMetadata represents generated UI copy for a Hecate puzzle.
 type PuzzleMetadata struct {
 	Title       string `json:"title"`
 	Subtitle    string `json:"subtitle"`
@@ -42,18 +45,19 @@ func (e *llmProxyError) Error() string {
 	return fmt.Sprintf("llm proxy returned %d: %s", e.StatusCode, truncate(e.Body, 200))
 }
 
-var alphaOnly = regexp.MustCompile(`[^A-Za-z]`)
+var generatedWordPattern = regexp.MustCompile(`^[A-Z]{3,12}$`)
 var crosswordWordPattern = regexp.MustCompile(`(?i)\bcrossword\b`)
+var wordSearchPattern = regexp.MustCompile(`(?i)\bword\s+search\b`)
 var whitespacePattern = regexp.MustCompile(`\s+`)
 
 const maxGeneratedTitleLength = 100
 const punctuationTrimCutset = " \t\r\n-–—:|,.;!/?"
 const llmVerificationRetryAttempts = 2
 
-const wordSystemPrompt = `You are a crossword puzzle word generator. Return ONLY a valid JSON array, no markdown fences, no commentary.
+const crosswordWordSystemPrompt = `You are a crossword puzzle word generator. Return ONLY a valid JSON array, no markdown fences, no commentary.
 Each element must have exactly three fields: "word", "definition", "hint".
 Rules:
-- "word" must be a single English word, 3-12 letters, alphabetic only (no spaces, hyphens, or numbers).
+- "word" must be a single English word, 3-12 ASCII letters (A-Z only; no accents, spaces, hyphens, or numbers).
 - "definition" is a concise crossword-style clue (5-15 words).
 - "hint" is an additional clue that approaches the answer from a different angle (5-15 words).
 - All words must be distinct.
@@ -62,22 +66,48 @@ Rules:
 - Aim for a mix of word lengths (some short 3-5 letters, some medium 5-8, some longer 8-12).
 - CRITICAL: Every definition must be unique and creative. Never use ordinal/positional patterns like "first X", "second X", "third X", "Nth X in the list/cycle/series". Instead describe the word by its distinctive characteristics, mythology, behavior, appearance, or cultural significance. Each clue should feel like it was written by a different person.`
 
-const metadataSystemPrompt = `You are a crossword puzzle metadata writer. Return ONLY a valid JSON object, no markdown fences, no commentary.
+const wordSearchWordSystemPrompt = `You are a word search puzzle word generator. Return ONLY a valid JSON array, no markdown fences, no commentary.
+Each element must have exactly three fields: "word", "definition", "hint".
+Rules:
+- "word" must be a single English word, 3-12 ASCII letters (A-Z only; no accents, spaces, hyphens, or numbers).
+- "definition" is a concise factual descriptor of the word's meaning or significance (4-12 words).
+- "hint" is a short assistive clue that helps the player recognize the target word without spelling it out directly (4-12 words).
+- All words must be distinct.
+- Words should be thematically related to the given topic.
+- Prefer common, well-known words over obscure ones.
+- Aim for a mix of word lengths (some short 3-5 letters, some medium 5-8, some longer 8-12).
+- The set must work well in a word-search grid, so avoid apostrophes, plurals that duplicate singular forms, and near-duplicates.`
+
+const metadataSystemPrompt = `You are a word puzzle metadata writer. Return ONLY a valid JSON object, no markdown fences, no commentary.
 The object must contain exactly three string fields: "title", "subtitle", and "description".
 Rules:
-- "title" must describe the actual generated words, must not contain the word "crossword", and must be 100 characters or fewer.
+- "title" must describe the actual generated words, must not contain the words "crossword" or "word search", and must be 100 characters or fewer.
 - "subtitle" must be slightly longer than the title and refer to something concrete from the provided words, clues, or hints.
 - "description" must be a single detailed paragraph about the generated puzzle content.
 - Use only information supported by the provided topic, words, clues, and hints.
 - Do not use markdown in any field.`
 
-func (handler *httpHandler) callLLMProxy(ctx context.Context, topic string, wordCount int) ([]WordItem, error) {
-	userPrompt := fmt.Sprintf("Generate exactly %d crossword words about the topic: %q", wordCount, topic)
+func wordSystemPromptForPuzzleType(puzzleType string) string {
+	if normalizePuzzleType(puzzleType) == puzzleTypeWordSearch {
+		return wordSearchWordSystemPrompt
+	}
+	return crosswordWordSystemPrompt
+}
+
+func puzzleLabelForPrompt(puzzleType string) string {
+	if normalizePuzzleType(puzzleType) == puzzleTypeWordSearch {
+		return "word search"
+	}
+	return "crossword"
+}
+
+func (handler *httpHandler) callLLMProxy(ctx context.Context, topic string, puzzleType string, wordCount int) ([]WordItem, error) {
+	userPrompt := fmt.Sprintf("Generate exactly %d %s words about the topic: %q", wordCount, puzzleLabelForPrompt(puzzleType), topic)
 
 	return retryVerifiedLLMCall(
 		llmVerificationRetryAttempts,
 		func() ([]WordItem, error) {
-			responseText, err := handler.callLLMProxyText(ctx, userPrompt, wordSystemPrompt)
+			responseText, err := handler.callLLMProxyText(ctx, userPrompt, wordSystemPromptForPuzzleType(puzzleType))
 			if err != nil {
 				return nil, err
 			}
@@ -89,11 +119,12 @@ func (handler *httpHandler) callLLMProxy(ctx context.Context, topic string, word
 	)
 }
 
-func (handler *httpHandler) callPuzzleMetadataLLMProxy(ctx context.Context, topic string, items []WordItem) (*PuzzleMetadata, error) {
+func (handler *httpHandler) callPuzzleMetadataLLMProxy(ctx context.Context, topic string, puzzleType string, items []WordItem) (*PuzzleMetadata, error) {
 	itemsJSON, _ := json.Marshal(items)
 
 	userPrompt := fmt.Sprintf(
-		"Write metadata for a generated puzzle.\nTopic: %q\nFinal word list JSON:\n%s\nReturn the JSON object now.",
+		"Write metadata for a generated %s puzzle.\nTopic: %q\nFinal word list JSON:\n%s\nReturn the JSON object now.",
+		puzzleLabelForPrompt(puzzleType),
 		topic,
 		string(itemsJSON),
 	)
@@ -138,18 +169,46 @@ func parseWordItems(responseText string) ([]WordItem, error) {
 	}
 
 	validated := make([]WordItem, 0, len(items))
+	seenWords := map[string]struct{}{}
 	for _, item := range items {
-		cleaned := alphaOnly.ReplaceAllString(item.Word, "")
-		if len(cleaned) < 2 {
+		word, err := normalizeGeneratedWord(item.Word)
+		if err != nil {
 			continue
 		}
-		if strings.TrimSpace(item.Definition) == "" || strings.TrimSpace(item.Hint) == "" {
+		if _, exists := seenWords[word]; exists {
 			continue
 		}
-		item.Word = strings.ToUpper(cleaned)
+		item.Definition = normalizeWhitespace(item.Definition)
+		item.Hint = normalizeWhitespace(item.Hint)
+		if item.Definition == "" || item.Hint == "" {
+			continue
+		}
+		seenWords[word] = struct{}{}
+		item.Word = word
 		validated = append(validated, item)
 	}
 	return validated, nil
+}
+
+func normalizeGeneratedWord(rawWord string) (string, error) {
+	trimmedWord := strings.TrimSpace(rawWord)
+	if trimmedWord == "" {
+		return "", fmt.Errorf("generated word is empty")
+	}
+
+	var normalizedBuilder strings.Builder
+	for _, wordRune := range norm.NFD.String(trimmedWord) {
+		if unicode.Is(unicode.Mn, wordRune) {
+			continue
+		}
+		normalizedBuilder.WriteRune(wordRune)
+	}
+
+	word := strings.ToUpper(normalizedBuilder.String())
+	if !generatedWordPattern.MatchString(word) {
+		return "", fmt.Errorf("generated word %q must be 3-12 ASCII letters", rawWord)
+	}
+	return word, nil
 }
 
 func verifyWordItems(items []WordItem, expectedWordCount int) error {
@@ -285,8 +344,14 @@ func truncateRunes(s string, maxLen int) string {
 }
 
 func normalizeMetadataTitle(title string, topic string) string {
+	sanitizeTitle := func(value string) string {
+		value = crosswordWordPattern.ReplaceAllString(value, " ")
+		value = wordSearchPattern.ReplaceAllString(value, " ")
+		return value
+	}
+
 	normalized := trimDecorativePunctuation(
-		normalizeWhitespace(crosswordWordPattern.ReplaceAllString(title, " ")),
+		normalizeWhitespace(sanitizeTitle(title)),
 	)
 	normalized = truncateRunes(normalized, maxGeneratedTitleLength)
 	normalized = trimDecorativePunctuation(normalizeWhitespace(normalized))
@@ -295,7 +360,7 @@ func normalizeMetadataTitle(title string, topic string) string {
 	}
 
 	fallback := trimDecorativePunctuation(
-		normalizeWhitespace(crosswordWordPattern.ReplaceAllString(sanitizeTopic(topic), " ")),
+		normalizeWhitespace(sanitizeTitle(sanitizeTopic(topic))),
 	)
 	fallback = truncateRunes(fallback, maxGeneratedTitleLength)
 	fallback = trimDecorativePunctuation(normalizeWhitespace(fallback))

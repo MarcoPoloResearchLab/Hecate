@@ -1,8 +1,10 @@
+// @ts-check
+
 /* admin.js — settings modal opened from avatar menu */
 (function () {
   "use strict";
 
-  var services = window.LLMCrosswordServices || null;
+  var services = window.HecateServices || null;
   var _fetch = window.authFetch || window.fetch.bind(window);
   var billingUnavailableMessage = "Billing details are unavailable right now.";
   var defaultCoinValueCents = 100;
@@ -407,9 +409,9 @@
       ].join(" • ");
 
       button.addEventListener("click", function () {
-        if (!window.CrosswordBilling || typeof window.CrosswordBilling.requestCheckout !== "function") return;
+        if (!window.HecateBilling || typeof window.HecateBilling.requestCheckout !== "function") return;
         setBillingActionState(true);
-        window.CrosswordBilling.requestCheckout(pack.code)
+        window.HecateBilling.requestCheckout(pack.code)
           .catch(function () {})
           .finally(function () {
             setBillingActionState(false);
@@ -438,7 +440,7 @@
       settingsBillingBalanceMeta.textContent = "Purchases are granted after Paddle confirms payment.";
     } else {
       settingsBillingBalanceMeta.textContent =
-        "Each new crossword costs " + generationCostCredits +
+        "Each new puzzle costs " + generationCostCredits +
         " credits. Purchases are granted after Paddle confirms payment.";
     }
 
@@ -455,10 +457,10 @@
   }
 
   function requestBillingSummary(force) {
-    if (!window.CrosswordBilling || typeof window.CrosswordBilling.loadSummary !== "function") {
+    if (!window.HecateBilling || typeof window.HecateBilling.loadSummary !== "function") {
       return Promise.resolve();
     }
-    return window.CrosswordBilling.loadSummary({
+    return window.HecateBilling.loadSummary({
       force: force === true,
     }).catch(function () {
       return null;
@@ -469,9 +471,9 @@
     var billingState;
     var lastStatus;
 
-    if (!window.CrosswordBilling || typeof window.CrosswordBilling.getState !== "function") return;
+    if (!window.HecateBilling || typeof window.HecateBilling.getState !== "function") return;
 
-    billingState = window.CrosswordBilling.getState();
+    billingState = window.HecateBilling.getState();
     lastStatus = billingState && billingState.lastStatus ? billingState.lastStatus : null;
     if (!lastStatus || !lastStatus.message) return;
 
@@ -663,12 +665,12 @@
   checkAdminStatus();
   renderBillingSummary();
 
-  window.addEventListener("llm-crossword:billing-summary", function (event) {
+  window.addEventListener("hecate:billing-summary", function (event) {
     billingSummary = normalizeBillingSummary(event && event.detail);
     renderBillingSummary();
   });
 
-  window.addEventListener("llm-crossword:billing-status", function (event) {
+  window.addEventListener("hecate:billing-status", function (event) {
     var detail = event && event.detail ? event.detail : {};
     var isError = detail.tone === "error";
     var isSuccess = detail.tone === "success";
@@ -676,7 +678,7 @@
     setStatus(settingsBillingStatus, detail.message || "", isError, isSuccess);
   });
 
-  window.addEventListener("llm-crossword:billing-open-request", function () {
+  window.addEventListener("hecate:billing-open-request", function () {
     openDrawer();
     switchTab("account");
     syncBillingStatusFromCoordinator();
@@ -685,15 +687,15 @@
     }
   });
 
-  window.addEventListener("llm-crossword:billing-checkout-opening", function () {
+  window.addEventListener("hecate:billing-checkout-opening", function () {
     closeDrawer();
   });
 
   if (settingsManageBillingButton) {
     settingsManageBillingButton.addEventListener("click", function () {
-      if (!window.CrosswordBilling || typeof window.CrosswordBilling.requestPortalSession !== "function") return;
+      if (!window.HecateBilling || typeof window.HecateBilling.requestPortalSession !== "function") return;
       setBillingActionState(true);
-      window.CrosswordBilling.requestPortalSession()
+      window.HecateBilling.requestPortalSession()
         .catch(function () {})
         .finally(function () {
           setBillingActionState(false);
@@ -966,7 +968,7 @@
     });
   }
 
-  (window.__LLM_CROSSWORD_TEST__ || (window.__LLM_CROSSWORD_TEST__ = {})).admin = {
+  (window.__HECATE_TEST__ || (window.__HECATE_TEST__ = {})).admin = {
     checkAdminStatus: checkAdminStatus,
     formatExpiresValue: formatExpiresValue,
     formatBillingTimestamp: formatBillingTimestamp,

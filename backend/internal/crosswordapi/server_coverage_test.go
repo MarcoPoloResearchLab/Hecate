@@ -220,7 +220,7 @@ func TestGeneratePuzzleMetadata_ReturnsLastError(t *testing.T) {
 	defer llmServer.Close()
 
 	handler := testHandler(&mockLedgerClient{}, llmServer)
-	_, err := handler.generatePuzzleMetadata(context.Background(), "Roman city", []WordItem{
+	_, err := handler.generatePuzzleMetadata(context.Background(), "Roman city", string(puzzleTypeCrossword), []WordItem{
 		{Word: "FORUM", Definition: "Public square", Hint: "civic center"},
 	})
 	if err == nil {

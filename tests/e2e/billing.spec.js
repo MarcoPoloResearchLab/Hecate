@@ -114,7 +114,7 @@ function buildEnabledBillingSummary(overrides) {
 async function openBillingFromInsufficientCredits(page) {
   await page.goto("/");
   await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-  await page.locator("#newCrosswordCard").click();
+  await page.locator("#newPuzzleCard").click();
   await expect(page.locator("#generateBuyCreditsButton")).toBeVisible({ timeout: 5000 });
   await page.locator("#generateBuyCreditsButton").click();
   await expect(page.locator("#settingsDrawer")).toBeVisible({ timeout: 5000 });

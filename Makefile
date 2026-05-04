@@ -10,12 +10,12 @@ DOCKER_BUILD_PLATFORMS ?= linux/amd64,linux/arm64
 GHCR_REGISTRY ?= ghcr.io
 GHCR_OWNER ?= marcopoloresearchlab
 GHCR_VERSION_TAG ?= $(shell git describe --tags --exact-match HEAD 2>/dev/null || true)
-GHCR_CROSSWORD_API_REPO ?= $(GHCR_REGISTRY)/$(GHCR_OWNER)/llm-crossword-api
-GHCR_CROSSWORD_API_LATEST_IMAGE ?= $(GHCR_CROSSWORD_API_REPO):latest
-GHCR_CROSSWORD_API_VERSION_IMAGE ?= $(if $(GHCR_VERSION_TAG),$(GHCR_CROSSWORD_API_REPO):$(GHCR_VERSION_TAG))
+GHCR_HECATE_API_REPO ?= $(GHCR_REGISTRY)/$(GHCR_OWNER)/llm-crossword-api
+GHCR_HECATE_API_LATEST_IMAGE ?= $(GHCR_HECATE_API_REPO):latest
+GHCR_HECATE_API_VERSION_IMAGE ?= $(if $(GHCR_VERSION_TAG),$(GHCR_HECATE_API_REPO):$(GHCR_VERSION_TAG))
 COMPOSE_UP_ARGS ?=
 COMPOSE_DOWN_ARGS ?=
-LOCAL_CROSSWORDAPI_ENV_FILE ?= configs/.env.crosswordapi.local
+LOCAL_HECATEAPI_ENV_FILE ?= configs/.env.hecateapi.local
 LOCAL_TAUTH_ENV_FILE ?= configs/.env.tauth.local
 LOCAL_TAUTH_CONFIG_TEMPLATE ?= tauth.config.local.yaml
 
@@ -93,7 +93,7 @@ test: test-unit test-integration
 
 build:
 	mkdir -p $(BIN_DIR)
-	cd $(BACKEND_DIR) && $(GO) build -o bin/crossword-api ./cmd/crossword-api
+	cd $(BACKEND_DIR) && $(GO) build -o bin/hecate-api ./cmd/hecate-api
 
 docker-buildx-bootstrap:
 	@$(DOCKER_BUILDX) inspect >/dev/null 2>&1 || { \
@@ -103,18 +103,18 @@ docker-buildx-bootstrap:
 	@$(DOCKER_BUILDX) inspect --bootstrap >/dev/null
 
 docker-build-ghcr-image:
-	@echo "Building $(GHCR_CROSSWORD_API_LATEST_IMAGE)"
-	@if [ -n "$(GHCR_VERSION_TAG)" ]; then echo "Also tagging $(GHCR_CROSSWORD_API_VERSION_IMAGE)"; else echo "No exact git tag on HEAD; building latest only."; fi
-	$(DOCKER) build -t "$(GHCR_CROSSWORD_API_LATEST_IMAGE)" $(if $(GHCR_VERSION_TAG),-t "$(GHCR_CROSSWORD_API_VERSION_IMAGE)") -f backend/Dockerfile backend
+	@echo "Building $(GHCR_HECATE_API_LATEST_IMAGE)"
+	@if [ -n "$(GHCR_VERSION_TAG)" ]; then echo "Also tagging $(GHCR_HECATE_API_VERSION_IMAGE)"; else echo "No exact git tag on HEAD; building latest only."; fi
+	$(DOCKER) build -t "$(GHCR_HECATE_API_LATEST_IMAGE)" $(if $(GHCR_VERSION_TAG),-t "$(GHCR_HECATE_API_VERSION_IMAGE)") -f backend/Dockerfile backend
 
 docker-push-ghcr-image:
-	$(DOCKER) push "$(GHCR_CROSSWORD_API_LATEST_IMAGE)"
-	$(if $(GHCR_VERSION_TAG),$(DOCKER) push "$(GHCR_CROSSWORD_API_VERSION_IMAGE)")
+	$(DOCKER) push "$(GHCR_HECATE_API_LATEST_IMAGE)"
+	$(if $(GHCR_VERSION_TAG),$(DOCKER) push "$(GHCR_HECATE_API_VERSION_IMAGE)")
 
 publish publish-ghcr: docker-buildx-bootstrap
-	@echo "Publishing $(GHCR_CROSSWORD_API_LATEST_IMAGE) for platforms $(DOCKER_BUILD_PLATFORMS)"
-	@if [ -n "$(GHCR_VERSION_TAG)" ]; then echo "Also publishing $(GHCR_CROSSWORD_API_VERSION_IMAGE)"; else echo "No exact git tag on HEAD; publishing latest only."; fi
-	$(DOCKER_BUILDX) build --platform "$(DOCKER_BUILD_PLATFORMS)" -t "$(GHCR_CROSSWORD_API_LATEST_IMAGE)" $(if $(GHCR_VERSION_TAG),-t "$(GHCR_CROSSWORD_API_VERSION_IMAGE)") -f backend/Dockerfile --push backend
+	@echo "Publishing $(GHCR_HECATE_API_LATEST_IMAGE) for platforms $(DOCKER_BUILD_PLATFORMS)"
+	@if [ -n "$(GHCR_VERSION_TAG)" ]; then echo "Also publishing $(GHCR_HECATE_API_VERSION_IMAGE)"; else echo "No exact git tag on HEAD; publishing latest only."; fi
+	$(DOCKER_BUILDX) build --platform "$(DOCKER_BUILD_PLATFORMS)" -t "$(GHCR_HECATE_API_LATEST_IMAGE)" $(if $(GHCR_VERSION_TAG),-t "$(GHCR_HECATE_API_VERSION_IMAGE)") -f backend/Dockerfile --push backend
 
 clean:
 	rm -rf $(BIN_DIR) .nyc_output coverage test-results playwright-report $(BACKEND_DIR)/coverage.out
@@ -127,7 +127,7 @@ ci: check-format lint test-backend test-web-coverage
 
 up:
 	@set -eu; \
-	for env_file in "$(LOCAL_CROSSWORDAPI_ENV_FILE)" "$(LOCAL_TAUTH_ENV_FILE)"; do \
+	for env_file in "$(LOCAL_HECATEAPI_ENV_FILE)" "$(LOCAL_TAUTH_ENV_FILE)"; do \
 		if [ ! -f "$$env_file" ]; then \
 			echo "Missing $$env_file."; \
 			exit 1; \
@@ -142,7 +142,7 @@ up:
 		exit 1; \
 	fi; \
 	if rg -n '^[[:space:]]*administrators:' configs/config.yml >/dev/null 2>&1; then \
-		echo "configs/config.yml must not contain administrators. Move admin emails to CROSSWORDAPI_ADMIN_EMAILS in $(LOCAL_CROSSWORDAPI_ENV_FILE)."; \
+		echo "configs/config.yml must not contain administrators. Move admin emails to HECATEAPI_ADMIN_EMAILS in $(LOCAL_HECATEAPI_ENV_FILE)."; \
 		exit 1; \
 	fi; \
 	if find . -maxdepth 1 -type f -name 'client_secret_*.json' | grep -q .; then \
@@ -188,11 +188,11 @@ up:
 		shift 3; \
 		if port_reserved "$$requested" "$$@"; then \
 			if [ -n "$$explicit" ]; then \
-				echo "$$label port $$requested conflicts with another llm_crossword host port." >&2; \
+				echo "$$label port $$requested conflicts with another Hecate host port." >&2; \
 				exit 1; \
 			fi; \
 			resolved=$$(next_free_port "$$((requested + 1))" "$$@"); \
-			echo "$$label port $$requested conflicts with another llm_crossword host port; using $$resolved instead." >&2; \
+			echo "$$label port $$requested conflicts with another Hecate host port; using $$resolved instead." >&2; \
 			printf '%s\n' "$$resolved"; \
 			return 0; \
 		fi; \
@@ -273,22 +273,22 @@ up:
 	tauth_requested_port="$${TAUTH_HOST_PORT:-8081}"; \
 	tauth_explicit_port="$${TAUTH_HOST_PORT:-}"; \
 	tauth_resolved_port=$$(resolve_port "TAuth host" "$$tauth_requested_port" "$$tauth_explicit_port" "$$ledger_resolved_port"); \
-	api_requested_port="$${CROSSWORD_API_HOST_PORT:-9090}"; \
-	api_explicit_port="$${CROSSWORD_API_HOST_PORT:-}"; \
-	api_resolved_port=$$(resolve_port "Crossword API host" "$$api_requested_port" "$$api_explicit_port" "$$ledger_resolved_port" "$$tauth_resolved_port"); \
-	site_requested_port="$${CROSSWORD_PORT:-8000}"; \
-	site_explicit_port="$${CROSSWORD_PORT:-}"; \
-	site_resolved_port=$$(resolve_port "Crossword site" "$$site_requested_port" "$$site_explicit_port" "$$ledger_resolved_port" "$$tauth_resolved_port" "$$api_resolved_port"); \
+	api_requested_port="$${HECATE_API_HOST_PORT:-9090}"; \
+	api_explicit_port="$${HECATE_API_HOST_PORT:-}"; \
+	api_resolved_port=$$(resolve_port "Hecate API host" "$$api_requested_port" "$$api_explicit_port" "$$ledger_resolved_port" "$$tauth_resolved_port"); \
+	site_requested_port="$${HECATE_PORT:-8000}"; \
+	site_explicit_port="$${HECATE_PORT:-}"; \
+	site_resolved_port=$$(resolve_port "Hecate site" "$$site_requested_port" "$$site_explicit_port" "$$ledger_resolved_port" "$$tauth_resolved_port" "$$api_resolved_port"); \
 	export LEDGER_HOST_PORT="$$ledger_resolved_port"; \
 	export TAUTH_HOST_PORT="$$tauth_resolved_port"; \
-	export CROSSWORD_API_HOST_PORT="$$api_resolved_port"; \
-	export CROSSWORD_PORT="$$site_resolved_port"; \
+	export HECATE_API_HOST_PORT="$$api_resolved_port"; \
+	export HECATE_PORT="$$site_resolved_port"; \
 	export SITE_ORIGIN="http://localhost:$$site_resolved_port"; \
-	export CROSSWORDAPI_ENV_FILE="./$(LOCAL_CROSSWORDAPI_ENV_FILE)"; \
+	export HECATEAPI_ENV_FILE="./$(LOCAL_HECATEAPI_ENV_FILE)"; \
 	export TAUTH_ENV_FILE="./$(LOCAL_TAUTH_ENV_FILE)"; \
 	export TAUTH_CONFIG_TEMPLATE="./$(LOCAL_TAUTH_CONFIG_TEMPLATE)"; \
-	billing_provider="$$(trim_quotes "$$(read_env_value "$$CROSSWORDAPI_ENV_FILE" "CROSSWORDAPI_BILLING_PROVIDER")")"; \
-	paddle_environment="$$(trim_quotes "$$(read_env_value "$$CROSSWORDAPI_ENV_FILE" "CROSSWORDAPI_PADDLE_ENVIRONMENT")")"; \
+	billing_provider="$$(trim_quotes "$$(read_env_value "$$HECATEAPI_ENV_FILE" "HECATEAPI_BILLING_PROVIDER")")"; \
+	paddle_environment="$$(trim_quotes "$$(read_env_value "$$HECATEAPI_ENV_FILE" "HECATEAPI_PADDLE_ENVIRONMENT")")"; \
 	billing_callback_public_url="$${BILLING_CALLBACK_PUBLIC_URL:-$$SITE_ORIGIN}"; \
 	billing_ngrok_target_url="$${BILLING_NGROK_TARGET_URL:-http://127.0.0.1:$$site_resolved_port}"; \
 	if [ "$$billing_provider" = "paddle" ] && [ "$$paddle_environment" = "sandbox" ]; then \
@@ -309,14 +309,14 @@ up:
 	bash ./scripts/render-runtime-auth-config.sh; \
 	bash ./scripts/render-runtime-compose-configs.sh; \
 	if ! $(DOCKER_COMPOSE) up -d --build --remove-orphans --wait --wait-timeout 60 $(COMPOSE_UP_ARGS); then \
-		echo "llm_crossword failed to become healthy; stopping the partial stack." >&2; \
-		$(DOCKER_COMPOSE) logs --tail=80 crossword-api >&2 || true; \
+		echo "Hecate failed to become healthy; stopping the partial stack." >&2; \
+		$(DOCKER_COMPOSE) logs --tail=80 hecate-api >&2 || true; \
 		$(DOCKER_COMPOSE) down --remove-orphans >/dev/null 2>&1 || true; \
 		rm -rf "$(RUNTIME_DIR)"; \
 		exit 1; \
 	fi; \
-	echo "llm_crossword is starting on $$SITE_ORIGIN"; \
-	echo "Host sidecars: TAuth=http://localhost:$$TAUTH_HOST_PORT API=http://localhost:$$CROSSWORD_API_HOST_PORT Ledger=localhost:$$LEDGER_HOST_PORT"; \
+	echo "Hecate is starting on $$SITE_ORIGIN"; \
+	echo "Host sidecars: TAuth=http://localhost:$$TAUTH_HOST_PORT API=http://localhost:$$HECATE_API_HOST_PORT Ledger=localhost:$$LEDGER_HOST_PORT"; \
 	if [ "$$billing_provider" = "paddle" ] && [ "$$paddle_environment" = "sandbox" ]; then \
 		echo "Paddle sandbox callback origin: $$BILLING_CALLBACK_PUBLIC_URL"; \
 		echo "Paddle sandbox webhook path: $$BILLING_CALLBACK_PUBLIC_URL/api/billing/paddle/webhook"; \

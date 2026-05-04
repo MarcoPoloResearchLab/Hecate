@@ -15,7 +15,7 @@ import (
 const shareTokenAlphabet = "abcdefghijklmnopqrstuvwxyz0123456789"
 const shareTokenLength = 10
 
-// Puzzle represents a stored crossword puzzle owned by a user.
+// Puzzle represents a stored Hecate puzzle owned by a user.
 type Puzzle struct {
 	ID            string         `gorm:"primaryKey;type:text" json:"id"`
 	UserID        string         `gorm:"index;not null;type:text" json:"-"`
@@ -23,20 +23,38 @@ type Puzzle struct {
 	Subtitle      string         `gorm:"type:text" json:"subtitle"`
 	Description   string         `gorm:"type:text" json:"description"`
 	Topic         string         `gorm:"type:text" json:"topic"`
+	PuzzleType    PuzzleType     `gorm:"column:puzzle_type;type:text;not null;default:crossword" json:"puzzle_type"`
+	LayoutSeed    string         `gorm:"column:layout_seed;type:text;not null;default:''" json:"layout_seed"`
+	LayoutVersion int            `gorm:"column:layout_version;not null;default:1" json:"layout_version"`
+	OptionsJSON   string         `gorm:"column:options_json;type:text;not null;default:'{}'" json:"-"`
 	ShareToken    string         `gorm:"uniqueIndex;type:text" json:"share_token"`
-	Words         []PuzzleWord   `gorm:"foreignKey:PuzzleID;constraint:OnDelete:CASCADE" json:"items"`
+	Items         []PuzzleItem   `gorm:"foreignKey:PuzzleID;constraint:OnDelete:CASCADE" json:"items"`
 	CreatedAt     time.Time      `json:"created_at"`
+	Options       map[string]any `gorm:"-" json:"options"`
 	Source        string         `gorm:"-" json:"source,omitempty"`
 	RewardSummary *RewardSummary `gorm:"-" json:"reward_summary,omitempty"`
 }
 
-// PuzzleWord represents a single word entry in a crossword puzzle.
-type PuzzleWord struct {
+// PuzzleItem represents a single generated item in a puzzle.
+type PuzzleItem struct {
 	ID       string `gorm:"primaryKey;type:text" json:"-"`
 	PuzzleID string `gorm:"index;not null;type:text" json:"-"`
 	Word     string `gorm:"type:text" json:"word"`
 	Clue     string `gorm:"type:text" json:"definition"`
 	Hint     string `gorm:"type:text" json:"hint"`
+}
+
+func (Puzzle) TableName() string {
+	return "puzzles"
+}
+
+func (PuzzleItem) TableName() string {
+	return "puzzle_words"
+}
+
+func (p *Puzzle) AfterFind(*gorm.DB) error {
+	applyPuzzleRuntimeDefaults(p)
+	return nil
 }
 
 // UserProfile stores the latest known account information for a user ID.
@@ -137,6 +155,38 @@ type gormStore struct {
 	db *gorm.DB
 }
 
+func applyPuzzleRuntimeDefaults(puzzle *Puzzle) {
+	puzzle.PuzzleType = normalizePuzzleType(string(puzzle.PuzzleType))
+	if strings.TrimSpace(puzzle.LayoutSeed) == "" {
+		if strings.TrimSpace(puzzle.ShareToken) != "" {
+			puzzle.LayoutSeed = strings.TrimSpace(puzzle.ShareToken)
+		} else if strings.TrimSpace(puzzle.ID) != "" {
+			puzzle.LayoutSeed = strings.TrimSpace(puzzle.ID)
+		}
+	}
+	if puzzle.LayoutVersion <= 0 {
+		puzzle.LayoutVersion = currentLayoutVersion
+	}
+	puzzle.Options = parsePuzzleOptions(puzzle.OptionsJSON, puzzle.PuzzleType)
+	if strings.TrimSpace(puzzle.OptionsJSON) == "" {
+		puzzle.OptionsJSON = marshalPuzzleOptions(puzzle.Options, puzzle.PuzzleType)
+	}
+}
+
+func preparePuzzleForPersist(puzzle *Puzzle) {
+	puzzle.PuzzleType = normalizePuzzleType(string(puzzle.PuzzleType))
+	if strings.TrimSpace(puzzle.LayoutSeed) == "" {
+		puzzle.LayoutSeed = uuid.NewString()
+	}
+	if puzzle.LayoutVersion <= 0 {
+		puzzle.LayoutVersion = currentLayoutVersion
+	}
+	if puzzle.Options == nil {
+		puzzle.Options = defaultOptionsForPuzzleType(puzzle.PuzzleType)
+	}
+	puzzle.OptionsJSON = marshalPuzzleOptions(puzzle.Options, puzzle.PuzzleType)
+}
+
 // OpenDatabase opens a SQLite database, runs migrations, and returns a Store.
 func OpenDatabase(dsn string) (Store, error) {
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
@@ -145,7 +195,7 @@ func OpenDatabase(dsn string) (Store, error) {
 	}
 	if err := db.AutoMigrate(
 		&Puzzle{},
-		&PuzzleWord{},
+		&PuzzleItem{},
 		&GenerationRequestRecord{},
 		&UserProfile{},
 		&AdminGrantRecord{},
@@ -161,6 +211,24 @@ func OpenDatabase(dsn string) (Store, error) {
 	for i := range empty {
 		db.Model(&empty[i]).Update("share_token", generateShareToken())
 	}
+	db.Where("puzzle_type = '' OR puzzle_type IS NULL").Find(&empty)
+	for i := range empty {
+		db.Model(&empty[i]).Update("puzzle_type", string(puzzleTypeCrossword))
+	}
+	db.Where("layout_version = 0 OR layout_version IS NULL").Find(&empty)
+	for i := range empty {
+		db.Model(&empty[i]).Update("layout_version", currentLayoutVersion)
+	}
+	db.Where("layout_seed = '' OR layout_seed IS NULL").Find(&empty)
+	for i := range empty {
+		applyPuzzleRuntimeDefaults(&empty[i])
+		db.Model(&empty[i]).Update("layout_seed", empty[i].LayoutSeed)
+	}
+	db.Where("options_json = '' OR options_json IS NULL").Find(&empty)
+	for i := range empty {
+		applyPuzzleRuntimeDefaults(&empty[i])
+		db.Model(&empty[i]).Update("options_json", marshalPuzzleOptions(empty[i].Options, empty[i].PuzzleType))
+	}
 	return &gormStore{db: db}, nil
 }
 
@@ -175,10 +243,11 @@ func generateShareToken() string {
 
 func (s *gormStore) CreatePuzzle(puzzle *Puzzle) error {
 	puzzle.ID = uuid.NewString()
+	preparePuzzleForPersist(puzzle)
 	puzzle.ShareToken = generateShareToken()
-	for i := range puzzle.Words {
-		puzzle.Words[i].ID = uuid.NewString()
-		puzzle.Words[i].PuzzleID = puzzle.ID
+	for i := range puzzle.Items {
+		puzzle.Items[i].ID = uuid.NewString()
+		puzzle.Items[i].PuzzleID = puzzle.ID
 	}
 	return s.db.Create(puzzle).Error
 }
@@ -186,7 +255,7 @@ func (s *gormStore) CreatePuzzle(puzzle *Puzzle) error {
 func (s *gormStore) ListPuzzlesByUser(userID string) ([]Puzzle, error) {
 	var puzzles []Puzzle
 	err := s.db.Where(&Puzzle{UserID: userID}).
-		Preload("Words").
+		Preload("Items").
 		Order("created_at desc").
 		Find(&puzzles).Error
 	return puzzles, err
@@ -195,7 +264,7 @@ func (s *gormStore) ListPuzzlesByUser(userID string) ([]Puzzle, error) {
 func (s *gormStore) GetPuzzle(id string, userID string) (*Puzzle, error) {
 	var puzzle Puzzle
 	err := s.db.Where(&Puzzle{ID: id, UserID: userID}).
-		Preload("Words").
+		Preload("Items").
 		First(&puzzle).Error
 	if err != nil {
 		return nil, err
@@ -206,7 +275,7 @@ func (s *gormStore) GetPuzzle(id string, userID string) (*Puzzle, error) {
 func (s *gormStore) GetPuzzleByShareToken(token string) (*Puzzle, error) {
 	var puzzle Puzzle
 	err := s.db.Where(&Puzzle{ShareToken: token}).
-		Preload("Words").
+		Preload("Items").
 		First(&puzzle).Error
 	if err != nil {
 		return nil, err
@@ -453,7 +522,7 @@ func (s *gormStore) DeletePuzzle(id string, userID string) error {
 		if err := tx.Where(&Puzzle{ID: id, UserID: userID}).First(&puzzle).Error; err != nil {
 			return err
 		}
-		if err := tx.Where(&PuzzleWord{PuzzleID: id}).Delete(&PuzzleWord{}).Error; err != nil {
+		if err := tx.Where(&PuzzleItem{PuzzleID: id}).Delete(&PuzzleItem{}).Error; err != nil {
 			return err
 		}
 		return tx.Delete(&puzzle).Error

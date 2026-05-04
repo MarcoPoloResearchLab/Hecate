@@ -33,7 +33,7 @@ test.describe("Solver view — no tabs", () => {
   test("solver view has no mode tabs", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: testPuzzleData });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
     // There should be NO tab elements in the solver view
     await expect(page.locator(".mode-tabs")).toHaveCount(0);
@@ -43,7 +43,7 @@ test.describe("Solver view — no tabs", () => {
   test("solver view shows puzzle cards in sidebar for pre-built puzzles", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: testPuzzleData });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
     await expect(page.locator("#puzzleCardList .puzzle-card").first()).toBeVisible();
   });
@@ -51,7 +51,7 @@ test.describe("Solver view — no tabs", () => {
   test("solver sidebar collapses to a sliver and expands back", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: testPuzzleData });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
 
     const sidebar = page.locator("#puzzleSidebar");
     const firstCard = page.locator("#puzzleCardList .puzzle-card").first();
@@ -84,7 +84,7 @@ test.describe("Solver view — no tabs", () => {
   test("solver view shows grid and clues", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: testPuzzleData });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#grid")).toBeVisible({ timeout: 5000 });
     await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible();
     await expect(page.locator("#puzzleView").getByText("Down")).toBeVisible();
@@ -93,14 +93,14 @@ test.describe("Solver view — no tabs", () => {
   test("solver view hides the info button for puzzles without descriptions", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: testPuzzleData });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleInfoButton")).toBeHidden();
   });
 
   test("solver view keeps Check, Reveal, and Share visible in the puzzle toolbar", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: testPuzzleData });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
     await expect(page.locator("#puzzleToolbar")).toBeVisible();
     await expect(page.getByRole("button", { name: "Check" })).toBeVisible();
@@ -111,7 +111,7 @@ test.describe("Solver view — no tabs", () => {
   test("generate form is hidden in solver when logged out", async ({ page }) => {
     await setupLoggedOutRoutes(page, { puzzles: testPuzzleData });
     await page.goto("/");
-    await page.getByRole("button", { name: "Try a pre-built puzzle" }).click();
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
     // The generate panel exists but is hidden when not logged in
     await expect(page.locator("#generatePanel")).toBeHidden();
@@ -153,9 +153,9 @@ test.describe("Generate flow — landing to solver", () => {
       },
     });
     await page.goto("/");
-    // Logged-in user sees puzzle view; click New Crossword to show generate form
+    // Logged-in user sees puzzle view; click New Puzzle to show generate form
     await expect(page.locator("#puzzleView")).toBeVisible({ timeout: 5000 });
-    await page.locator("#newCrosswordCard").click();
+    await page.locator("#newPuzzleCard").click();
     await expect(page.locator("#generateBtn")).toBeEnabled({ timeout: 5000 });
     // Fill topic and generate
     await page.locator("#topicInput").fill("Greek Gods");

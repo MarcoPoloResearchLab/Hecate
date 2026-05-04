@@ -94,7 +94,7 @@ test.describe("Admin billing coverage", () => {
     await page.goto("/blank.html");
     await page.setContent(buildAdminBillingShell());
     await page.evaluate(() => {
-      window.__LLM_CROSSWORD_TEST__ = {};
+      window.__HECATE_TEST__ = {};
       window.__checkoutCalls = [];
       window.__portalCalls = 0;
       window.__scrollCalls = [];
@@ -123,7 +123,7 @@ test.describe("Admin billing coverage", () => {
     await loadAdminScript(page);
 
     const result = await page.evaluate(async () => {
-      var admin = window.__LLM_CROSSWORD_TEST__.admin;
+      var admin = window.__HECATE_TEST__.admin;
       var manageButton = document.getElementById("settingsManageBillingButton");
       var outcomes = {};
 
@@ -184,7 +184,7 @@ test.describe("Admin billing coverage", () => {
       manageButton.click();
       outcomes.portalCallsWithoutProvider = window.__portalCalls;
 
-      window.CrosswordBilling = {
+      window.HecateBilling = {
         getState: function () {
           return { lastStatus: { message: "Billing synced", tone: "success" } };
         },
@@ -210,10 +210,10 @@ test.describe("Admin billing coverage", () => {
       manageButton.click();
       await flushPromises();
 
-      window.CrosswordBilling.requestCheckout = function () {
+      window.HecateBilling.requestCheckout = function () {
         return Promise.reject(new Error("checkout failed"));
       };
-      window.CrosswordBilling.requestPortalSession = function () {
+      window.HecateBilling.requestPortalSession = function () {
         return Promise.reject(new Error("portal failed"));
       };
       document.querySelector("[data-billing-pack-button]").click();
@@ -240,10 +240,10 @@ test.describe("Admin billing coverage", () => {
         packButtonValue: document.querySelector("[data-billing-pack-button]").getAttribute("data-billing-pack-button"),
       };
 
-      window.dispatchEvent(new CustomEvent("llm-crossword:billing-status"));
+      window.dispatchEvent(new CustomEvent("hecate:billing-status"));
       outcomes.statusAfterEmptyEvent = document.getElementById("settingsBillingStatus").textContent;
 
-      window.dispatchEvent(new CustomEvent("llm-crossword:billing-open-request"));
+      window.dispatchEvent(new CustomEvent("hecate:billing-open-request"));
       await flushPromises();
       outcomes.drawerOpen = document.getElementById("settingsDrawer").getAttribute("open");
       outcomes.scrollCalls = window.__scrollCalls.slice();
@@ -265,7 +265,7 @@ test.describe("Admin billing coverage", () => {
     expect(result.liveSummary.balance).toBe("3 credits");
     expect(result.liveSummary.manageDisplay).toBe("");
     expect(result.liveSummary.manageDisabled).toBe(false);
-    expect(result.liveSummary.meta).toBe("Each new crossword costs 6 credits. Purchases are granted after Paddle confirms payment.");
+    expect(result.liveSummary.meta).toBe("Each new puzzle costs 6 credits. Purchases are granted after Paddle confirms payment.");
     expect(result.liveSummary.packText).toContain("—");
     expect(result.liveSummary.activityText).toContain("Billing activity recorded.");
     expect(result.liveSummary.activityText).toContain("completed");
@@ -296,7 +296,7 @@ test.describe("Admin billing coverage", () => {
       includePackList: false,
     }));
     await page.evaluate(() => {
-      window.__LLM_CROSSWORD_TEST__ = {};
+      window.__HECATE_TEST__ = {};
       window.fetch = function (url) {
         if (String(url).indexOf("/api/session") >= 0) {
           return Promise.resolve({
@@ -319,7 +319,7 @@ test.describe("Admin billing coverage", () => {
     await loadAdminScript(page);
 
     const result = await page.evaluate(async () => {
-      var admin = window.__LLM_CROSSWORD_TEST__.admin;
+      var admin = window.__HECATE_TEST__.admin;
       var outcomes = {};
 
       async function flushPromises() {
@@ -342,7 +342,7 @@ test.describe("Admin billing coverage", () => {
       });
 
       document.getElementById("settingsBillingPanel").scrollIntoView = null;
-      window.dispatchEvent(new CustomEvent("llm-crossword:billing-open-request"));
+      window.dispatchEvent(new CustomEvent("hecate:billing-open-request"));
       await flushPromises();
 
       outcomes.balanceValue = document.getElementById("settingsBillingBalanceValue").textContent;

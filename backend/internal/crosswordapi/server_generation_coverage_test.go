@@ -43,38 +43,42 @@ func TestBuildGenerateRefundIdempotencyKey_BlankRequestIDUsesGeneratedSuffix(t *
 
 func TestGenerationRequestMatchesPayload_CoversNilAndMatchCases(t *testing.T) {
 	tests := []struct {
-		name      string
-		record    *GenerationRequestRecord
-		topic     string
-		wordCount int
-		wantMatch bool
+		name       string
+		record     *GenerationRequestRecord
+		topic      string
+		puzzleType string
+		wordCount  int
+		wantMatch  bool
 	}{
 		{
-			name:      "nil record",
-			record:    nil,
-			topic:     "test",
-			wordCount: 8,
-			wantMatch: false,
+			name:       "nil record",
+			record:     nil,
+			topic:      "test",
+			puzzleType: string(puzzleTypeCrossword),
+			wordCount:  8,
+			wantMatch:  false,
 		},
 		{
-			name:      "matching payload",
-			record:    &GenerationRequestRecord{Topic: "test", WordCount: 8},
-			topic:     "test",
-			wordCount: 8,
-			wantMatch: true,
+			name:       "matching payload",
+			record:     &GenerationRequestRecord{Topic: "test", PuzzleType: string(puzzleTypeCrossword), WordCount: 8},
+			topic:      "test",
+			puzzleType: string(puzzleTypeCrossword),
+			wordCount:  8,
+			wantMatch:  true,
 		},
 		{
-			name:      "mismatched payload",
-			record:    &GenerationRequestRecord{Topic: "saved", WordCount: 8},
-			topic:     "test",
-			wordCount: 8,
-			wantMatch: false,
+			name:       "mismatched payload",
+			record:     &GenerationRequestRecord{Topic: "saved", PuzzleType: string(puzzleTypeCrossword), WordCount: 8},
+			topic:      "test",
+			puzzleType: string(puzzleTypeCrossword),
+			wordCount:  8,
+			wantMatch:  false,
 		},
 	}
 
 	for _, testCase := range tests {
 		t.Run(testCase.name, func(t *testing.T) {
-			if got := generationRequestMatchesPayload(testCase.record, testCase.topic, testCase.wordCount); got != testCase.wantMatch {
+			if got := generationRequestMatchesPayload(testCase.record, testCase.topic, testCase.puzzleType, testCase.wordCount); got != testCase.wantMatch {
 				t.Fatalf("expected %t, got %t", testCase.wantMatch, got)
 			}
 		})
@@ -308,7 +312,7 @@ func TestLoadStoredGenerationResponse_CoversErrorsAndSuccess(t *testing.T) {
 			ID:     "puzzle-1",
 			UserID: "user-1",
 			Title:  "Stored",
-			Words: []PuzzleWord{
+			Items: []PuzzleItem{
 				{Word: "CAT", Clue: "Animal", Hint: "meow"},
 			},
 		}
@@ -351,7 +355,7 @@ func TestLoadStoredGenerationResponse_CoversErrorsAndSuccess(t *testing.T) {
 func TestRespondToExistingGenerationRequest_CoversStatuses(t *testing.T) {
 	t.Run("nil inputs return false", func(t *testing.T) {
 		var nilHandler *httpHandler
-		if nilHandler.respondToExistingGenerationRequest(nil, "user-1", nil, "test", 8) {
+		if nilHandler.respondToExistingGenerationRequest(nil, "user-1", nil, "test", string(puzzleTypeCrossword), 8) {
 			t.Fatal("expected nil handler to return false")
 		}
 	})
@@ -361,11 +365,12 @@ func TestRespondToExistingGenerationRequest_CoversStatuses(t *testing.T) {
 		ctx, recorder := newTestContext(http.MethodGet, "/api/generate")
 
 		handled := handler.respondToExistingGenerationRequest(ctx, "user-1", &GenerationRequestRecord{
-			RequestID: "req-1",
-			Topic:     "saved topic",
-			WordCount: 8,
-			Status:    generationRequestStatusSucceeded,
-		}, "different topic", 8)
+			RequestID:  "req-1",
+			Topic:      "saved topic",
+			PuzzleType: string(puzzleTypeCrossword),
+			WordCount:  8,
+			Status:     generationRequestStatusSucceeded,
+		}, "different topic", string(puzzleTypeCrossword), 8)
 		if !handled {
 			t.Fatal("expected request to be handled")
 		}
@@ -383,11 +388,12 @@ func TestRespondToExistingGenerationRequest_CoversStatuses(t *testing.T) {
 		ctx, recorder := newTestContext(http.MethodGet, "/api/generate")
 
 		handled := handler.respondToExistingGenerationRequest(ctx, "user-1", &GenerationRequestRecord{
-			Status:    generationRequestStatusFailed,
-			ErrorCode: "llm_error",
-			Topic:     "test",
-			WordCount: 8,
-		}, "test", 8)
+			Status:     generationRequestStatusFailed,
+			ErrorCode:  "llm_error",
+			Topic:      "test",
+			PuzzleType: string(puzzleTypeCrossword),
+			WordCount:  8,
+		}, "test", string(puzzleTypeCrossword), 8)
 		if !handled {
 			t.Fatal("expected request to be handled")
 		}
@@ -405,10 +411,11 @@ func TestRespondToExistingGenerationRequest_CoversStatuses(t *testing.T) {
 		ctx, recorder := newTestContext(http.MethodGet, "/api/generate")
 
 		handled := handler.respondToExistingGenerationRequest(ctx, "user-1", &GenerationRequestRecord{
-			Status:    generationRequestStatusPending,
-			Topic:     "test",
-			WordCount: 8,
-		}, "test", 8)
+			Status:     generationRequestStatusPending,
+			Topic:      "test",
+			PuzzleType: string(puzzleTypeCrossword),
+			WordCount:  8,
+		}, "test", string(puzzleTypeCrossword), 8)
 		if !handled {
 			t.Fatal("expected request to be handled")
 		}
@@ -422,10 +429,11 @@ func TestRespondToExistingGenerationRequest_CoversStatuses(t *testing.T) {
 		ctx, recorder := newTestContext(http.MethodGet, "/api/generate")
 
 		handled := handler.respondToExistingGenerationRequest(ctx, "user-1", &GenerationRequestRecord{
-			Status:    "mystery",
-			Topic:     "test",
-			WordCount: 8,
-		}, "test", 8)
+			Status:     "mystery",
+			Topic:      "test",
+			PuzzleType: string(puzzleTypeCrossword),
+			WordCount:  8,
+		}, "test", string(puzzleTypeCrossword), 8)
 		if !handled {
 			t.Fatal("expected request to be handled")
 		}
@@ -450,12 +458,13 @@ func TestRespondToExistingGenerationRequest_CoversStatuses(t *testing.T) {
 		ctx, recorder := newTestContext(http.MethodGet, "/api/generate")
 
 		handled := handler.respondToExistingGenerationRequest(ctx, "user-1", &GenerationRequestRecord{
-			Status:    generationRequestStatusSucceeded,
-			RequestID: "req-1",
-			PuzzleID:  "puzzle-1",
-			Topic:     "test",
-			WordCount: 8,
-		}, "test", 8)
+			Status:     generationRequestStatusSucceeded,
+			RequestID:  "req-1",
+			PuzzleID:   "puzzle-1",
+			Topic:      "test",
+			PuzzleType: string(puzzleTypeCrossword),
+			WordCount:  8,
+		}, "test", string(puzzleTypeCrossword), 8)
 		if !handled {
 			t.Fatal("expected request to be handled")
 		}
@@ -473,11 +482,12 @@ func TestRespondToExistingGenerationRequest_CoversStatuses(t *testing.T) {
 		ctx, recorder := newTestContext(http.MethodGet, "/api/generate")
 
 		handled := handler.respondToExistingGenerationRequest(ctx, "user-1", &GenerationRequestRecord{
-			Status:    generationRequestStatusSucceeded,
-			RequestID: "req-1",
-			Topic:     "test",
-			WordCount: 8,
-		}, "test", 8)
+			Status:     generationRequestStatusSucceeded,
+			RequestID:  "req-1",
+			Topic:      "test",
+			PuzzleType: string(puzzleTypeCrossword),
+			WordCount:  8,
+		}, "test", string(puzzleTypeCrossword), 8)
 		if !handled {
 			t.Fatal("expected request to be handled")
 		}
@@ -491,7 +501,7 @@ func TestHandleGenerate_CoversRequestLifecycleEdgeCases(t *testing.T) {
 	t.Run("request id too long", func(t *testing.T) {
 		handler := testHandlerWithStore(&mockLedgerClient{}, nil, &mockStore{})
 		router := testRouterWithClaims(handler, testClaims())
-		body := fmt.Sprintf(`{"request_id":"%s","topic":"test","word_count":8}`, strings.Repeat("a", maxGenerateRequestIDLength+1))
+		body := fmt.Sprintf(`{"request_id":"%s","topic":"test","puzzle_type":"crossword","word_count":8}`, strings.Repeat("a", maxGenerateRequestIDLength+1))
 
 		response := doRequest(router, http.MethodPost, "/api/generate", body)
 		if response.Code != http.StatusBadRequest {
@@ -507,7 +517,7 @@ func TestHandleGenerate_CoversRequestLifecycleEdgeCases(t *testing.T) {
 		})
 		router := testRouterWithClaims(handler, testClaims())
 
-		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","word_count":8}`)
+		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","puzzle_type":"crossword","word_count":8}`)
 		if response.Code != http.StatusInternalServerError {
 			t.Fatalf("expected 500, got %d: %s", response.Code, response.Body.String())
 		}
@@ -523,16 +533,17 @@ func TestHandleGenerate_CoversRequestLifecycleEdgeCases(t *testing.T) {
 		handler := testHandlerWithStore(ledger, nil, &mockStore{
 			getGenerationRequestFunc: func(userID string, requestID string) (*GenerationRequestRecord, error) {
 				return &GenerationRequestRecord{
-					Status:    generationRequestStatusFailed,
-					ErrorCode: "llm_error",
-					Topic:     "test",
-					WordCount: 8,
+					Status:     generationRequestStatusFailed,
+					ErrorCode:  "llm_error",
+					Topic:      "test",
+					PuzzleType: string(puzzleTypeCrossword),
+					WordCount:  8,
 				}, nil
 			},
 		})
 		router := testRouterWithClaims(handler, testClaims())
 
-		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","word_count":8}`)
+		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","puzzle_type":"crossword","word_count":8}`)
 		if response.Code != http.StatusBadGateway {
 			t.Fatalf("expected 502, got %d: %s", response.Code, response.Body.String())
 		}
@@ -542,15 +553,16 @@ func TestHandleGenerate_CoversRequestLifecycleEdgeCases(t *testing.T) {
 		handler := testHandlerWithStore(&mockLedgerClient{}, nil, &mockStore{
 			getGenerationRequestFunc: func(userID string, requestID string) (*GenerationRequestRecord, error) {
 				return &GenerationRequestRecord{
-					Status:    generationRequestStatusPending,
-					Topic:     "test",
-					WordCount: 8,
+					Status:     generationRequestStatusPending,
+					Topic:      "test",
+					PuzzleType: string(puzzleTypeCrossword),
+					WordCount:  8,
 				}, nil
 			},
 		})
 		router := testRouterWithClaims(handler, testClaims())
 
-		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","word_count":8}`)
+		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","puzzle_type":"crossword","word_count":8}`)
 		if response.Code != http.StatusConflict {
 			t.Fatalf("expected 409, got %d: %s", response.Code, response.Body.String())
 		}
@@ -560,16 +572,17 @@ func TestHandleGenerate_CoversRequestLifecycleEdgeCases(t *testing.T) {
 		handler := testHandlerWithStore(&mockLedgerClient{}, nil, &mockStore{
 			getGenerationRequestFunc: func(userID string, requestID string) (*GenerationRequestRecord, error) {
 				return &GenerationRequestRecord{
-					Status:    generationRequestStatusSucceeded,
-					RequestID: requestID,
-					Topic:     "test",
-					WordCount: 8,
+					Status:     generationRequestStatusSucceeded,
+					RequestID:  requestID,
+					Topic:      "test",
+					PuzzleType: string(puzzleTypeCrossword),
+					WordCount:  8,
 				}, nil
 			},
 		})
 		router := testRouterWithClaims(handler, testClaims())
 
-		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","word_count":8}`)
+		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","puzzle_type":"crossword","word_count":8}`)
 		if response.Code != http.StatusInternalServerError {
 			t.Fatalf("expected 500, got %d: %s", response.Code, response.Body.String())
 		}
@@ -588,7 +601,7 @@ func TestHandleGenerate_CoversRequestLifecycleEdgeCases(t *testing.T) {
 		})
 		router := testRouterWithClaims(handler, testClaims())
 
-		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","word_count":8}`)
+		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","puzzle_type":"crossword","word_count":8}`)
 		if response.Code != http.StatusConflict {
 			t.Fatalf("expected 409, got %d: %s", response.Code, response.Body.String())
 		}
@@ -606,10 +619,11 @@ func TestHandleGenerate_CoversRequestLifecycleEdgeCases(t *testing.T) {
 					return nil, gorm.ErrRecordNotFound
 				}
 				return &GenerationRequestRecord{
-					Status:    generationRequestStatusFailed,
-					ErrorCode: "llm_error",
-					Topic:     "test",
-					WordCount: 8,
+					Status:     generationRequestStatusFailed,
+					ErrorCode:  "llm_error",
+					Topic:      "test",
+					PuzzleType: string(puzzleTypeCrossword),
+					WordCount:  8,
 				}, nil
 			},
 			createGenerationRequestFunc: func(record *GenerationRequestRecord) error {
@@ -618,7 +632,7 @@ func TestHandleGenerate_CoversRequestLifecycleEdgeCases(t *testing.T) {
 		})
 		router := testRouterWithClaims(handler, testClaims())
 
-		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","word_count":8}`)
+		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","puzzle_type":"crossword","word_count":8}`)
 		if response.Code != http.StatusBadGateway {
 			t.Fatalf("expected 502, got %d: %s", response.Code, response.Body.String())
 		}
@@ -635,7 +649,7 @@ func TestHandleGenerate_CoversRequestLifecycleEdgeCases(t *testing.T) {
 		})
 		router := testRouterWithClaims(handler, testClaims())
 
-		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","word_count":8}`)
+		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","puzzle_type":"crossword","word_count":8}`)
 		if response.Code != http.StatusInternalServerError {
 			t.Fatalf("expected 500, got %d: %s", response.Code, response.Body.String())
 		}
@@ -653,7 +667,7 @@ func TestHandleGenerate_CoversRequestLifecycleEdgeCases(t *testing.T) {
 		})
 		router := testRouterWithClaims(handler, testClaims())
 
-		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","word_count":8}`)
+		response := doRequest(router, http.MethodPost, "/api/generate", `{"request_id":"req-1","topic":"test","puzzle_type":"crossword","word_count":8}`)
 		if response.Code != http.StatusConflict {
 			t.Fatalf("expected 409, got %d: %s", response.Code, response.Body.String())
 		}

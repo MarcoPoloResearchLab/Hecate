@@ -31,7 +31,7 @@ const (
 	paddleEventTypeTransactionCompleted = "transaction.completed"
 
 	paddleMetadataBillingPriceIDKey = "billing_price_id"
-	paddleMetadataUserIDKey         = "crossword_user_id"
+	paddleMetadataUserIDKey         = "hecate_user_id"
 	paddleMetadataUserEmailKey      = "user_email"
 	paddleMetadataPackCodeKey       = "pack_code"
 	paddleMetadataCreditsKey        = "credits"
