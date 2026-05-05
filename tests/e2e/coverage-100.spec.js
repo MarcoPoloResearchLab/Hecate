@@ -2409,6 +2409,7 @@ test.describe("Generator comparison coverage", () => {
 test.describe("Word search widget coverage", () => {
   test("covers word-search helper branches and widget interactions", async ({ page }) => {
     await page.goto("/blank.html");
+    await page.addStyleTag({ url: "/css/crossword.css" });
     await loadScript(page, "word-search-widget.js");
 
     var result = await page.evaluate(() => {
@@ -2456,11 +2457,13 @@ test.describe("Word search widget coverage", () => {
       nullWidget.emitRevealIfNeeded();
       nullWidget.markPlacementFound(null, false);
       nullWidget.render(null);
+      nullWidget.clearDragCoach();
       nullWidget.finishSelection();
       nullWidget.moveSelection(0, 0);
       nullWidget.resolveHintPlacement();
 
       var container = document.createElement("div");
+      container.style.marginTop = "80px";
       document.body.appendChild(container);
       var standalone = new window.WordSearchWidget(container);
       standalone.ensureStandaloneElements();
@@ -2469,6 +2472,18 @@ test.describe("Word search widget coverage", () => {
 
       var standaloneCells = container.querySelectorAll(".word-search-cell");
       standaloneCells[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      standaloneCells[0].dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      var dragCoach = document.querySelector("[data-word-search-drag-coach]");
+      var dragCoachRect = dragCoach.getBoundingClientRect();
+      var clickedCellRect = standaloneCells[0].getBoundingClientRect();
+      var dragCoachState = {
+        ariaLabel: dragCoach.getAttribute("aria-label"),
+        childCount: dragCoach.children.length,
+        isFixed: window.getComputedStyle(dragCoach).position === "fixed",
+        isAboveCell: dragCoachRect.bottom <= clickedCellRect.top,
+      };
+      standaloneCells[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      var dragCoachClearedOnDragStart = !document.querySelector("[data-word-search-drag-coach]");
       standaloneCells[2].dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
       standaloneCells[2].dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
       standaloneCells[14].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
@@ -2638,6 +2653,8 @@ test.describe("Word search widget coverage", () => {
         }),
         progressText: progress.textContent,
         statusText: status.textContent,
+        dragCoachState: dragCoachState,
+        dragCoachClearedOnDragStart: dragCoachClearedOnDragStart,
         zeroColumnCount: zeroWidget._currentColumnCount,
       };
     });
@@ -2651,6 +2668,13 @@ test.describe("Word search widget coverage", () => {
     expect(result.listText).toEqual(["CAT", "DOG"]);
     expect(result.progressText).toBe("2 of 2 found");
     expect(result.statusText).toBe("All words revealed.");
+    expect(result.dragCoachState).toEqual({
+      ariaLabel: "Drag across letters to select a word",
+      childCount: 3,
+      isFixed: true,
+      isAboveCell: true,
+    });
+    expect(result.dragCoachClearedOnDragStart).toBe(true);
     expect(result.zeroColumnCount).toBe(0);
   });
 });

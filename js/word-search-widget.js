@@ -11,6 +11,11 @@
   var pixelUnit = "px";
   var cssCellSizeProperty = "--cell-size";
   var cssGapSizeProperty = "--gap-size";
+  var singleCellSelectionLength = 1;
+  var dragCoachAutoHideDelayMs = 1800;
+  var dragCoachWidthPx = 112;
+  var dragCoachVerticalOffsetPx = 46;
+  var viewportPaddingPx = 8;
 
   /**
    * @param {number} row
@@ -92,6 +97,8 @@
     this._usedReveal = false;
     this._completionEmitted = false;
     this._hintTimeout = null;
+    this._dragCoachEl = null;
+    this._dragCoachTimeout = null;
     this._touchEndHandler = null;
     this._currentColumnCount = 0;
   }
@@ -171,6 +178,65 @@
       clearTimeout(this._hintTimeout);
       this._hintTimeout = null;
     }
+  };
+
+  WordSearchWidget.prototype.clearDragCoach = function () {
+    var dragCoachEl = this._dragCoachEl;
+
+    clearTimeout(this._dragCoachTimeout);
+    this._dragCoachTimeout = null;
+    this._dragCoachEl = null;
+    if (!dragCoachEl) return;
+    dragCoachEl.remove();
+  };
+
+  WordSearchWidget.prototype.createDragCoach = function () {
+    var dragCoach = document.createElement("div");
+    var startDot = document.createElement("span");
+    var trail = document.createElement("span");
+    var endDot = document.createElement("span");
+
+    dragCoach.className = "word-search-drag-coach";
+    dragCoach.setAttribute("data-word-search-drag-coach", "true");
+    dragCoach.setAttribute("role", "img");
+    dragCoach.setAttribute("aria-label", "Drag across letters to select a word");
+    startDot.className = "word-search-drag-coach__dot word-search-drag-coach__dot--start";
+    trail.className = "word-search-drag-coach__trail";
+    endDot.className = "word-search-drag-coach__dot word-search-drag-coach__dot--end";
+    startDot.setAttribute("aria-hidden", "true");
+    trail.setAttribute("aria-hidden", "true");
+    endDot.setAttribute("aria-hidden", "true");
+
+    dragCoach.appendChild(startDot);
+    dragCoach.appendChild(trail);
+    dragCoach.appendChild(endDot);
+    return dragCoach;
+  };
+
+  WordSearchWidget.prototype.showDragCoach = function (cell) {
+    var dragCoach;
+    var cellRect;
+    var viewportWidth;
+    var left;
+    var top;
+
+    this.clearDragCoach();
+    dragCoach = this.createDragCoach();
+    cellRect = cell.getBoundingClientRect();
+    viewportWidth = Math.max(dragCoachWidthPx + viewportPaddingPx * 2, window.innerWidth);
+    left = Math.max(
+      viewportPaddingPx,
+      Math.min(
+        cellRect.left + cellRect.width / 2 - dragCoachWidthPx / 2,
+        viewportWidth - dragCoachWidthPx - viewportPaddingPx
+      )
+    );
+    top = Math.max(viewportPaddingPx, cellRect.top - dragCoachVerticalOffsetPx);
+    dragCoach.style.left = left + pixelUnit;
+    dragCoach.style.top = top + pixelUnit;
+    document.body.appendChild(dragCoach);
+    this._dragCoachEl = dragCoach;
+    this._dragCoachTimeout = setTimeout(this.clearDragCoach.bind(this), dragCoachAutoHideDelayMs);
   };
 
   WordSearchWidget.prototype.updateProgress = function () {
@@ -298,6 +364,7 @@
   WordSearchWidget.prototype.finishSelection = function () {
     var cells;
     var placement;
+    var cell;
 
     if (!this._selection) return;
     cells = selectionCells(
@@ -306,16 +373,22 @@
       this._selection.endRow,
       this._selection.endCol
     );
-    placement = this.matchSelection(cells);
-    if (placement) {
-      this.markPlacementFound(placement, false);
-      this.updateStatus("Found " + placement.word + ".");
+    if (cells.length === singleCellSelectionLength) {
+      cell = this._cellsByKey[cellKey(cells[0].row, cells[0].col)];
+      this.showDragCoach(cell);
+    } else {
+      placement = this.matchSelection(cells);
+      if (placement) {
+        this.markPlacementFound(placement, false);
+        this.updateStatus("Found " + placement.word + ".");
+      }
     }
     this.clearTransientSelection();
     this._selection = null;
   };
 
   WordSearchWidget.prototype.beginSelection = function (row, col) {
+    this.clearDragCoach();
     this._selection = {
       startRow: row,
       startCol: col,
@@ -412,6 +485,7 @@
     this._usedReveal = false;
     this._completionEmitted = false;
     this.clearHintPulse();
+    this.clearDragCoach();
     this.ensureStandaloneElements();
 
     if (!puzzle || !Array.isArray(puzzle.grid) || !Array.isArray(puzzle.placements)) {
