@@ -37,7 +37,25 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - How is input currently handled in the word search grid (pure mouse events, pointer events, or a mix), and is there any existing touch support that is partially working?
   - Are there any CSS or layout constraints (e.g., overlays, z-index, touch-action, pointer-events) that may be blocking or intercepting touch input on the grid?
   - Do we need to support additional touch gestures (e.g., tap-tap vs. drag) for accessibility or for users who cannot easily drag on touchscreens?
-- [ ] [B004] (P0) After clicking reveal there was no way to hide the revealed words in word search.
+- [ ] [B004] (P0) Cannot hide revealed words after using Reveal in Word Search.
+  Context:
+  - In the Word Search game, when a player clicks the "Reveal" action to show words, there is currently no way to hide those revealed words again.
+  - This affects the ability to continue playing normally after using Reveal, and may be confusing or reduce the challenge/fun of the game.
+  - Platform(s), browser(s), and exact game version where this occurs are not yet specified.
+  
+  Acceptance Criteria:
+  - After using the Reveal feature to show words in the Word Search game, the player has a clear, intuitive way to hide the revealed words again (e.g., via a toggle, close action, or similar control).
+  - Once hidden, the puzzle returns to its normal state where unrevealed words are not highlighted, and normal gameplay can continue.
+  - The solution does not unintentionally disable or break the existing Reveal functionality.
+  - The UI state after hiding revealed words is visually distinct from the state when Reveal is active, so players understand whether Reveal is currently applied.
+  - Behavior is consistent across supported platforms and browsers.
+  
+  Open Questions:
+  - Should Reveal behave as a toggle (click once to reveal, click again to hide) or should there be a separate control to hide/clear reveals?
+  - After hiding revealed words, should any game state (score, hints used, achievements, etc.) be affected or remain exactly as if Reveal had just been used once?
+  - Should there be any animation or transition when hiding revealed words, or is an immediate state change preferred?
+  - Are there accessibility considerations (e.g., screen readers, keyboard navigation, contrast) that need to be addressed for the reveal/hide interaction?
+  - Are there any game design constraints on how often Reveal can be toggled or hidden during a single puzzle?
 
 
 ## Improvements
