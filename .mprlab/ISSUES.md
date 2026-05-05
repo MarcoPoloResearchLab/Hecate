@@ -37,6 +37,7 @@ Format: `- [ ] [B042] (P1) {I007} Title`
   - How is input currently handled in the word search grid (pure mouse events, pointer events, or a mix), and is there any existing touch support that is partially working?
   - Are there any CSS or layout constraints (e.g., overlays, z-index, touch-action, pointer-events) that may be blocking or intercepting touch input on the grid?
   - Do we need to support additional touch gestures (e.g., tap-tap vs. drag) for accessibility or for users who cannot easily drag on touchscreens?
+- [ ] [B004] (P0) After clicking reveal there was no way to hide the revealed words in word search.
 
 
 ## Improvements
