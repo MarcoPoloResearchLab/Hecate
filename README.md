@@ -129,7 +129,8 @@ This is the image name expected by the `mprlab-gateway` deployment contract.
 2. Crosswords use the grid plus clue rail; word searches use the grid plus the `Find these words` panel.
 3. Click or tap a crossword cell to type letters. For word searches, drag across the grid to select a straight line.
 4. Use **Check** and **Reveal** for crosswords. Use **Hint**, **Reveal all**, and **Share** for word searches.
-5. The status and reward strips update as you solve, reveal, or share a puzzle.
+5. Rewards require a clean solve. Using a hint or reveal disqualifies the puzzle from reward payout.
+6. The status and reward strips update as you solve, hint, reveal, or share a puzzle.
 
 ## License
 

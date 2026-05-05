@@ -1043,17 +1043,26 @@ func TestHandleCompletePuzzle_OwnerRewardBreakdown(t *testing.T) {
 	}
 }
 
-func TestHandleCompletePuzzle_OwnerHintUsedGetsBaseOnly(t *testing.T) {
+func TestHandleCompletePuzzle_OwnerHintUsedIsIneligible(t *testing.T) {
 	var availableCents int64 = 1000
+	var grantCalls int
+	var recordedSolve *PuzzleSolveRecord
 	puzzle := &Puzzle{ID: "puzzle-1", UserID: "user-123", Title: "Owned"}
 	store := &mockStore{
 		getFunc: func(id, userID string) (*Puzzle, error) {
 			return puzzle, nil
 		},
 		getSolveRecordFunc: func(puzzleID string, solverUserID string) (*PuzzleSolveRecord, error) {
-			return nil, gorm.ErrRecordNotFound
+			if recordedSolve == nil {
+				return nil, gorm.ErrRecordNotFound
+			}
+			return recordedSolve, nil
 		},
-		createSolveRecordFunc: func(record *PuzzleSolveRecord) error { return nil },
+		createSolveRecordFunc: func(record *PuzzleSolveRecord) error {
+			copy := *record
+			recordedSolve = &copy
+			return nil
+		},
 		countOwnerSolvesFunc: func(userID string, dayStart time.Time, dayEnd time.Time) (int64, error) {
 			return 3, nil
 		},
@@ -1063,6 +1072,7 @@ func TestHandleCompletePuzzle_OwnerHintUsedGetsBaseOnly(t *testing.T) {
 	}
 	ledger := &mockLedgerClient{
 		grantFunc: func(ctx context.Context, in *creditv1.GrantRequest, opts ...grpc.CallOption) (*creditv1.Empty, error) {
+			grantCalls++
 			availableCents += in.GetAmountCents()
 			return &creditv1.Empty{}, nil
 		},
@@ -1080,14 +1090,20 @@ func TestHandleCompletePuzzle_OwnerHintUsedGetsBaseOnly(t *testing.T) {
 
 	body := decodeJSONMap(t, response.Body.String())
 	reward := body["reward"].(map[string]any)
-	if reward["base"].(float64) != 3 {
-		t.Fatalf("expected base reward 3, got %v", reward["base"])
+	if body["reason"] != "hint_used" {
+		t.Fatalf("expected hint_used reason, got %v", body["reason"])
 	}
-	if reward["no_hint_bonus"].(float64) != 0 || reward["daily_bonus"].(float64) != 0 {
-		t.Fatalf("expected no bonus credits, got %#v", reward)
+	if reward["base"].(float64) != 0 || reward["no_hint_bonus"].(float64) != 0 || reward["daily_bonus"].(float64) != 0 || reward["total"].(float64) != 0 {
+		t.Fatalf("expected no reward credits after hint, got %#v", reward)
 	}
-	if reward["total"].(float64) != 3 {
-		t.Fatalf("expected total reward 3, got %v", reward["total"])
+	if grantCalls != 0 {
+		t.Fatalf("expected no grant calls after hint, got %d", grantCalls)
+	}
+	if recordedSolve == nil || !recordedSolve.UsedHint || recordedSolve.IneligibilityReason != "hint_used" {
+		t.Fatalf("expected hint-used ineligible solve record, got %#v", recordedSolve)
+	}
+	if body["reward_summary"].(map[string]any)["owner_reward_status"] != "ineligible" {
+		t.Fatalf("expected ineligible reward summary, got %v", body["reward_summary"].(map[string]any)["owner_reward_status"])
 	}
 }
 
@@ -1585,6 +1601,11 @@ func TestHandleCompleteSharedPuzzle_NoPayoutReasons(t *testing.T) {
 			name:        "reveal used",
 			requestBody: `{"used_hint":false,"used_reveal":true}`,
 			wantReason:  "revealed",
+		},
+		{
+			name:        "hint used",
+			requestBody: `{"used_hint":true,"used_reveal":false}`,
+			wantReason:  "hint_used",
 		},
 		{
 			name:        "puzzle cap reached",

@@ -67,6 +67,31 @@ test.describe("Generator — valid input", () => {
 
     expect(words).toEqual(["FACADE", "NAIVE", "CAFE"]);
   });
+
+  test("word search renders per-word hint buttons in the cue list", async ({ page }) => {
+    await setupLoggedOutRoutes(page);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Try a sample puzzle" }).click();
+    await expect(page.locator("#puzzleView").getByText("Across")).toBeVisible({ timeout: 10000 });
+
+    await page.evaluate(() => {
+      var payload = generateWordSearch([
+        { word: "forest", definition: "Wooded area", hint: "trees" },
+        { word: "river", definition: "Moving water", hint: "stream" },
+        { word: "moss", definition: "Soft green plant", hint: "damp stones" },
+      ], { title: "Cue Hints", layoutSeed: "cue-hints" });
+      window.HecateApp.render(payload);
+    });
+
+    var wordItems = page.locator("#wordSearchList .word-search-word");
+    await expect(wordItems).toHaveCount(3);
+    await expect(page.locator("#wordSearchList .hintButton")).toHaveCount(3);
+
+    var forestCue = wordItems.filter({ hasText: "FOREST" });
+    await forestCue.getByRole("button", { name: "Hint for FOREST" }).click();
+    await expect(forestCue.locator(".hintText")).toHaveText("trees");
+    await expect(page.locator("#wordSearchHint")).toHaveText("trees");
+  });
 });
 
 test.describe("Generator — error cases", () => {

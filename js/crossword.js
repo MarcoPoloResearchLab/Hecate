@@ -152,6 +152,7 @@
 
   var crosswordWidget = new window.CrosswordWidget(null, {
     hints: true,
+    rewardEvents: true,
     responsive: true,
     draggable: true,
     keyboard: true,
@@ -170,6 +171,7 @@
     },
   });
   var wordSearchWidget = new window.WordSearchWidget(null, {
+    rewardEvents: true,
     _existingElements: {
       checkBtn: elements.checkBtn,
       errorBox: elements.errorBox,

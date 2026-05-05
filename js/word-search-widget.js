@@ -11,6 +11,14 @@
   var pixelUnit = "px";
   var cssCellSizeProperty = "--cell-size";
   var cssGapSizeProperty = "--gap-size";
+  var singleCellSelectionLength = 1;
+  var dragCoachAutoHideDelayMs = 1800;
+  var dragCoachWidthPx = 112;
+  var dragCoachVerticalOffsetPx = 46;
+  var viewportPaddingPx = 8;
+  var hintButtonText = "H";
+  var hintUnavailableText = "Hint unavailable.";
+  var foundBoundaryClassName = "word-search-found-boundary";
 
   /**
    * @param {number} row
@@ -72,6 +80,7 @@
     this._container = container || null;
     this._options = options || {};
     this._existing = this._options._existingElements || {};
+    this._rewardEvents = !!this._options.rewardEvents;
     this._gridEl = this._existing.gridEl || null;
     this._gridViewport = this._existing.gridViewport || null;
     this._wordSearchPanel = this._existing.wordSearchPanel || null;
@@ -86,12 +95,16 @@
     this._placementsById = {};
     this._itemsById = {};
     this._listById = {};
+    this._foundBoundariesById = {};
     this._selection = null;
     this._foundIds = {};
     this._usedHint = false;
     this._usedReveal = false;
+    this._hintNotified = false;
     this._completionEmitted = false;
     this._hintTimeout = null;
+    this._dragCoachEl = null;
+    this._dragCoachTimeout = null;
     this._touchEndHandler = null;
     this._currentColumnCount = 0;
   }
@@ -151,6 +164,80 @@
       cssCellSizeProperty,
       computeBoundedCellSize(viewportWidth, columnCount, gapSize) + pixelUnit
     );
+    this.refreshFoundWordBoundaries();
+  };
+
+  WordSearchWidget.prototype.clearFoundWordBoundaries = function () {
+    var boundaryIds = Object.keys(this._foundBoundariesById);
+    var index;
+
+    for (index = 0; index < boundaryIds.length; index++) {
+      this._foundBoundariesById[boundaryIds[index]].remove();
+    }
+    this._foundBoundariesById = {};
+  };
+
+  WordSearchWidget.prototype.renderFoundWordBoundary = function (placement) {
+    var vector;
+    var startCell;
+    var endCell;
+    var boundary;
+    var startCenterX;
+    var startCenterY;
+    var endCenterX;
+    var endCenterY;
+    var deltaX;
+    var deltaY;
+    var boundaryWidth;
+    var boundaryHeight;
+    var centerX;
+    var centerY;
+
+    if (!this._gridEl || !placement) return;
+
+    vector = directionVector(placement.dir);
+    startCell = this._cellsByKey[cellKey(placement.row, placement.col)];
+    endCell = this._cellsByKey[cellKey(
+      placement.row + vector.row * (placement.word.length - 1),
+      placement.col + vector.col * (placement.word.length - 1)
+    )];
+    if (!startCell || !endCell) return;
+
+    boundary = this._foundBoundariesById[placement.id];
+    if (!boundary) {
+      boundary = document.createElement("div");
+      boundary.className = foundBoundaryClassName;
+      boundary.setAttribute("aria-hidden", "true");
+      boundary.setAttribute("data-word-search-found-boundary-id", placement.id);
+      this._foundBoundariesById[placement.id] = boundary;
+      this._gridEl.appendChild(boundary);
+    }
+
+    startCenterX = startCell.offsetLeft + startCell.offsetWidth / 2;
+    startCenterY = startCell.offsetTop + startCell.offsetHeight / 2;
+    endCenterX = endCell.offsetLeft + endCell.offsetWidth / 2;
+    endCenterY = endCell.offsetTop + endCell.offsetHeight / 2;
+    deltaX = endCenterX - startCenterX;
+    deltaY = endCenterY - startCenterY;
+    boundaryWidth = Math.sqrt(deltaX * deltaX + deltaY * deltaY) + Math.max(startCell.offsetWidth, endCell.offsetWidth);
+    boundaryHeight = Math.max(startCell.offsetHeight, endCell.offsetHeight);
+    centerX = (startCenterX + endCenterX) / 2;
+    centerY = (startCenterY + endCenterY) / 2;
+
+    boundary.style.width = boundaryWidth + pixelUnit;
+    boundary.style.height = boundaryHeight + pixelUnit;
+    boundary.style.left = centerX - boundaryWidth / 2 + pixelUnit;
+    boundary.style.top = centerY - boundaryHeight / 2 + pixelUnit;
+    boundary.style.transform = "rotate(" + Math.atan2(deltaY, deltaX) + "rad)";
+  };
+
+  WordSearchWidget.prototype.refreshFoundWordBoundaries = function () {
+    var foundIds = Object.keys(this._foundIds);
+    var index;
+
+    for (index = 0; index < foundIds.length; index++) {
+      this.renderFoundWordBoundary(this._placementsById[foundIds[index]]);
+    }
   };
 
   WordSearchWidget.prototype.clearTransientSelection = function () {
@@ -171,6 +258,79 @@
       clearTimeout(this._hintTimeout);
       this._hintTimeout = null;
     }
+  };
+
+  WordSearchWidget.prototype.clearWordSearchHint = function () {
+    if (!this._wordSearchHint) return;
+    this._wordSearchHint.hidden = true;
+    this._wordSearchHint.style.display = hiddenStyleValue;
+    this._wordSearchHint.textContent = emptyString;
+  };
+
+  WordSearchWidget.prototype.updateWordSearchHint = function (message) {
+    if (!this._wordSearchHint) return;
+    this._wordSearchHint.hidden = false;
+    this._wordSearchHint.style.display = emptyString;
+    this._wordSearchHint.textContent = message;
+  };
+
+  WordSearchWidget.prototype.clearDragCoach = function () {
+    var dragCoachEl = this._dragCoachEl;
+
+    clearTimeout(this._dragCoachTimeout);
+    this._dragCoachTimeout = null;
+    this._dragCoachEl = null;
+    if (!dragCoachEl) return;
+    dragCoachEl.remove();
+  };
+
+  WordSearchWidget.prototype.createDragCoach = function () {
+    var dragCoach = document.createElement("div");
+    var startDot = document.createElement("span");
+    var trail = document.createElement("span");
+    var endDot = document.createElement("span");
+
+    dragCoach.className = "word-search-drag-coach";
+    dragCoach.setAttribute("data-word-search-drag-coach", "true");
+    dragCoach.setAttribute("role", "img");
+    dragCoach.setAttribute("aria-label", "Drag across letters to select a word");
+    startDot.className = "word-search-drag-coach__dot word-search-drag-coach__dot--start";
+    trail.className = "word-search-drag-coach__trail";
+    endDot.className = "word-search-drag-coach__dot word-search-drag-coach__dot--end";
+    startDot.setAttribute("aria-hidden", "true");
+    trail.setAttribute("aria-hidden", "true");
+    endDot.setAttribute("aria-hidden", "true");
+
+    dragCoach.appendChild(startDot);
+    dragCoach.appendChild(trail);
+    dragCoach.appendChild(endDot);
+    return dragCoach;
+  };
+
+  WordSearchWidget.prototype.showDragCoach = function (cell) {
+    var dragCoach;
+    var cellRect;
+    var viewportWidth;
+    var left;
+    var top;
+
+    this.clearDragCoach();
+    dragCoach = this.createDragCoach();
+    cellRect = cell.getBoundingClientRect();
+    viewportWidth = Math.max(dragCoachWidthPx + viewportPaddingPx * 2, window.innerWidth);
+    left = Math.max(
+      viewportPaddingPx,
+      Math.min(
+        cellRect.left + cellRect.width / 2 - dragCoachWidthPx / 2,
+        viewportWidth - dragCoachWidthPx - viewportPaddingPx
+      )
+    );
+    top = Math.max(viewportPaddingPx, cellRect.top - dragCoachVerticalOffsetPx);
+    dragCoach.style.left = left + pixelUnit;
+    dragCoach.style.top = top + pixelUnit;
+    document.body.appendChild(dragCoach);
+    this._dragCoachEl = dragCoach;
+    this._dragCoachTimeout = setTimeout(this.clearDragCoach.bind(this), dragCoachAutoHideDelayMs);
   };
 
   WordSearchWidget.prototype.updateProgress = function () {
@@ -211,6 +371,16 @@
     });
   };
 
+  WordSearchWidget.prototype.emitHintIfNeeded = function () {
+    if (this._hintNotified) return;
+    this._hintNotified = true;
+    if (!this._rewardEvents) return;
+    this.dispatchWidgetEvent("hecate:puzzle:hint-used", {
+      usedHint: true,
+      usedReveal: false,
+    });
+  };
+
   WordSearchWidget.prototype.markPlacementFound = function (placement, isReveal) {
     var index;
     var vector;
@@ -229,6 +399,7 @@
         cell.classList.add(isReveal ? "word-search-cell--revealed" : "word-search-cell--found");
       }
     }
+    this.renderFoundWordBoundary(placement);
 
     itemElement = this._listById[placement.id];
     if (itemElement) {
@@ -298,6 +469,7 @@
   WordSearchWidget.prototype.finishSelection = function () {
     var cells;
     var placement;
+    var cell;
 
     if (!this._selection) return;
     cells = selectionCells(
@@ -306,16 +478,22 @@
       this._selection.endRow,
       this._selection.endCol
     );
-    placement = this.matchSelection(cells);
-    if (placement) {
-      this.markPlacementFound(placement, false);
-      this.updateStatus("Found " + placement.word + ".");
+    if (cells.length === singleCellSelectionLength) {
+      cell = this._cellsByKey[cellKey(cells[0].row, cells[0].col)];
+      this.showDragCoach(cell);
+    } else {
+      placement = this.matchSelection(cells);
+      if (placement) {
+        this.markPlacementFound(placement, false);
+        this.updateStatus("Found " + placement.word + ".");
+      }
     }
     this.clearTransientSelection();
     this._selection = null;
   };
 
   WordSearchWidget.prototype.beginSelection = function (row, col) {
+    this.clearDragCoach();
     this._selection = {
       startRow: row,
       startCol: col,
@@ -335,11 +513,14 @@
     this.highlightSelection(cells);
   };
 
-  WordSearchWidget.prototype.resolveHintPlacement = function () {
+  WordSearchWidget.prototype.resolveHintPlacement = function (entryIdentifier) {
     var itemIndex;
     var item;
 
     if (!this._puzzle || !Array.isArray(this._puzzle.items)) return null;
+    if (typeof entryIdentifier === "string" && entryIdentifier) {
+      return this._placementsById[entryIdentifier] || null;
+    }
     for (itemIndex = 0; itemIndex < this._puzzle.items.length; itemIndex++) {
       item = this._puzzle.items[itemIndex];
       if (!this._foundIds[item.id]) {
@@ -349,18 +530,22 @@
     return null;
   };
 
-  WordSearchWidget.prototype.showHint = function () {
-    var placement = this.resolveHintPlacement();
+  WordSearchWidget.prototype.showHint = function (entryIdentifier) {
+    var requestedEntryIdentifier = typeof entryIdentifier === "string" ? entryIdentifier : emptyString;
+    var placement = this.resolveHintPlacement(requestedEntryIdentifier);
     var vector;
     var startCell;
     var nextCell;
+    var hintMessage;
+    var placementItem;
 
     if (!placement) {
-      this.updateStatus("All words are already found.");
+      this.updateStatus(requestedEntryIdentifier ? hintUnavailableText : "All words are already found.");
       return;
     }
 
     this._usedHint = true;
+    this.emitHintIfNeeded();
     this.clearHintPulse();
     vector = directionVector(placement.dir);
     startCell = this._cellsByKey[cellKey(placement.row, placement.col)];
@@ -371,10 +556,9 @@
     if (nextCell) {
       nextCell.classList.add("word-search-cell--hinted");
     }
-    if (this._wordSearchHint) {
-      this._wordSearchHint.style.display = "";
-      this._wordSearchHint.textContent = placement.hint || this._itemsById[placement.id].hint || "Hint unavailable.";
-    }
+    placementItem = this._itemsById[placement.id] || {};
+    hintMessage = placement.hint || placementItem.hint || hintUnavailableText;
+    this.updateWordSearchHint(hintMessage);
     this._hintTimeout = setTimeout(this.clearHintPulse.bind(this), 1400);
     this.updateStatus("Hint shown for " + placement.word + ".");
   };
@@ -399,6 +583,11 @@
     var itemIndex;
     var item;
     var wordItem;
+    var wordLabel;
+    var hintContainer;
+    var hintButton;
+    var hintText;
+    var itemPlacement;
     var getTouchCell;
 
     this._puzzle = puzzle;
@@ -407,11 +596,14 @@
     this._itemsById = {};
     this._listById = {};
     this._selection = null;
+    this.clearFoundWordBoundaries();
     this._foundIds = {};
     this._usedHint = false;
     this._usedReveal = false;
+    this._hintNotified = false;
     this._completionEmitted = false;
     this.clearHintPulse();
+    this.clearDragCoach();
     this.ensureStandaloneElements();
 
     if (!puzzle || !Array.isArray(puzzle.grid) || !Array.isArray(puzzle.placements)) {
@@ -443,10 +635,7 @@
     if (this._wordSearchPanel) {
       this._wordSearchPanel.hidden = false;
     }
-    if (this._wordSearchHint) {
-      this._wordSearchHint.style.display = hiddenStyleValue;
-      this._wordSearchHint.textContent = emptyString;
-    }
+    this.clearWordSearchHint();
 
     for (itemIndex = 0; itemIndex < puzzle.placements.length; itemIndex++) {
       this._placementsById[puzzle.placements[itemIndex].id] = puzzle.placements[itemIndex];
@@ -509,7 +698,34 @@
       item = puzzle.items[itemIndex];
       wordItem = document.createElement("li");
       wordItem.className = "word-search-word";
-      wordItem.textContent = item.word;
+      wordItem.setAttribute("data-word-search-word-id", item.id);
+      wordLabel = document.createElement("span");
+      wordLabel.className = "word-search-word__label";
+      wordLabel.textContent = item.word;
+      hintContainer = document.createElement("span");
+      hintContainer.className = "hintControls";
+      hintButton = document.createElement("button");
+      hintButton.type = "button";
+      hintButton.className = "hintButton";
+      hintButton.textContent = hintButtonText;
+      hintButton.setAttribute("aria-label", "Hint for " + item.word);
+      hintText = document.createElement("div");
+      hintText.className = "hintText";
+      itemPlacement = this._placementsById[item.id] || {};
+      hintText.textContent = itemPlacement.hint || item.hint || hintUnavailableText;
+      hintText.style.display = hiddenStyleValue;
+      (function (entryIdentifier, hintTextElement) {
+        hintButton.addEventListener("click", function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          self.showHint(entryIdentifier);
+          hintTextElement.style.display = emptyString;
+        });
+      })(item.id, hintText);
+      hintContainer.appendChild(hintButton);
+      wordItem.appendChild(wordLabel);
+      wordItem.appendChild(hintContainer);
+      wordItem.appendChild(hintText);
       this._listById[item.id] = wordItem;
       this._wordSearchList.appendChild(wordItem);
     }

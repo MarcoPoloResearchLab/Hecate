@@ -695,6 +695,7 @@
 
   function describeCompletionReason(reason) {
     if (reason === "revealed") return "Reveal was used, so this puzzle no longer qualifies for rewards.";
+    if (reason === "hint_used") return "A hint was used, so this puzzle no longer qualifies for rewards.";
     if (reason === "anonymous_solver") return "Sign in if you want shared solves to support the creator.";
     if (reason === "creator_puzzle_cap_reached") return "This puzzle has already reached its creator reward cap.";
     if (reason === "creator_daily_cap_reached") return "The creator has already reached today’s shared reward cap.";
@@ -765,6 +766,23 @@
       reason: describeCompletionReason(result && result.reason),
       breakdown: [],
       primaryLabel: "Generate another",
+    });
+  }
+
+  function showHintRewardWarningModal() {
+    var activePuzzle = window.HecateApp && window.HecateApp.getActivePuzzle
+      ? window.HecateApp.getActivePuzzle()
+      : null;
+
+    if (!activePuzzle) return;
+    if (activePuzzle.source !== "owned" && !(activePuzzle.source === "shared" && state.loggedIn)) return;
+
+    showCompletionModal({
+      title: "Reward unavailable",
+      summary: "Using a hint means no reward will be granted for this puzzle.",
+      reason: "",
+      breakdown: [],
+      hidePrimary: true,
     });
   }
 
@@ -1180,6 +1198,10 @@
     submitPuzzleCompletion(event.detail);
   });
 
+  window.addEventListener("hecate:puzzle:hint-used", function () {
+    showHintRewardWarningModal();
+  });
+
   elements.shareBtn.addEventListener("click", function () {
     var url;
 
@@ -1372,6 +1394,7 @@
     },
     setShareToken: setShareToken,
     showCompletionModal: showCompletionModal,
+    showHintRewardWarningModal: showHintRewardWarningModal,
     showSharedCompletionModal: showSharedCompletionModal,
     showSolveCompletionModal: showSolveCompletionModal,
     showGenerateForm: showGenerateForm,

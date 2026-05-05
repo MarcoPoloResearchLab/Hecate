@@ -1606,9 +1606,30 @@ test.describe("App completion coverage", () => {
         summaryText: document.getElementById("completionSummary").textContent,
         titleText: document.getElementById("completionTitle").textContent,
       };
+      app.showHintRewardWarningModal();
+      var originalHecateApp = window.HecateApp;
+      window.HecateApp = null;
+      app.showHintRewardWarningModal();
+      window.HecateApp = {};
+      app.showHintRewardWarningModal();
+      window.HecateApp = originalHecateApp;
+      window.__activePuzzle = { id: "practice-1", source: "practice" };
+      app.showHintRewardWarningModal();
+      app.setLoggedIn(false);
+      window.__activePuzzle = { source: "shared", shareToken: "shared-token" };
+      app.showHintRewardWarningModal();
+      app.setLoggedIn(true);
+      window.__activePuzzle = { id: "owned-1", source: "owned" };
+      app.showHintRewardWarningModal();
+      var hintWarningSummary = document.getElementById("completionSummary").textContent;
+      window.__activePuzzle = { source: "shared", shareToken: "shared-token" };
+      app.showHintRewardWarningModal();
+      var sharedHintWarningTitle = document.getElementById("completionTitle").textContent;
+      document.getElementById("completionCloseButton").click();
 
       var reasonResults = {
         revealed: app.describeCompletionReason("revealed"),
+        hintUsed: app.describeCompletionReason("hint_used"),
         anonymous: app.describeCompletionReason("anonymous_solver"),
         puzzleCap: app.describeCompletionReason("creator_puzzle_cap_reached"),
         dailyCap: app.describeCompletionReason("creator_daily_cap_reached"),
@@ -1624,6 +1645,7 @@ test.describe("App completion coverage", () => {
         sharedMissingToken: app.getCompletionEndpoint({ source: "shared" }),
       };
 
+      window.__activePuzzle = null;
       app.submitPuzzleCompletion({});
       window.__activePuzzle = { id: "practice-1", source: "practice" };
       app.submitPuzzleCompletion({});
@@ -1710,8 +1732,10 @@ test.describe("App completion coverage", () => {
         modalDefaults: modalDefaults,
         reasonResults: reasonResults,
         generatedPuzzleId: window.__lastGeneratedPuzzle && window.__lastGeneratedPuzzle.id,
+        hintWarningSummary: hintWarningSummary,
         dedupedCallCount: dedupedCallCount,
         shareTokenAfterEmptyActivePuzzle: shareTokenAfterEmptyActivePuzzle,
+        sharedHintWarningTitle: sharedHintWarningTitle,
         sharedFallbackReason: sharedFallbackReason,
         zeroRewardSummary: zeroRewardSummary,
         stateAfterAuthRace: app.getState(),
@@ -1727,6 +1751,7 @@ test.describe("App completion coverage", () => {
     });
     expect(result.reasonResults).toEqual({
       revealed: "Reveal was used, so this puzzle no longer qualifies for rewards.",
+      hintUsed: "A hint was used, so this puzzle no longer qualifies for rewards.",
       anonymous: "Sign in if you want shared solves to support the creator.",
       puzzleCap: "This puzzle has already reached its creator reward cap.",
       dailyCap: "The creator has already reached today’s shared reward cap.",
@@ -1742,6 +1767,8 @@ test.describe("App completion coverage", () => {
     });
     expect(result.earlyCallCount).toBe(0);
     expect(result.zeroRewardSummary).toBe("This puzzle completed without a reward payout.");
+    expect(result.hintWarningSummary).toBe("Using a hint means no reward will be granted for this puzzle.");
+    expect(result.sharedHintWarningTitle).toBe("Reward unavailable");
     expect(result.sharedFallbackReason).toBe("This solve did not qualify for extra credits.");
     expect(result.dedupedCallCount).toBe(1);
     expect(result.generatedPuzzleId).toBe("generated-1");
@@ -2300,13 +2327,20 @@ test.describe("Crossword widget completion coverage", () => {
 
     var result = await page.evaluate((items) => {
       var container = document.createElement("div");
+      var hintOnlyContainer = document.createElement("div");
       var completionDetail = null;
+      var hintEventCount = 0;
       var widget;
+      var hintOnlyWidget;
 
       document.body.appendChild(container);
+      document.body.appendChild(hintOnlyContainer);
       window.addEventListener("hecate:puzzle:completed", function handleCompletion(event) {
         completionDetail = event.detail;
       }, { once: true });
+      window.addEventListener("hecate:puzzle:hint-used", function () {
+        hintEventCount += 1;
+      });
 
       widget = new window.CrosswordWidget(container, {
         puzzle: generateCrossword(items, {
@@ -2317,6 +2351,16 @@ test.describe("Crossword widget completion coverage", () => {
           },
         }),
       });
+      hintOnlyWidget = new window.CrosswordWidget(hintOnlyContainer, {
+        puzzle: generateCrossword(items, {
+          title: "Hint Only",
+          subtitle: "reward-event false branch",
+          random: function () {
+            return 0.5;
+          },
+        }),
+      });
+      hintOnlyWidget._acrossOl.querySelector(".hintButton").click();
 
       Object.keys(widget._testApi.cellsById).forEach(function (entryId) {
         widget._testApi.cellsById[entryId].forEach(function (cell) {
@@ -2328,6 +2372,7 @@ test.describe("Crossword widget completion coverage", () => {
 
       return {
         completionDetail: completionDetail,
+        hintEventCount: hintEventCount,
         statusText: widget._statusEl.textContent,
       };
     }, defaultPuzzles[0].items);
@@ -2337,6 +2382,7 @@ test.describe("Crossword widget completion coverage", () => {
       usedHint: false,
       usedReveal: false,
     });
+    expect(result.hintEventCount).toBe(0);
     expect(result.statusText).toBe("All correct — nice!");
   });
 });
@@ -2409,6 +2455,7 @@ test.describe("Generator comparison coverage", () => {
 test.describe("Word search widget coverage", () => {
   test("covers word-search helper branches and widget interactions", async ({ page }) => {
     await page.goto("/blank.html");
+    await page.addStyleTag({ url: "/css/crossword.css" });
     await loadScript(page, "word-search-widget.js");
 
     var result = await page.evaluate(() => {
@@ -2442,6 +2489,9 @@ test.describe("Word search widget coverage", () => {
       window.addEventListener("hecate:puzzle:reveal-used", function (event) {
         events.push({ name: "reveal", detail: event.detail });
       });
+      window.addEventListener("hecate:puzzle:hint-used", function (event) {
+        events.push({ name: "hint", detail: event.detail });
+      });
 
       var nullWidget = new window.WordSearchWidget(null);
       nullWidget.ensureStandaloneElements();
@@ -2456,11 +2506,13 @@ test.describe("Word search widget coverage", () => {
       nullWidget.emitRevealIfNeeded();
       nullWidget.markPlacementFound(null, false);
       nullWidget.render(null);
+      nullWidget.clearDragCoach();
       nullWidget.finishSelection();
       nullWidget.moveSelection(0, 0);
       nullWidget.resolveHintPlacement();
 
       var container = document.createElement("div");
+      container.style.marginTop = "80px";
       document.body.appendChild(container);
       var standalone = new window.WordSearchWidget(container);
       standalone.ensureStandaloneElements();
@@ -2469,6 +2521,18 @@ test.describe("Word search widget coverage", () => {
 
       var standaloneCells = container.querySelectorAll(".word-search-cell");
       standaloneCells[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      standaloneCells[0].dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+      var dragCoach = document.querySelector("[data-word-search-drag-coach]");
+      var dragCoachRect = dragCoach.getBoundingClientRect();
+      var clickedCellRect = standaloneCells[0].getBoundingClientRect();
+      var dragCoachState = {
+        ariaLabel: dragCoach.getAttribute("aria-label"),
+        childCount: dragCoach.children.length,
+        isFixed: window.getComputedStyle(dragCoach).position === "fixed",
+        isAboveCell: dragCoachRect.bottom <= clickedCellRect.top,
+      };
+      standaloneCells[0].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      var dragCoachClearedOnDragStart = !document.querySelector("[data-word-search-drag-coach]");
       standaloneCells[2].dispatchEvent(new MouseEvent("mouseenter", { bubbles: true }));
       standaloneCells[2].dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
       standaloneCells[14].dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
@@ -2477,6 +2541,19 @@ test.describe("Word search widget coverage", () => {
       standalone.showHint();
       standalone.revealAll();
       standalone.revealAll();
+      standalone.recalculate();
+      var foundBoundary = container.querySelector(".word-search-found-boundary");
+      var foundBoundaryStyle = window.getComputedStyle(foundBoundary);
+      var foundBoundaryState = {
+        count: container.querySelectorAll(".word-search-found-boundary").length,
+        ariaHidden: foundBoundary.getAttribute("aria-hidden"),
+        borderTopWidth: foundBoundaryStyle.borderTopWidth,
+        pointerEvents: foundBoundaryStyle.pointerEvents,
+        position: foundBoundaryStyle.position,
+        transform: foundBoundary.style.transform,
+      };
+      standalone.render(null);
+      var boundaryClearedAfterInvalidRender = !container.querySelector(".word-search-found-boundary");
 
       var grid = document.createElement("div");
       var viewport = document.createElement("div");
@@ -2517,6 +2594,12 @@ test.describe("Word search widget coverage", () => {
       widget.render(null);
       var invalidText = error.textContent;
       widget.render(puzzle);
+      var perWordHintButtons = list.querySelectorAll(".word-search-word .hintButton");
+      perWordHintButtons[1].click();
+      var perWordHintText = list.children[1].querySelector(".hintText").textContent;
+      var perWordHintDisplay = list.children[1].querySelector(".hintText").style.display;
+      var perWordGlobalHintText = hint.textContent;
+      var perWordGlobalHintHidden = hint.hidden;
       widget.moveSelection(0, 0);
       widget.finishSelection();
       widget.highlightSelection([{ row: 0, col: 0 }, { row: 9, col: 9 }]);
@@ -2574,18 +2657,50 @@ test.describe("Word search widget coverage", () => {
       branchWidget._itemsById = { missing: { id: "missing", hint: "" } };
       branchWidget._listById = {};
       branchWidget.markPlacementFound({ id: "missing", word: "A", row: 0, col: 0, dir: "BAD" }, true);
+      var missingBoundaryGrid = document.createElement("div");
+      branchWidget._gridEl = missingBoundaryGrid;
+      branchWidget._cellsByKey = {};
+      branchWidget.renderFoundWordBoundary({ id: "no-cells", word: "CAT", row: 0, col: 0, dir: "E" });
+      var missingBoundaryCount = missingBoundaryGrid.querySelectorAll(".word-search-found-boundary").length;
+      branchWidget._gridEl = null;
       branchWidget._foundIds = {};
       branchWidget._placementsById = {};
       branchWidget.resolveHintPlacement();
+      branchWidget.showHint("absent");
+      var missingHintStatus = branchWidget._statusEl.textContent;
       branchWidget._placementsById = {
         missing: { id: "missing", word: "CAT", row: 0, col: 0, dir: "E", hint: "" },
       };
       branchWidget.resolveHintPlacement();
+      branchWidget._itemsById = {};
       branchWidget.showHint();
+      var unavailableHintText = branchWidget._wordSearchHint.textContent;
+      branchWidget._itemsById = { missing: { id: "missing", hint: "item fallback" } };
+      branchWidget.showHint("missing");
+      var itemFallbackHintText = branchWidget._wordSearchHint.textContent;
       branchWidget.clearHintPulse();
       branchWidget._wordSearchHint = null;
       branchWidget._foundIds = {};
       branchWidget.showHint();
+
+      var rewardHint = document.createElement("div");
+      var rewardStatus = document.createElement("div");
+      var rewardWidget = new window.WordSearchWidget(null, {
+        rewardEvents: true,
+        _existingElements: {
+          wordSearchHint: rewardHint,
+          statusEl: rewardStatus,
+        },
+      });
+      rewardWidget._puzzle = { items: [{ id: "reward", hint: "reward hint" }] };
+      rewardWidget._foundIds = {};
+      rewardWidget._cellsByKey = {};
+      rewardWidget._itemsById = { reward: { id: "reward", hint: "reward hint" } };
+      rewardWidget._placementsById = {
+        reward: { id: "reward", word: "CAT", row: 0, col: 0, dir: "E", hint: "reward hint" },
+      };
+      rewardWidget.showHint();
+      rewardWidget.showHint();
 
       var minimalWidget = new window.WordSearchWidget(null, { _existingElements: {} });
       minimalWidget.render({
@@ -2614,6 +2729,50 @@ test.describe("Word search widget coverage", () => {
         items: [],
       });
 
+      var fallbackGrid = document.createElement("div");
+      var fallbackViewport = document.createElement("div");
+      var fallbackList = document.createElement("ol");
+      fallbackViewport.appendChild(fallbackGrid);
+      document.body.appendChild(fallbackViewport);
+      document.body.appendChild(fallbackList);
+      var fallbackWidget = new window.WordSearchWidget(null, {
+        _existingElements: {
+          gridEl: fallbackGrid,
+          gridViewport: fallbackViewport,
+          wordSearchList: fallbackList,
+        },
+      });
+      fallbackWidget.render({
+        puzzleType: "word_search",
+        size: 1,
+        grid: [["A"]],
+        placements: [{ id: "W2", word: "A", row: 0, col: 0, dir: "E", hint: "" }],
+        items: [{ id: "W2", word: "A", definition: "", hint: "" }],
+      });
+      var fallbackInlineHintText = fallbackList.querySelector(".hintText").textContent;
+
+      var missingPlacementGrid = document.createElement("div");
+      var missingPlacementViewport = document.createElement("div");
+      var missingPlacementList = document.createElement("ol");
+      missingPlacementViewport.appendChild(missingPlacementGrid);
+      document.body.appendChild(missingPlacementViewport);
+      document.body.appendChild(missingPlacementList);
+      var missingPlacementWidget = new window.WordSearchWidget(null, {
+        _existingElements: {
+          gridEl: missingPlacementGrid,
+          gridViewport: missingPlacementViewport,
+          wordSearchList: missingPlacementList,
+        },
+      });
+      missingPlacementWidget.render({
+        puzzleType: "word_search",
+        size: 1,
+        grid: [["A"]],
+        placements: [],
+        items: [{ id: "W3", word: "B", definition: "", hint: "item-only hint" }],
+      });
+      var missingPlacementInlineHintText = missingPlacementList.querySelector(".hintText").textContent;
+
       return {
         cellKey: helpers.cellKey(2, 3),
         boundedCellSizes: [
@@ -2636,8 +2795,29 @@ test.describe("Word search widget coverage", () => {
         listText: Array.prototype.map.call(list.children, function (element) {
           return element.textContent;
         }),
+        listLabels: Array.prototype.map.call(list.querySelectorAll(".word-search-word__label"), function (element) {
+          return element.textContent;
+        }),
+        perWordHintButtonCount: perWordHintButtons.length,
+        perWordHintButtonText: Array.prototype.map.call(perWordHintButtons, function (element) {
+          return element.textContent;
+        }),
+        perWordHintText: perWordHintText,
+        perWordHintDisplay: perWordHintDisplay,
+        perWordGlobalHintText: perWordGlobalHintText,
+        perWordGlobalHintHidden: perWordGlobalHintHidden,
+        missingHintStatus: missingHintStatus,
+        unavailableHintText: unavailableHintText,
+        itemFallbackHintText: itemFallbackHintText,
+        fallbackInlineHintText: fallbackInlineHintText,
+        missingPlacementInlineHintText: missingPlacementInlineHintText,
         progressText: progress.textContent,
         statusText: status.textContent,
+        dragCoachState: dragCoachState,
+        dragCoachClearedOnDragStart: dragCoachClearedOnDragStart,
+        foundBoundaryState: foundBoundaryState,
+        boundaryClearedAfterInvalidRender: boundaryClearedAfterInvalidRender,
+        missingBoundaryCount: missingBoundaryCount,
         zeroColumnCount: zeroWidget._currentColumnCount,
       };
     });
@@ -2646,11 +2826,41 @@ test.describe("Word search widget coverage", () => {
     expect(result.boundedCellSizes).toEqual([44, 38, 36]);
     expect(result.directionVectors).toContainEqual({ row: 0, col: 0 });
     expect(result.selections).toEqual([3, 3, 3, 3, 0]);
-    expect(result.events.map((event) => event.name)).toEqual(expect.arrayContaining(["completed", "reveal"]));
+    expect(result.events.map((event) => event.name)).toEqual(expect.arrayContaining(["completed", "hint", "reveal"]));
+    expect(result.events.filter((event) => event.name === "hint")).toHaveLength(1);
     expect(result.invalidText).toBe("Word search specification invalid");
-    expect(result.listText).toEqual(["CAT", "DOG"]);
+    expect(result.listText).toEqual(["CATHfeline", "DOGHcanine"]);
+    expect(result.listLabels).toEqual(["CAT", "DOG"]);
+    expect(result.perWordHintButtonCount).toBe(2);
+    expect(result.perWordHintButtonText).toEqual(["H", "H"]);
+    expect(result.perWordHintText).toBe("canine");
+    expect(result.perWordHintDisplay).toBe("");
+    expect(result.perWordGlobalHintText).toBe("canine");
+    expect(result.perWordGlobalHintHidden).toBe(false);
+    expect(result.missingHintStatus).toBe("Hint unavailable.");
+    expect(result.unavailableHintText).toBe("Hint unavailable.");
+    expect(result.itemFallbackHintText).toBe("item fallback");
+    expect(result.fallbackInlineHintText).toBe("Hint unavailable.");
+    expect(result.missingPlacementInlineHintText).toBe("item-only hint");
     expect(result.progressText).toBe("2 of 2 found");
     expect(result.statusText).toBe("All words revealed.");
+    expect(result.dragCoachState).toEqual({
+      ariaLabel: "Drag across letters to select a word",
+      childCount: 3,
+      isFixed: true,
+      isAboveCell: true,
+    });
+    expect(result.dragCoachClearedOnDragStart).toBe(true);
+    expect(result.foundBoundaryState).toMatchObject({
+      count: 2,
+      ariaHidden: "true",
+      borderTopWidth: "1px",
+      pointerEvents: "none",
+      position: "absolute",
+    });
+    expect(result.foundBoundaryState.transform).toContain("rotate(");
+    expect(result.boundaryClearedAfterInvalidRender).toBe(true);
+    expect(result.missingBoundaryCount).toBe(0);
     expect(result.zeroColumnCount).toBe(0);
   });
 });
