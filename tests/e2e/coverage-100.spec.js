@@ -2532,6 +2532,12 @@ test.describe("Word search widget coverage", () => {
       widget.render(null);
       var invalidText = error.textContent;
       widget.render(puzzle);
+      var perWordHintButtons = list.querySelectorAll(".word-search-word .hintButton");
+      perWordHintButtons[1].click();
+      var perWordHintText = list.children[1].querySelector(".hintText").textContent;
+      var perWordHintDisplay = list.children[1].querySelector(".hintText").style.display;
+      var perWordGlobalHintText = hint.textContent;
+      var perWordGlobalHintHidden = hint.hidden;
       widget.moveSelection(0, 0);
       widget.finishSelection();
       widget.highlightSelection([{ row: 0, col: 0 }, { row: 9, col: 9 }]);
@@ -2592,11 +2598,18 @@ test.describe("Word search widget coverage", () => {
       branchWidget._foundIds = {};
       branchWidget._placementsById = {};
       branchWidget.resolveHintPlacement();
+      branchWidget.showHint("absent");
+      var missingHintStatus = branchWidget._statusEl.textContent;
       branchWidget._placementsById = {
         missing: { id: "missing", word: "CAT", row: 0, col: 0, dir: "E", hint: "" },
       };
       branchWidget.resolveHintPlacement();
+      branchWidget._itemsById = {};
       branchWidget.showHint();
+      var unavailableHintText = branchWidget._wordSearchHint.textContent;
+      branchWidget._itemsById = { missing: { id: "missing", hint: "item fallback" } };
+      branchWidget.showHint("missing");
+      var itemFallbackHintText = branchWidget._wordSearchHint.textContent;
       branchWidget.clearHintPulse();
       branchWidget._wordSearchHint = null;
       branchWidget._foundIds = {};
@@ -2629,6 +2642,50 @@ test.describe("Word search widget coverage", () => {
         items: [],
       });
 
+      var fallbackGrid = document.createElement("div");
+      var fallbackViewport = document.createElement("div");
+      var fallbackList = document.createElement("ol");
+      fallbackViewport.appendChild(fallbackGrid);
+      document.body.appendChild(fallbackViewport);
+      document.body.appendChild(fallbackList);
+      var fallbackWidget = new window.WordSearchWidget(null, {
+        _existingElements: {
+          gridEl: fallbackGrid,
+          gridViewport: fallbackViewport,
+          wordSearchList: fallbackList,
+        },
+      });
+      fallbackWidget.render({
+        puzzleType: "word_search",
+        size: 1,
+        grid: [["A"]],
+        placements: [{ id: "W2", word: "A", row: 0, col: 0, dir: "E", hint: "" }],
+        items: [{ id: "W2", word: "A", definition: "", hint: "" }],
+      });
+      var fallbackInlineHintText = fallbackList.querySelector(".hintText").textContent;
+
+      var missingPlacementGrid = document.createElement("div");
+      var missingPlacementViewport = document.createElement("div");
+      var missingPlacementList = document.createElement("ol");
+      missingPlacementViewport.appendChild(missingPlacementGrid);
+      document.body.appendChild(missingPlacementViewport);
+      document.body.appendChild(missingPlacementList);
+      var missingPlacementWidget = new window.WordSearchWidget(null, {
+        _existingElements: {
+          gridEl: missingPlacementGrid,
+          gridViewport: missingPlacementViewport,
+          wordSearchList: missingPlacementList,
+        },
+      });
+      missingPlacementWidget.render({
+        puzzleType: "word_search",
+        size: 1,
+        grid: [["A"]],
+        placements: [],
+        items: [{ id: "W3", word: "B", definition: "", hint: "item-only hint" }],
+      });
+      var missingPlacementInlineHintText = missingPlacementList.querySelector(".hintText").textContent;
+
       return {
         cellKey: helpers.cellKey(2, 3),
         boundedCellSizes: [
@@ -2651,6 +2708,22 @@ test.describe("Word search widget coverage", () => {
         listText: Array.prototype.map.call(list.children, function (element) {
           return element.textContent;
         }),
+        listLabels: Array.prototype.map.call(list.querySelectorAll(".word-search-word__label"), function (element) {
+          return element.textContent;
+        }),
+        perWordHintButtonCount: perWordHintButtons.length,
+        perWordHintButtonText: Array.prototype.map.call(perWordHintButtons, function (element) {
+          return element.textContent;
+        }),
+        perWordHintText: perWordHintText,
+        perWordHintDisplay: perWordHintDisplay,
+        perWordGlobalHintText: perWordGlobalHintText,
+        perWordGlobalHintHidden: perWordGlobalHintHidden,
+        missingHintStatus: missingHintStatus,
+        unavailableHintText: unavailableHintText,
+        itemFallbackHintText: itemFallbackHintText,
+        fallbackInlineHintText: fallbackInlineHintText,
+        missingPlacementInlineHintText: missingPlacementInlineHintText,
         progressText: progress.textContent,
         statusText: status.textContent,
         dragCoachState: dragCoachState,
@@ -2665,7 +2738,19 @@ test.describe("Word search widget coverage", () => {
     expect(result.selections).toEqual([3, 3, 3, 3, 0]);
     expect(result.events.map((event) => event.name)).toEqual(expect.arrayContaining(["completed", "reveal"]));
     expect(result.invalidText).toBe("Word search specification invalid");
-    expect(result.listText).toEqual(["CAT", "DOG"]);
+    expect(result.listText).toEqual(["CATHfeline", "DOGHcanine"]);
+    expect(result.listLabels).toEqual(["CAT", "DOG"]);
+    expect(result.perWordHintButtonCount).toBe(2);
+    expect(result.perWordHintButtonText).toEqual(["H", "H"]);
+    expect(result.perWordHintText).toBe("canine");
+    expect(result.perWordHintDisplay).toBe("");
+    expect(result.perWordGlobalHintText).toBe("canine");
+    expect(result.perWordGlobalHintHidden).toBe(false);
+    expect(result.missingHintStatus).toBe("Hint unavailable.");
+    expect(result.unavailableHintText).toBe("Hint unavailable.");
+    expect(result.itemFallbackHintText).toBe("item fallback");
+    expect(result.fallbackInlineHintText).toBe("Hint unavailable.");
+    expect(result.missingPlacementInlineHintText).toBe("item-only hint");
     expect(result.progressText).toBe("2 of 2 found");
     expect(result.statusText).toBe("All words revealed.");
     expect(result.dragCoachState).toEqual({

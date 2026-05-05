@@ -734,6 +734,10 @@ select {
 }
 
 .word-search-word {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: start;
+    gap: 8px;
     padding: 10px 12px;
     border-radius: 12px;
     border: 1px solid var(--cw-clue-border);
@@ -744,11 +748,33 @@ select {
     text-transform: uppercase;
 }
 
+.word-search-word .hintControls {
+    float: none;
+    margin-left: 0;
+    justify-self: end;
+}
+
+.word-search-word .hintButton {
+    width: auto;
+}
+
+.word-search-word .hintText {
+    grid-column: 1 / -1;
+    color: var(--cw-text-muted);
+    font-weight: 600;
+    letter-spacing: 0;
+    line-height: 1.45;
+    text-transform: none;
+}
+
 .word-search-word--found {
     color: var(--cw-text-muted);
-    text-decoration: line-through;
     border-color: rgba(52, 211, 153, .42);
     background: rgba(52, 211, 153, .09);
+}
+
+.word-search-word--found .word-search-word__label {
+    text-decoration: line-through;
 }
 
 .word-search-grid {

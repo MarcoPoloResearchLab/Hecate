@@ -16,6 +16,8 @@
   var dragCoachWidthPx = 112;
   var dragCoachVerticalOffsetPx = 46;
   var viewportPaddingPx = 8;
+  var hintButtonText = "H";
+  var hintUnavailableText = "Hint unavailable.";
 
   /**
    * @param {number} row
@@ -178,6 +180,20 @@
       clearTimeout(this._hintTimeout);
       this._hintTimeout = null;
     }
+  };
+
+  WordSearchWidget.prototype.clearWordSearchHint = function () {
+    if (!this._wordSearchHint) return;
+    this._wordSearchHint.hidden = true;
+    this._wordSearchHint.style.display = hiddenStyleValue;
+    this._wordSearchHint.textContent = emptyString;
+  };
+
+  WordSearchWidget.prototype.updateWordSearchHint = function (message) {
+    if (!this._wordSearchHint) return;
+    this._wordSearchHint.hidden = false;
+    this._wordSearchHint.style.display = emptyString;
+    this._wordSearchHint.textContent = message;
   };
 
   WordSearchWidget.prototype.clearDragCoach = function () {
@@ -408,11 +424,14 @@
     this.highlightSelection(cells);
   };
 
-  WordSearchWidget.prototype.resolveHintPlacement = function () {
+  WordSearchWidget.prototype.resolveHintPlacement = function (entryIdentifier) {
     var itemIndex;
     var item;
 
     if (!this._puzzle || !Array.isArray(this._puzzle.items)) return null;
+    if (typeof entryIdentifier === "string" && entryIdentifier) {
+      return this._placementsById[entryIdentifier] || null;
+    }
     for (itemIndex = 0; itemIndex < this._puzzle.items.length; itemIndex++) {
       item = this._puzzle.items[itemIndex];
       if (!this._foundIds[item.id]) {
@@ -422,14 +441,17 @@
     return null;
   };
 
-  WordSearchWidget.prototype.showHint = function () {
-    var placement = this.resolveHintPlacement();
+  WordSearchWidget.prototype.showHint = function (entryIdentifier) {
+    var requestedEntryIdentifier = typeof entryIdentifier === "string" ? entryIdentifier : emptyString;
+    var placement = this.resolveHintPlacement(requestedEntryIdentifier);
     var vector;
     var startCell;
     var nextCell;
+    var hintMessage;
+    var placementItem;
 
     if (!placement) {
-      this.updateStatus("All words are already found.");
+      this.updateStatus(requestedEntryIdentifier ? hintUnavailableText : "All words are already found.");
       return;
     }
 
@@ -444,10 +466,9 @@
     if (nextCell) {
       nextCell.classList.add("word-search-cell--hinted");
     }
-    if (this._wordSearchHint) {
-      this._wordSearchHint.style.display = "";
-      this._wordSearchHint.textContent = placement.hint || this._itemsById[placement.id].hint || "Hint unavailable.";
-    }
+    placementItem = this._itemsById[placement.id] || {};
+    hintMessage = placement.hint || placementItem.hint || hintUnavailableText;
+    this.updateWordSearchHint(hintMessage);
     this._hintTimeout = setTimeout(this.clearHintPulse.bind(this), 1400);
     this.updateStatus("Hint shown for " + placement.word + ".");
   };
@@ -472,6 +493,11 @@
     var itemIndex;
     var item;
     var wordItem;
+    var wordLabel;
+    var hintContainer;
+    var hintButton;
+    var hintText;
+    var itemPlacement;
     var getTouchCell;
 
     this._puzzle = puzzle;
@@ -517,10 +543,7 @@
     if (this._wordSearchPanel) {
       this._wordSearchPanel.hidden = false;
     }
-    if (this._wordSearchHint) {
-      this._wordSearchHint.style.display = hiddenStyleValue;
-      this._wordSearchHint.textContent = emptyString;
-    }
+    this.clearWordSearchHint();
 
     for (itemIndex = 0; itemIndex < puzzle.placements.length; itemIndex++) {
       this._placementsById[puzzle.placements[itemIndex].id] = puzzle.placements[itemIndex];
@@ -583,7 +606,34 @@
       item = puzzle.items[itemIndex];
       wordItem = document.createElement("li");
       wordItem.className = "word-search-word";
-      wordItem.textContent = item.word;
+      wordItem.setAttribute("data-word-search-word-id", item.id);
+      wordLabel = document.createElement("span");
+      wordLabel.className = "word-search-word__label";
+      wordLabel.textContent = item.word;
+      hintContainer = document.createElement("span");
+      hintContainer.className = "hintControls";
+      hintButton = document.createElement("button");
+      hintButton.type = "button";
+      hintButton.className = "hintButton";
+      hintButton.textContent = hintButtonText;
+      hintButton.setAttribute("aria-label", "Hint for " + item.word);
+      hintText = document.createElement("div");
+      hintText.className = "hintText";
+      itemPlacement = this._placementsById[item.id] || {};
+      hintText.textContent = itemPlacement.hint || item.hint || hintUnavailableText;
+      hintText.style.display = hiddenStyleValue;
+      (function (entryIdentifier, hintTextElement) {
+        hintButton.addEventListener("click", function (event) {
+          event.preventDefault();
+          event.stopPropagation();
+          self.showHint(entryIdentifier);
+          hintTextElement.style.display = emptyString;
+        });
+      })(item.id, hintText);
+      hintContainer.appendChild(hintButton);
+      wordItem.appendChild(wordLabel);
+      wordItem.appendChild(hintContainer);
+      wordItem.appendChild(hintText);
       this._listById[item.id] = wordItem;
       this._wordSearchList.appendChild(wordItem);
     }
