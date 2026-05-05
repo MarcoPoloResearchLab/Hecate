@@ -79,6 +79,7 @@
     this._container = container || null;
     this._options = options || {};
     this._existing = this._options._existingElements || {};
+    this._rewardEvents = !!this._options.rewardEvents;
     this._gridEl = this._existing.gridEl || null;
     this._gridViewport = this._existing.gridViewport || null;
     this._wordSearchPanel = this._existing.wordSearchPanel || null;
@@ -97,6 +98,7 @@
     this._foundIds = {};
     this._usedHint = false;
     this._usedReveal = false;
+    this._hintNotified = false;
     this._completionEmitted = false;
     this._hintTimeout = null;
     this._dragCoachEl = null;
@@ -293,6 +295,16 @@
     });
   };
 
+  WordSearchWidget.prototype.emitHintIfNeeded = function () {
+    if (this._hintNotified) return;
+    this._hintNotified = true;
+    if (!this._rewardEvents) return;
+    this.dispatchWidgetEvent("hecate:puzzle:hint-used", {
+      usedHint: true,
+      usedReveal: false,
+    });
+  };
+
   WordSearchWidget.prototype.markPlacementFound = function (placement, isReveal) {
     var index;
     var vector;
@@ -456,6 +468,7 @@
     }
 
     this._usedHint = true;
+    this.emitHintIfNeeded();
     this.clearHintPulse();
     vector = directionVector(placement.dir);
     startCell = this._cellsByKey[cellKey(placement.row, placement.col)];
@@ -509,6 +522,7 @@
     this._foundIds = {};
     this._usedHint = false;
     this._usedReveal = false;
+    this._hintNotified = false;
     this._completionEmitted = false;
     this.clearHintPulse();
     this.clearDragCoach();

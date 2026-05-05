@@ -1410,8 +1410,13 @@ func (handler *httpHandler) completePuzzleSolve(ctx context.Context, puzzle *Puz
 	}
 	response := &completionResponse{Mode: mode}
 
-	if req.UsedReveal {
-		record.IneligibilityReason = "revealed"
+	if req.UsedReveal || req.UsedHint {
+		if req.UsedHint {
+			record.IneligibilityReason = "hint_used"
+		}
+		if req.UsedReveal {
+			record.IneligibilityReason = "revealed"
+		}
 		if err := handler.store.CreatePuzzleSolveRecord(record); err != nil {
 			return nil, http.StatusInternalServerError, err
 		}

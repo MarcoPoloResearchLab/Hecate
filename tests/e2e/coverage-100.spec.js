@@ -1606,9 +1606,30 @@ test.describe("App completion coverage", () => {
         summaryText: document.getElementById("completionSummary").textContent,
         titleText: document.getElementById("completionTitle").textContent,
       };
+      app.showHintRewardWarningModal();
+      var originalHecateApp = window.HecateApp;
+      window.HecateApp = null;
+      app.showHintRewardWarningModal();
+      window.HecateApp = {};
+      app.showHintRewardWarningModal();
+      window.HecateApp = originalHecateApp;
+      window.__activePuzzle = { id: "practice-1", source: "practice" };
+      app.showHintRewardWarningModal();
+      app.setLoggedIn(false);
+      window.__activePuzzle = { source: "shared", shareToken: "shared-token" };
+      app.showHintRewardWarningModal();
+      app.setLoggedIn(true);
+      window.__activePuzzle = { id: "owned-1", source: "owned" };
+      app.showHintRewardWarningModal();
+      var hintWarningSummary = document.getElementById("completionSummary").textContent;
+      window.__activePuzzle = { source: "shared", shareToken: "shared-token" };
+      app.showHintRewardWarningModal();
+      var sharedHintWarningTitle = document.getElementById("completionTitle").textContent;
+      document.getElementById("completionCloseButton").click();
 
       var reasonResults = {
         revealed: app.describeCompletionReason("revealed"),
+        hintUsed: app.describeCompletionReason("hint_used"),
         anonymous: app.describeCompletionReason("anonymous_solver"),
         puzzleCap: app.describeCompletionReason("creator_puzzle_cap_reached"),
         dailyCap: app.describeCompletionReason("creator_daily_cap_reached"),
@@ -1624,6 +1645,7 @@ test.describe("App completion coverage", () => {
         sharedMissingToken: app.getCompletionEndpoint({ source: "shared" }),
       };
 
+      window.__activePuzzle = null;
       app.submitPuzzleCompletion({});
       window.__activePuzzle = { id: "practice-1", source: "practice" };
       app.submitPuzzleCompletion({});
@@ -1710,8 +1732,10 @@ test.describe("App completion coverage", () => {
         modalDefaults: modalDefaults,
         reasonResults: reasonResults,
         generatedPuzzleId: window.__lastGeneratedPuzzle && window.__lastGeneratedPuzzle.id,
+        hintWarningSummary: hintWarningSummary,
         dedupedCallCount: dedupedCallCount,
         shareTokenAfterEmptyActivePuzzle: shareTokenAfterEmptyActivePuzzle,
+        sharedHintWarningTitle: sharedHintWarningTitle,
         sharedFallbackReason: sharedFallbackReason,
         zeroRewardSummary: zeroRewardSummary,
         stateAfterAuthRace: app.getState(),
@@ -1727,6 +1751,7 @@ test.describe("App completion coverage", () => {
     });
     expect(result.reasonResults).toEqual({
       revealed: "Reveal was used, so this puzzle no longer qualifies for rewards.",
+      hintUsed: "A hint was used, so this puzzle no longer qualifies for rewards.",
       anonymous: "Sign in if you want shared solves to support the creator.",
       puzzleCap: "This puzzle has already reached its creator reward cap.",
       dailyCap: "The creator has already reached today’s shared reward cap.",
@@ -1742,6 +1767,8 @@ test.describe("App completion coverage", () => {
     });
     expect(result.earlyCallCount).toBe(0);
     expect(result.zeroRewardSummary).toBe("This puzzle completed without a reward payout.");
+    expect(result.hintWarningSummary).toBe("Using a hint means no reward will be granted for this puzzle.");
+    expect(result.sharedHintWarningTitle).toBe("Reward unavailable");
     expect(result.sharedFallbackReason).toBe("This solve did not qualify for extra credits.");
     expect(result.dedupedCallCount).toBe(1);
     expect(result.generatedPuzzleId).toBe("generated-1");
@@ -2300,13 +2327,20 @@ test.describe("Crossword widget completion coverage", () => {
 
     var result = await page.evaluate((items) => {
       var container = document.createElement("div");
+      var hintOnlyContainer = document.createElement("div");
       var completionDetail = null;
+      var hintEventCount = 0;
       var widget;
+      var hintOnlyWidget;
 
       document.body.appendChild(container);
+      document.body.appendChild(hintOnlyContainer);
       window.addEventListener("hecate:puzzle:completed", function handleCompletion(event) {
         completionDetail = event.detail;
       }, { once: true });
+      window.addEventListener("hecate:puzzle:hint-used", function () {
+        hintEventCount += 1;
+      });
 
       widget = new window.CrosswordWidget(container, {
         puzzle: generateCrossword(items, {
@@ -2317,6 +2351,16 @@ test.describe("Crossword widget completion coverage", () => {
           },
         }),
       });
+      hintOnlyWidget = new window.CrosswordWidget(hintOnlyContainer, {
+        puzzle: generateCrossword(items, {
+          title: "Hint Only",
+          subtitle: "reward-event false branch",
+          random: function () {
+            return 0.5;
+          },
+        }),
+      });
+      hintOnlyWidget._acrossOl.querySelector(".hintButton").click();
 
       Object.keys(widget._testApi.cellsById).forEach(function (entryId) {
         widget._testApi.cellsById[entryId].forEach(function (cell) {
@@ -2328,6 +2372,7 @@ test.describe("Crossword widget completion coverage", () => {
 
       return {
         completionDetail: completionDetail,
+        hintEventCount: hintEventCount,
         statusText: widget._statusEl.textContent,
       };
     }, defaultPuzzles[0].items);
@@ -2337,6 +2382,7 @@ test.describe("Crossword widget completion coverage", () => {
       usedHint: false,
       usedReveal: false,
     });
+    expect(result.hintEventCount).toBe(0);
     expect(result.statusText).toBe("All correct — nice!");
   });
 });
@@ -2442,6 +2488,9 @@ test.describe("Word search widget coverage", () => {
       });
       window.addEventListener("hecate:puzzle:reveal-used", function (event) {
         events.push({ name: "reveal", detail: event.detail });
+      });
+      window.addEventListener("hecate:puzzle:hint-used", function (event) {
+        events.push({ name: "hint", detail: event.detail });
       });
 
       var nullWidget = new window.WordSearchWidget(null);
@@ -2615,6 +2664,25 @@ test.describe("Word search widget coverage", () => {
       branchWidget._foundIds = {};
       branchWidget.showHint();
 
+      var rewardHint = document.createElement("div");
+      var rewardStatus = document.createElement("div");
+      var rewardWidget = new window.WordSearchWidget(null, {
+        rewardEvents: true,
+        _existingElements: {
+          wordSearchHint: rewardHint,
+          statusEl: rewardStatus,
+        },
+      });
+      rewardWidget._puzzle = { items: [{ id: "reward", hint: "reward hint" }] };
+      rewardWidget._foundIds = {};
+      rewardWidget._cellsByKey = {};
+      rewardWidget._itemsById = { reward: { id: "reward", hint: "reward hint" } };
+      rewardWidget._placementsById = {
+        reward: { id: "reward", word: "CAT", row: 0, col: 0, dir: "E", hint: "reward hint" },
+      };
+      rewardWidget.showHint();
+      rewardWidget.showHint();
+
       var minimalWidget = new window.WordSearchWidget(null, { _existingElements: {} });
       minimalWidget.render({
         puzzleType: "word_search",
@@ -2736,7 +2804,8 @@ test.describe("Word search widget coverage", () => {
     expect(result.boundedCellSizes).toEqual([44, 38, 36]);
     expect(result.directionVectors).toContainEqual({ row: 0, col: 0 });
     expect(result.selections).toEqual([3, 3, 3, 3, 0]);
-    expect(result.events.map((event) => event.name)).toEqual(expect.arrayContaining(["completed", "reveal"]));
+    expect(result.events.map((event) => event.name)).toEqual(expect.arrayContaining(["completed", "hint", "reveal"]));
+    expect(result.events.filter((event) => event.name === "hint")).toHaveLength(1);
     expect(result.invalidText).toBe("Word search specification invalid");
     expect(result.listText).toEqual(["CATHfeline", "DOGHcanine"]);
     expect(result.listLabels).toEqual(["CAT", "DOG"]);

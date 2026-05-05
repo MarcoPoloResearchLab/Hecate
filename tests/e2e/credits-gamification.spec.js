@@ -118,6 +118,26 @@ test.describe("Credits gamification", () => {
     await expect(page.locator("#rewardStrip")).toBeHidden();
   });
 
+  test("first hint use warns that no reward will be granted", async ({ page }) => {
+    await setupLoggedInRoutes(page, {
+      ownedPuzzles: [ownedPuzzle],
+    });
+
+    await page.goto("/");
+    await openOwnedPuzzle(page);
+    await page.evaluate(() => document.querySelector("#puzzleView .hintButton").click());
+
+    await expect(page.locator("#completionModal")).toBeVisible({ timeout: 5000 });
+    await expect(page.locator("#completionTitle")).toContainText("Reward unavailable");
+    await expect(page.locator("#completionSummary")).toContainText("no reward will be granted");
+
+    await page.locator("#completionCloseButton").click();
+    await expect(page.locator("#completionModal")).toBeHidden();
+
+    await page.evaluate(() => document.querySelector("#puzzleView .hintButton").click());
+    await expect(page.locator("#completionModal")).toBeHidden();
+  });
+
   test("owner completion updates balance, credit popover details, and completion modal", async ({ page }) => {
     await setupLoggedInRoutes(page, {
       coins: 18,

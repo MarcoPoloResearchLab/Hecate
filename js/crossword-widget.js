@@ -293,6 +293,7 @@
     this._showTitle = opts.showTitle !== undefined ? !!opts.showTitle : true;
     this._showControls = opts.showControls !== undefined ? !!opts.showControls : true;
     this._showSelector = opts.showSelector !== undefined ? !!opts.showSelector : false;
+    this._rewardEvents = !!opts.rewardEvents;
 
     this._currentColumnCount = 0;
     this._resizeObserver = null;
@@ -564,6 +565,7 @@
     var rows = built.rows;
     var cols = built.cols;
     var getCell = built.getCell;
+    var emitRewardEvents = this._rewardEvents;
     var solveSession = {
       completionEmitted: false,
       revealNotified: false,
@@ -665,6 +667,16 @@
       }));
     }
 
+    function markHintUsed() {
+      if (solveSession.usedHint) return;
+      solveSession.usedHint = true;
+      if (!emitRewardEvents) return;
+      dispatchWidgetEvent("hecate:puzzle:hint-used", {
+        usedHint: true,
+        usedReveal: false,
+      });
+    }
+
     function emitCompletionIfNeeded(trigger) {
       if (solveSession.completionEmitted || solveSession.usedReveal || !isPuzzleSolved()) return;
       solveSession.completionEmitted = true;
@@ -733,7 +745,7 @@
 
       hintButton.addEventListener("click", function (event) {
         event.preventDefault();
-        solveSession.usedHint = true;
+        markHintUsed();
         if (hintStage === hintStageInitial) {
           verbalSpan.style.display = emptyString;
           hintStage = hintStageVerbal;
