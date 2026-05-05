@@ -18,6 +18,7 @@
   var viewportPaddingPx = 8;
   var hintButtonText = "H";
   var hintUnavailableText = "Hint unavailable.";
+  var foundBoundaryClassName = "word-search-found-boundary";
 
   /**
    * @param {number} row
@@ -94,6 +95,7 @@
     this._placementsById = {};
     this._itemsById = {};
     this._listById = {};
+    this._foundBoundariesById = {};
     this._selection = null;
     this._foundIds = {};
     this._usedHint = false;
@@ -162,6 +164,80 @@
       cssCellSizeProperty,
       computeBoundedCellSize(viewportWidth, columnCount, gapSize) + pixelUnit
     );
+    this.refreshFoundWordBoundaries();
+  };
+
+  WordSearchWidget.prototype.clearFoundWordBoundaries = function () {
+    var boundaryIds = Object.keys(this._foundBoundariesById);
+    var index;
+
+    for (index = 0; index < boundaryIds.length; index++) {
+      this._foundBoundariesById[boundaryIds[index]].remove();
+    }
+    this._foundBoundariesById = {};
+  };
+
+  WordSearchWidget.prototype.renderFoundWordBoundary = function (placement) {
+    var vector;
+    var startCell;
+    var endCell;
+    var boundary;
+    var startCenterX;
+    var startCenterY;
+    var endCenterX;
+    var endCenterY;
+    var deltaX;
+    var deltaY;
+    var boundaryWidth;
+    var boundaryHeight;
+    var centerX;
+    var centerY;
+
+    if (!this._gridEl || !placement) return;
+
+    vector = directionVector(placement.dir);
+    startCell = this._cellsByKey[cellKey(placement.row, placement.col)];
+    endCell = this._cellsByKey[cellKey(
+      placement.row + vector.row * (placement.word.length - 1),
+      placement.col + vector.col * (placement.word.length - 1)
+    )];
+    if (!startCell || !endCell) return;
+
+    boundary = this._foundBoundariesById[placement.id];
+    if (!boundary) {
+      boundary = document.createElement("div");
+      boundary.className = foundBoundaryClassName;
+      boundary.setAttribute("aria-hidden", "true");
+      boundary.setAttribute("data-word-search-found-boundary-id", placement.id);
+      this._foundBoundariesById[placement.id] = boundary;
+      this._gridEl.appendChild(boundary);
+    }
+
+    startCenterX = startCell.offsetLeft + startCell.offsetWidth / 2;
+    startCenterY = startCell.offsetTop + startCell.offsetHeight / 2;
+    endCenterX = endCell.offsetLeft + endCell.offsetWidth / 2;
+    endCenterY = endCell.offsetTop + endCell.offsetHeight / 2;
+    deltaX = endCenterX - startCenterX;
+    deltaY = endCenterY - startCenterY;
+    boundaryWidth = Math.sqrt(deltaX * deltaX + deltaY * deltaY) + Math.max(startCell.offsetWidth, endCell.offsetWidth);
+    boundaryHeight = Math.max(startCell.offsetHeight, endCell.offsetHeight);
+    centerX = (startCenterX + endCenterX) / 2;
+    centerY = (startCenterY + endCenterY) / 2;
+
+    boundary.style.width = boundaryWidth + pixelUnit;
+    boundary.style.height = boundaryHeight + pixelUnit;
+    boundary.style.left = centerX - boundaryWidth / 2 + pixelUnit;
+    boundary.style.top = centerY - boundaryHeight / 2 + pixelUnit;
+    boundary.style.transform = "rotate(" + Math.atan2(deltaY, deltaX) + "rad)";
+  };
+
+  WordSearchWidget.prototype.refreshFoundWordBoundaries = function () {
+    var foundIds = Object.keys(this._foundIds);
+    var index;
+
+    for (index = 0; index < foundIds.length; index++) {
+      this.renderFoundWordBoundary(this._placementsById[foundIds[index]]);
+    }
   };
 
   WordSearchWidget.prototype.clearTransientSelection = function () {
@@ -323,6 +399,7 @@
         cell.classList.add(isReveal ? "word-search-cell--revealed" : "word-search-cell--found");
       }
     }
+    this.renderFoundWordBoundary(placement);
 
     itemElement = this._listById[placement.id];
     if (itemElement) {
@@ -519,6 +596,7 @@
     this._itemsById = {};
     this._listById = {};
     this._selection = null;
+    this.clearFoundWordBoundaries();
     this._foundIds = {};
     this._usedHint = false;
     this._usedReveal = false;

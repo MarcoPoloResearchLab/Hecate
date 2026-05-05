@@ -87,6 +87,32 @@ async function renderWordSearch(page, size) {
   await expect(page.locator("#puzzleView .word-search-cell")).toHaveCount(size * size);
 }
 
+async function renderPlacedWordSearch(page) {
+  await page.evaluate(() => {
+    window.HecateApp.render({
+      puzzleType: "word_search",
+      title: "Found Boundary",
+      subtitle: "Visual boundary test",
+      size: 4,
+      grid: [
+        ["C", "A", "T", "X"],
+        ["X", "X", "D", "X"],
+        ["X", "X", "O", "X"],
+        ["X", "X", "G", "X"],
+      ],
+      items: [
+        { id: "W0", word: "CAT", definition: "Feline", hint: "feline" },
+        { id: "W1", word: "DOG", definition: "Canine", hint: "canine" },
+      ],
+      placements: [
+        { id: "W0", word: "CAT", row: 0, col: 0, dir: "E", hint: "feline" },
+        { id: "W1", word: "DOG", row: 1, col: 2, dir: "S", hint: "canine" },
+      ],
+    });
+  });
+  await expect(page.locator("#puzzleView .word-search-cell")).toHaveCount(16);
+}
+
 async function readGridMetrics(page, cellSelector) {
   return page.evaluate((selector) => {
     var puzzleView = document.getElementById("puzzleView");
@@ -269,6 +295,60 @@ test.describe("Layout — bounded dynamic cell sizing", () => {
     expect(metrics.cellWidth).toBeLessThan(44);
     expect(metrics.cellWidth).toBeGreaterThanOrEqual(36);
     expect(Math.abs(metrics.cellWidth - metrics.cellHeight)).toBeLessThanOrEqual(2);
+  });
+
+  test("found word boundary does not change word-search dimensions", async ({ page }) => {
+    await page.setViewportSize({ width: 900, height: 720 });
+    await goToPuzzle(page);
+    await renderPlacedWordSearch(page);
+
+    var before = await readGridMetrics(page, ".word-search-cell");
+    var startBox = await page.locator('.word-search-cell[data-row="0"][data-col="0"]').boundingBox();
+    var endBox = await page.locator('.word-search-cell[data-row="0"][data-col="2"]').boundingBox();
+
+    expect(before).not.toBeNull();
+    expect(startBox).not.toBeNull();
+    expect(endBox).not.toBeNull();
+
+    await page.mouse.move(startBox.x + startBox.width / 2, startBox.y + startBox.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(endBox.x + endBox.width / 2, endBox.y + endBox.height / 2);
+    await page.mouse.up();
+    await expect(page.locator(".word-search-found-boundary")).toHaveCount(1);
+
+    var after = await readGridMetrics(page, ".word-search-cell");
+    var boundary = await page.evaluate(() => {
+      var element = document.querySelector(".word-search-found-boundary");
+      var cell = document.querySelector(".word-search-cell");
+      if (!element || !cell) return null;
+      var boundaryRect = element.getBoundingClientRect();
+      var cellRect = cell.getBoundingClientRect();
+      var styles = window.getComputedStyle(element);
+      return {
+        borderTopWidth: styles.borderTopWidth,
+        height: boundaryRect.height,
+        pointerEvents: styles.pointerEvents,
+        position: styles.position,
+        transform: element.style.transform,
+        width: boundaryRect.width,
+        cellHeight: cellRect.height,
+        cellWidth: cellRect.width,
+      };
+    });
+
+    expect(after).not.toBeNull();
+    expect(boundary).not.toBeNull();
+    expect(Math.abs(after.cellWidth - before.cellWidth)).toBeLessThanOrEqual(1);
+    expect(Math.abs(after.cellHeight - before.cellHeight)).toBeLessThanOrEqual(1);
+    expect(Math.abs(after.gridWidth - before.gridWidth)).toBeLessThanOrEqual(1);
+    expect(boundary).toMatchObject({
+      borderTopWidth: "1px",
+      pointerEvents: "none",
+      position: "absolute",
+    });
+    expect(boundary.height).toBeLessThanOrEqual(boundary.cellHeight + 2);
+    expect(boundary.width).toBeGreaterThan(boundary.cellWidth * 2);
+    expect(boundary.transform).not.toBe("none");
   });
 
   test("cells are square", async ({ page }) => {

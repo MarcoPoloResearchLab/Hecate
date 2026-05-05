@@ -779,6 +779,7 @@ select {
 
 .word-search-grid {
     --gap-size: 6px;
+    position: relative;
     gap: var(--gap-size);
 }
 
@@ -819,6 +820,17 @@ select {
 
 .word-search-cell--hinted {
     animation: word-search-pulse 0.7s ease-in-out 2;
+}
+
+.word-search-found-boundary {
+    position: absolute;
+    z-index: 2;
+    box-sizing: border-box;
+    border: 1px solid rgba(209, 250, 229, .9);
+    border-radius: 8px;
+    box-shadow: 0 0 0 1px rgba(16, 185, 129, .28);
+    pointer-events: none;
+    transform-origin: center;
 }
 
 .word-search-drag-coach {

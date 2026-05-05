@@ -2541,6 +2541,19 @@ test.describe("Word search widget coverage", () => {
       standalone.showHint();
       standalone.revealAll();
       standalone.revealAll();
+      standalone.recalculate();
+      var foundBoundary = container.querySelector(".word-search-found-boundary");
+      var foundBoundaryStyle = window.getComputedStyle(foundBoundary);
+      var foundBoundaryState = {
+        count: container.querySelectorAll(".word-search-found-boundary").length,
+        ariaHidden: foundBoundary.getAttribute("aria-hidden"),
+        borderTopWidth: foundBoundaryStyle.borderTopWidth,
+        pointerEvents: foundBoundaryStyle.pointerEvents,
+        position: foundBoundaryStyle.position,
+        transform: foundBoundary.style.transform,
+      };
+      standalone.render(null);
+      var boundaryClearedAfterInvalidRender = !container.querySelector(".word-search-found-boundary");
 
       var grid = document.createElement("div");
       var viewport = document.createElement("div");
@@ -2644,6 +2657,12 @@ test.describe("Word search widget coverage", () => {
       branchWidget._itemsById = { missing: { id: "missing", hint: "" } };
       branchWidget._listById = {};
       branchWidget.markPlacementFound({ id: "missing", word: "A", row: 0, col: 0, dir: "BAD" }, true);
+      var missingBoundaryGrid = document.createElement("div");
+      branchWidget._gridEl = missingBoundaryGrid;
+      branchWidget._cellsByKey = {};
+      branchWidget.renderFoundWordBoundary({ id: "no-cells", word: "CAT", row: 0, col: 0, dir: "E" });
+      var missingBoundaryCount = missingBoundaryGrid.querySelectorAll(".word-search-found-boundary").length;
+      branchWidget._gridEl = null;
       branchWidget._foundIds = {};
       branchWidget._placementsById = {};
       branchWidget.resolveHintPlacement();
@@ -2796,6 +2815,9 @@ test.describe("Word search widget coverage", () => {
         statusText: status.textContent,
         dragCoachState: dragCoachState,
         dragCoachClearedOnDragStart: dragCoachClearedOnDragStart,
+        foundBoundaryState: foundBoundaryState,
+        boundaryClearedAfterInvalidRender: boundaryClearedAfterInvalidRender,
+        missingBoundaryCount: missingBoundaryCount,
         zeroColumnCount: zeroWidget._currentColumnCount,
       };
     });
@@ -2829,6 +2851,16 @@ test.describe("Word search widget coverage", () => {
       isAboveCell: true,
     });
     expect(result.dragCoachClearedOnDragStart).toBe(true);
+    expect(result.foundBoundaryState).toMatchObject({
+      count: 2,
+      ariaHidden: "true",
+      borderTopWidth: "1px",
+      pointerEvents: "none",
+      position: "absolute",
+    });
+    expect(result.foundBoundaryState.transform).toContain("rotate(");
+    expect(result.boundaryClearedAfterInvalidRender).toBe(true);
+    expect(result.missingBoundaryCount).toBe(0);
     expect(result.zeroColumnCount).toBe(0);
   });
 });
