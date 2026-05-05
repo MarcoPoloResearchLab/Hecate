@@ -1,17 +1,62 @@
 # ISSUES
 
-Working backlog for this repository. Keep it current and small. Use @issues-md-format.md for the canonical format.
+Entries record newly discovered requests or changes.
 
-- Status markers: `[ ]` open, `[!]` blocked (must include a `Blocked:` line), `[x]` closed.
-- Hygiene: once a closed issue's consequences are reflected in code/tests and in user-facing docs, remove the entry from this file. Git history remains the record. (Recurring runbooks below are the exception: keep them open.)
+Read @AGENTS.md (Workflow section), @POLICY.md, and relevant stack guides before implementing changes.
+
+Format: `- [ ] [B042] (P1) {I007} Title`
+
+- `[ ]` open, `[!]` blocked, `[x]` closed.
+- Blocked issues (`[!]`) must include a `Blocked:` line in the body.
 
 ## BugFixes
 
 - [ ] [B001] (P1) Add server-side crossword layout validation before charging for generation.
   Generated word sets are still trusted after the LLM call, but the browser renderer can reject a saved puzzle when `generateCrossword()` cannot build a valid layout from those words. Add backend-side layout validation, or an equivalent refund path, before generation succeeds.
-
 - [ ] [B002] (P1) Validate generated puzzle words without silently deleting letters.
   The current LLM parser deletes non-ASCII letters before saving words, so an answer like `façade` can become `FAADE`; the browser crossword and word-search generators repeat the same deletion when building layouts from specs. Add edge validation that rejects mutated spellings or applies an explicit approved transliteration before charging, saving, or rendering generated puzzles, with black-box coverage for accented and punctuation-bearing words.
+- [ ] [B003] (P0) Word search grid does not respond to touchscreen input in Chrome; investigate and enable touch interaction support.
+  Context:
+  Users report that the word search feature does not respond to touchscreen interactions when using Google Chrome (likely on touch-enabled devices such as tablets, 2-in-1 laptops, or touchscreen monitors). Tapping, dragging, or attempting to select words via touch does not behave as expected, while mouse/trackpad interaction presumably works.
+  
+  This issue may relate to differences between mouse, pointer, and touch events in Chrome, handling of passive event listeners, or CSS/DOM setup that interferes with touch input (e.g., touch-action, pointer-events, or default scrolling behavior). We need to understand what is special about using touchscreens with our current implementation and then adapt the word search interaction model to support touch reliably.
+  
+  Acceptance criteria:
+  - On a Chrome browser running on a touch-enabled device, a user can:
+    - Start selecting a word in the word search grid by touching the first letter.
+    - Drag (or continue touching) across adjacent letters to extend the selection.
+    - Complete the selection via touch, and, if the selection is a valid word according to the puzzle, it is recognized as such (e.g., highlighted/marked as found in the same way as with mouse input).
+  - Touch interactions do not break or degrade mouse/trackpad interaction; both input methods work correctly on devices that support them.
+  - Touch gestures do not unintentionally cause the page to scroll or zoom in a way that prevents normal word selection (within reasonable browser constraints).
+  - The solution works in current stable Chrome on at least one verified touch device (e.g., a Chromebook or Windows laptop with touchscreen), with test steps documented.
+  - Relevant event handling logic (e.g., pointer/mouse/touch events) is documented at a high level in comments or brief developer notes so future changes can maintain compatibility with touch.
+  
+  Known open questions:
+  - Which specific Chrome + device combinations are affected (Android tablets, Chromebooks, Windows touchscreen laptops, etc.)? Is the bug reproducible across multiple environments?
+  - Is this issue limited to Chrome, or does it also appear in other browsers with touch support (Safari iOS, Edge, mobile Firefox)?
+  - How is input currently handled in the word search grid (pure mouse events, pointer events, or a mix), and is there any existing touch support that is partially working?
+  - Are there any CSS or layout constraints (e.g., overlays, z-index, touch-action, pointer-events) that may be blocking or intercepting touch input on the grid?
+  - Do we need to support additional touch gestures (e.g., tap-tap vs. drag) for accessibility or for users who cannot easily drag on touchscreens?
+- [ ] [B004] (P0) Cannot hide revealed words after using Reveal in Word Search.
+  Context:
+  - In the Word Search game, when a player clicks the "Reveal" action to show words, there is currently no way to hide those revealed words again.
+  - This affects the ability to continue playing normally after using Reveal, and may be confusing or reduce the challenge/fun of the game.
+  - Platform(s), browser(s), and exact game version where this occurs are not yet specified.
+  
+  Acceptance Criteria:
+  - After using the Reveal feature to show words in the Word Search game, the player has a clear, intuitive way to hide the revealed words again (e.g., via a toggle, close action, or similar control).
+  - Once hidden, the puzzle returns to its normal state where unrevealed words are not highlighted, and normal gameplay can continue.
+  - The solution does not unintentionally disable or break the existing Reveal functionality.
+  - The UI state after hiding revealed words is visually distinct from the state when Reveal is active, so players understand whether Reveal is currently applied.
+  - Behavior is consistent across supported platforms and browsers.
+  
+  Open Questions:
+  - Should Reveal behave as a toggle (click once to reveal, click again to hide) or should there be a separate control to hide/clear reveals?
+  - After hiding revealed words, should any game state (score, hints used, achievements, etc.) be affected or remain exactly as if Reveal had just been used once?
+  - Should there be any animation or transition when hiding revealed words, or is an immediate state change preferred?
+  - Are there accessibility considerations (e.g., screen readers, keyboard navigation, contrast) that need to be addressed for the reveal/hide interaction?
+  - Are there any game design constraints on how often Reveal can be toggled or hidden during a single puzzle?
+
 
 ## Improvements
 
@@ -57,3 +102,4 @@ Working backlog for this repository. Keep it current and small. Use @issues-md-f
 
 ## Planning
 *do not implement yet*
+
