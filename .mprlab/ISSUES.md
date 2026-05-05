@@ -1,17 +1,22 @@
 # ISSUES
 
-Working backlog for this repository. Keep it current and small. Use @issues-md-format.md for the canonical format.
+Entries record newly discovered requests or changes.
 
-- Status markers: `[ ]` open, `[!]` blocked (must include a `Blocked:` line), `[x]` closed.
-- Hygiene: once a closed issue's consequences are reflected in code/tests and in user-facing docs, remove the entry from this file. Git history remains the record. (Recurring runbooks below are the exception: keep them open.)
+Read @AGENTS.md (Workflow section), @POLICY.md, and relevant stack guides before implementing changes.
+
+Format: `- [ ] [B042] (P1) {I007} Title`
+
+- `[ ]` open, `[!]` blocked, `[x]` closed.
+- Blocked issues (`[!]`) must include a `Blocked:` line in the body.
 
 ## BugFixes
 
 - [ ] [B001] (P1) Add server-side crossword layout validation before charging for generation.
   Generated word sets are still trusted after the LLM call, but the browser renderer can reject a saved puzzle when `generateCrossword()` cannot build a valid layout from those words. Add backend-side layout validation, or an equivalent refund path, before generation succeeds.
-
 - [ ] [B002] (P1) Validate generated puzzle words without silently deleting letters.
   The current LLM parser deletes non-ASCII letters before saving words, so an answer like `façade` can become `FAADE`; the browser crossword and word-search generators repeat the same deletion when building layouts from specs. Add edge validation that rejects mutated spellings or applies an explicit approved transliteration before charging, saving, or rendering generated puzzles, with black-box coverage for accented and punctuation-bearing words.
+- [ ] [B003] (P0) the word search didnt react to touchscreen on chrome, investigate and consider what's special about using touchscreen so we can allow users to interact with the word search using touchscreens.
+
 
 ## Improvements
 
@@ -57,3 +62,4 @@ Working backlog for this repository. Keep it current and small. Use @issues-md-f
 
 ## Planning
 *do not implement yet*
+
